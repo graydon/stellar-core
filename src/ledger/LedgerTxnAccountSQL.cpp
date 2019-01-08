@@ -294,6 +294,343 @@ LedgerTxnRoot::Impl::deleteAccount(LedgerKey const& key)
     }
 }
 
+static void
+sociGenericBulkUpsertAccounts(Database& DB,
+                              std::vector<std::string> const& accountIDs,
+                              std::vector<int64_t> const& balances,
+                              std::vector<int64_t> const& seqNums,
+                              std::vector<int32_t> const& subEntryNums,
+                              std::vector<std::string> const& inflationDests,
+                              std::vector<soci::indicator>& inflationDestInds,
+                              std::vector<int32_t> const& flags,
+                              std::vector<std::string> const& homeDomains,
+                              std::vector<std::string> const& thresholds,
+                              std::vector<std::string> const& signers,
+                              std::vector<soci::indicator>& signerInds,
+                              std::vector<int32_t> const& lastModifieds,
+                              std::vector<int64_t> const& buyingLiabilities,
+                              std::vector<int64_t> const& sellingLiabilities,
+                              std::vector<soci::indicator>& liabilitiesInds)
+{
+    std::string sql =
+        "INSERT INTO accounts ( "
+        "accountid, balance, seqnum, numsubentries, inflationdest,"
+        "homedomain, thresholds, signers, flags, lastmodified, "
+        "buyingliabilities, sellingliabilities "
+        ") VALUES ( "
+        ":id, :v1, :v2, :v3, :v4, :v5, :v6, :v7, :v8, :v9, :v10, :v11 "
+        ") ON CONFLICT (accountid) DO UPDATE SET "
+        "balance = excluded.balance, "
+        "seqnum = excluded.seqnum, "
+        "numsubentries = excluded.numsubentries, "
+        "inflationdest = excluded.inflationdest, "
+        "homedomain = excluded.homedomain, "
+        "thresholds = excluded.thresholds, "
+        "signers = excluded.signers, "
+        "flags = excluded.flags, "
+        "lastmodified = excluded.lastmodified, "
+        "buyingliabilities = excluded.buyingliabilities, "
+        "sellingliabilities = excluded.sellingliabilities";
+    auto prep = DB.getPreparedStatement(sql);
+    soci::statement& st = prep.statement();
+    st.exchange(soci::use(accountIDs, "id"));
+    st.exchange(soci::use(balances, "v1"));
+    st.exchange(soci::use(seqNums, "v2"));
+    st.exchange(soci::use(subEntryNums, "v3"));
+    st.exchange(soci::use(inflationDests, inflationDestInds, "v4"));
+    st.exchange(soci::use(homeDomains, "v5"));
+    st.exchange(soci::use(thresholds, "v6"));
+    st.exchange(soci::use(signers, signerInds, "v7"));
+    st.exchange(soci::use(flags, "v8"));
+    st.exchange(soci::use(lastModifieds, "v9"));
+    st.exchange(soci::use(buyingLiabilities, liabilitiesInds, "v10"));
+    st.exchange(soci::use(sellingLiabilities, liabilitiesInds, "v11"));
+    st.define_and_bind();
+    {
+        auto timer = DB.getUpsertTimer("account");
+        st.execute(true);
+    }
+}
+
+static void
+sociGenericBulkDeleteAccounts(Database& DB,
+                              std::vector<std::string> const& accountIDs)
+{
+    std::string sql = "DELETE FROM accounts WHERE accountid = :id";
+    auto prep = DB.getPreparedStatement(sql);
+    soci::statement& st = prep.statement();
+    st.exchange(soci::use(accountIDs, "id"));
+    st.define_and_bind();
+    {
+        auto timer = DB.getDeleteTimer("account");
+        st.execute(true);
+    }
+}
+
+#ifdef USE_POSTGRES
+static void
+postgresSpecificBulkUpsertAccounts(
+    Database& DB, std::vector<std::string> const& accountIDs,
+    std::vector<int64_t> const& balances, std::vector<int64_t> const& seqNums,
+    std::vector<int32_t> const& subEntryNums,
+    std::vector<std::string> const& inflationDests,
+    std::vector<soci::indicator>& inflationDestInds,
+    std::vector<int32_t> const& flags,
+    std::vector<std::string> const& homeDomains,
+    std::vector<std::string> const& thresholds,
+    std::vector<std::string> const& signers,
+    std::vector<soci::indicator>& signerInds,
+    std::vector<int32_t> const& lastModifieds,
+    std::vector<int64_t> const& buyingLiabilities,
+    std::vector<int64_t> const& sellingLiabilities,
+    std::vector<soci::indicator>& liabilitiesInds)
+{
+
+    soci::session& session = DB.getSession();
+    auto pg =
+        dynamic_cast<soci::postgresql_session_backend*>(session.get_backend());
+    PGconn* conn = pg->conn_;
+
+    std::string strAccountIDs, strBalances, strSeqNums, strSubEntryNums,
+        strInflationDests, strFlags, strHomeDomains, strThresholds, strSigners,
+        strLastModifieds, strBuyingLiabilities, strSellingLiabilities;
+
+    marshalToPGArray(conn, strAccountIDs, accountIDs);
+    marshalToPGArray(conn, strBalances, balances);
+    marshalToPGArray(conn, strSeqNums, seqNums);
+    marshalToPGArray(conn, strSubEntryNums, subEntryNums);
+    marshalToPGArray(conn, strInflationDests, inflationDests,
+                     &inflationDestInds);
+    marshalToPGArray(conn, strFlags, flags);
+    marshalToPGArray(conn, strHomeDomains, homeDomains);
+    marshalToPGArray(conn, strThresholds, thresholds);
+    marshalToPGArray(conn, strSigners, signers, &signerInds);
+    marshalToPGArray(conn, strLastModifieds, lastModifieds);
+    marshalToPGArray(conn, strBuyingLiabilities, buyingLiabilities,
+                     &liabilitiesInds);
+    marshalToPGArray(conn, strSellingLiabilities, sellingLiabilities,
+                     &liabilitiesInds);
+
+    std::string sql =
+        "WITH r AS (SELECT "
+        "unnest(:ids::TEXT[]), "
+        "unnest(:balances::BIGINT[]), "
+        "unnest(:seqnums::BIGINT[]), "
+        "unnest(:numsubentries::INT[]), "
+        "unnest(:inflationdests::TEXT[]), "
+        "unnest(:homedomains::TEXT[]), "
+        "unnest(:thresholds::TEXT[]), "
+        "unnest(:signers::TEXT[]), "
+        "unnest(:flags::INT[]), "
+        "unnest(:lastmodifieds::INT[]), "
+        "unnest(:buyingliabilities::BIGINT[]), "
+        "unnest(:sellingliabilities::BIGINT[]) "
+        ")"
+        "INSERT INTO accounts ( "
+        "accountid, balance, seqnum, "
+        "numsubentries, inflationdest, homedomain, thresholds, signers, "
+        "flags, lastmodified, buyingliabilities, sellingliabilities "
+        ") SELECT * FROM r "
+        "ON CONFLICT (accountid) DO UPDATE SET "
+        "balance = excluded.balance, "
+        "seqnum = excluded.seqnum, "
+        "numsubentries = excluded.numsubentries, "
+        "inflationdest = excluded.inflationdest, "
+        "homedomain = excluded.homedomain, "
+        "thresholds = excluded.thresholds, "
+        "signers = excluded.signers, "
+        "flags = excluded.flags, "
+        "lastmodified = excluded.lastmodified, "
+        "buyingliabilities = excluded.buyingliabilities, "
+        "sellingliabilities = excluded.sellingliabilities";
+    auto prep = DB.getPreparedStatement(sql);
+    soci::statement& st = prep.statement();
+    st.exchange(soci::use(strAccountIDs, "ids"));
+    st.exchange(soci::use(strBalances, "balances"));
+    st.exchange(soci::use(strSeqNums, "seqnums"));
+    st.exchange(soci::use(strSubEntryNums, "numsubentries"));
+    st.exchange(soci::use(strInflationDests, "inflationdests"));
+    st.exchange(soci::use(strHomeDomains, "homedomains"));
+    st.exchange(soci::use(strThresholds, "thresholds"));
+    st.exchange(soci::use(strSigners, "signers"));
+    st.exchange(soci::use(strFlags, "flags"));
+    st.exchange(soci::use(strLastModifieds, "lastmodifieds"));
+    st.exchange(soci::use(strBuyingLiabilities, "buyingliabilities"));
+    st.exchange(soci::use(strSellingLiabilities, "sellingliabilities"));
+    st.define_and_bind();
+    {
+        auto timer = DB.getUpsertTimer("account");
+        st.execute(true);
+    }
+}
+
+static void
+postgresSpecificBulkDeleteAccounts(Database& DB,
+                                   std::vector<std::string> const& accountIDs)
+{
+    soci::session& session = DB.getSession();
+    auto pg =
+        dynamic_cast<soci::postgresql_session_backend*>(session.get_backend());
+    PGconn* conn = pg->conn_;
+    std::string strAccountIDs;
+    marshalToPGArray(conn, strAccountIDs, accountIDs);
+    std::string sql =
+        "WITH r AS (SELECT unnest(:ids::TEXT[])) "
+        "DELETE FROM accounts WHERE accountid IN (SELECT * FROM r)";
+    auto prep = DB.getPreparedStatement(sql);
+    soci::statement& st = prep.statement();
+    st.exchange(soci::use(strAccountIDs, "ids"));
+    st.define_and_bind();
+    {
+        auto timer = DB.getDeleteTimer("account");
+        st.execute(true);
+    }
+}
+#endif
+
+void
+LedgerTxnRoot::Impl::bulkUpsertAccounts(
+    std::vector<EntryIterator> const& entries)
+{
+    std::vector<std::string> accountIDs;
+    std::vector<int64_t> balances;
+    std::vector<int64_t> seqNums;
+    std::vector<int32_t> subEntryNums;
+    std::vector<std::string> inflationDests;
+    std::vector<soci::indicator> inflationDestInds;
+    std::vector<int32_t> flags;
+    std::vector<std::string> homeDomains;
+    std::vector<std::string> thresholds;
+    std::vector<std::string> signers;
+    std::vector<soci::indicator> signerInds;
+    std::vector<int32_t> lastModifieds;
+    std::vector<int64_t> buyingLiabilities;
+    std::vector<int64_t> sellingLiabilities;
+    std::vector<soci::indicator> liabilitiesInds;
+
+    accountIDs.reserve(entries.size());
+    balances.reserve(entries.size());
+    seqNums.reserve(entries.size());
+    subEntryNums.reserve(entries.size());
+    inflationDests.reserve(entries.size());
+    inflationDestInds.reserve(entries.size());
+    flags.reserve(entries.size());
+    homeDomains.reserve(entries.size());
+    thresholds.reserve(entries.size());
+    signers.reserve(entries.size());
+    signerInds.reserve(entries.size());
+    lastModifieds.reserve(entries.size());
+    buyingLiabilities.reserve(entries.size());
+    sellingLiabilities.reserve(entries.size());
+    liabilitiesInds.reserve(entries.size());
+
+    for (auto const& e : entries)
+    {
+        assert(e.entryExists());
+        assert(e.entry().data.type() == ACCOUNT);
+        auto const& account = e.entry().data.account();
+        accountIDs.push_back(KeyUtils::toStrKey(account.accountID));
+        balances.push_back(account.balance);
+        seqNums.push_back(account.seqNum);
+        subEntryNums.push_back(unsignedToSigned(account.numSubEntries));
+
+        if (account.inflationDest)
+        {
+            inflationDests.push_back(
+                KeyUtils::toStrKey(*account.inflationDest));
+            inflationDestInds.push_back(soci::i_ok);
+        }
+        else
+        {
+            inflationDests.push_back("");
+            inflationDestInds.push_back(soci::i_null);
+        }
+        flags.push_back(unsignedToSigned(account.flags));
+        homeDomains.push_back(account.homeDomain);
+        thresholds.push_back(decoder::encode_b64(account.thresholds));
+        if (account.signers.empty())
+        {
+            signers.push_back("");
+            signerInds.push_back(soci::i_null);
+        }
+        else
+        {
+            signers.push_back(
+                decoder::encode_b64(xdr::xdr_to_opaque(account.signers)));
+            signerInds.push_back(soci::i_ok);
+        }
+        lastModifieds.push_back(
+            unsignedToSigned(e.entry().lastModifiedLedgerSeq));
+
+        if (account.ext.v() >= 1)
+        {
+            buyingLiabilities.push_back(account.ext.v1().liabilities.buying);
+            sellingLiabilities.push_back(account.ext.v1().liabilities.selling);
+            liabilitiesInds.push_back(soci::i_ok);
+        }
+        else
+        {
+            buyingLiabilities.push_back(0);
+            sellingLiabilities.push_back(0);
+            liabilitiesInds.push_back(soci::i_null);
+        }
+
+        dropFromEntryCacheIfPresent(e.key());
+    }
+
+    // At the moment we only have two flavors of database support, this
+    // condition 2-way split will need to change if we support more.
+    if (mDatabase.isSqlite())
+    {
+        sociGenericBulkUpsertAccounts(
+            mDatabase, accountIDs, balances, seqNums, subEntryNums,
+            inflationDests, inflationDestInds, flags, homeDomains, thresholds,
+            signers, signerInds, lastModifieds, buyingLiabilities,
+            sellingLiabilities, liabilitiesInds);
+    }
+    else
+    {
+#ifdef USE_POSTGRES
+        postgresSpecificBulkUpsertAccounts(
+            mDatabase, accountIDs, balances, seqNums, subEntryNums,
+            inflationDests, inflationDestInds, flags, homeDomains, thresholds,
+            signers, signerInds, lastModifieds, buyingLiabilities,
+            sellingLiabilities, liabilitiesInds);
+#else
+        throw std::runtime_error("Not compiled with postgres support");
+#endif
+    }
+}
+
+void
+LedgerTxnRoot::Impl::bulkDeleteAccounts(
+    std::vector<EntryIterator> const& entries)
+{
+    std::vector<std::string> accountIDs;
+    for (auto const& e : entries)
+    {
+        assert(!e.entryExists());
+        assert(e.key().type() == ACCOUNT);
+        auto const& account = e.key().account();
+        accountIDs.push_back(KeyUtils::toStrKey(account.accountID));
+        dropFromEntryCacheIfPresent(e.key());
+    }
+    // At the moment we only have two flavors of database support, this
+    // condition 2-way split will need to change if we support more.
+    if (mDatabase.isSqlite())
+    {
+        sociGenericBulkDeleteAccounts(mDatabase, accountIDs);
+    }
+    else
+    {
+#ifdef USE_POSTGRES
+        postgresSpecificBulkDeleteAccounts(mDatabase, accountIDs);
+#else
+        throw std::runtime_error("Not compiled with postgres support");
+#endif
+    }
+}
+
 void
 LedgerTxnRoot::Impl::dropAccounts()
 {

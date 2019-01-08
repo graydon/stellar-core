@@ -5,6 +5,10 @@
 #include "database/Database.h"
 #include "ledger/LedgerTxn.h"
 #include "util/lrucache.hpp"
+#ifdef USE_POSTGRES
+#include <soci-postgresql.h>
+#include <sstream>
+#endif
 
 namespace stellar
 {
@@ -27,6 +31,36 @@ class EntryIterator::AbstractImpl
     virtual LedgerKey const& key() const = 0;
 
     virtual std::unique_ptr<AbstractImpl> clone() const = 0;
+};
+
+// Helper struct to accumulate common cases that we can sift out of the
+// commit stream and perform in bulk (as single SQL statements per-type)
+// rather than making each insert/update/delete individually. This uses the
+// postgres and sqlite-supported "ON CONFLICT"-style upserts, and uses
+// soci's bulk operations where it can (i.e. for sqlite, or potentially
+// others), and manually-crafted postgres unnest([array]) calls where it
+// can't. This is not great, but it appears to be less work than
+// reorganizing the relevant parts of soci.
+class BulkLedgerEntryChangeAccumulator
+{
+
+    std::vector<EntryIterator> mAccountsToUpsert;
+    std::vector<EntryIterator> mAccountsToDelete;
+
+  public:
+    std::vector<EntryIterator>&
+    getAccountsToUpsert()
+    {
+        return mAccountsToUpsert;
+    }
+
+    std::vector<EntryIterator>&
+    getAccountsToDelete()
+    {
+        return mAccountsToDelete;
+    }
+
+    bool accumulate(EntryIterator const& iter);
 };
 
 // Many functions in LedgerTxn::Impl provide a basic exception safety
@@ -335,6 +369,11 @@ class LedgerTxnRoot::Impl
     void insertOrUpdateOffer(LedgerEntry const& entry, bool isInsert);
     void insertOrUpdateTrustLine(LedgerEntry const& entry, bool isInsert);
 
+    void bulkApply(BulkLedgerEntryChangeAccumulator& bleca,
+                   size_t sizeLimit = LEDGER_ENTRY_BATCH_COMMIT_SIZE);
+    void bulkUpsertAccounts(std::vector<EntryIterator> const& entries);
+    void bulkDeleteAccounts(std::vector<EntryIterator> const& entries);
+
     static std::string tableFromLedgerEntryType(LedgerEntryType let);
 
     EntryCacheKey getEntryCacheKey(LedgerKey const& key) const;
@@ -342,6 +381,7 @@ class LedgerTxnRoot::Impl
     getFromEntryCache(EntryCacheKey const& key) const;
     void putInEntryCache(EntryCacheKey const& key,
                          std::shared_ptr<LedgerEntry const> const& entry) const;
+    void dropFromEntryCacheIfPresent(LedgerKey const& key);
 
     BestOffersCacheEntry&
     getFromBestOffersCache(Asset const& buying, Asset const& selling,
@@ -426,4 +466,56 @@ class LedgerTxnRoot::Impl
     //   modified
     void writeSignersTableIntoAccountsTable();
 };
+
+#ifdef USE_POSTGRES
+template <typename T>
+inline void
+marshalToPGArrayItem(PGconn* conn, std::ostringstream& oss, const T& item)
+{
+    oss << item;
+}
+
+template <>
+inline void
+marshalToPGArrayItem<std::string>(PGconn* conn, std::ostringstream& oss,
+                                  const std::string& item)
+{
+    char buf[item.size() * 2 + 1];
+    int err = 0;
+    size_t len = PQescapeStringConn(conn, buf, item.c_str(), item.size(), &err);
+    if (err != 0)
+    {
+        throw std::runtime_error("Could not escape string in SQL");
+    }
+    oss << '"';
+    oss.write(buf, len);
+    oss << '"';
+}
+
+template <typename T>
+inline void
+marshalToPGArray(PGconn* conn, std::string& out, const std::vector<T>& v,
+                 const std::vector<soci::indicator>* ind = nullptr)
+{
+    std::ostringstream oss;
+    oss << '{';
+    for (size_t i = 0; i < v.size(); ++i)
+    {
+        if (i > 0)
+        {
+            oss << ',';
+        }
+        if (ind && (*ind)[i] == soci::i_null)
+        {
+            oss << "NULL";
+        }
+        else
+        {
+            marshalToPGArrayItem(conn, oss, v[i]);
+        }
+    }
+    oss << '}';
+    out = oss.str();
+}
+#endif
 }

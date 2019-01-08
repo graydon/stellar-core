@@ -166,6 +166,14 @@
 namespace stellar
 {
 
+// A heuristic number that is used to batch together groups of
+// LedgerEntries for bulk commit at the database interface layer. For sake
+// of mechanical sympathy with said batching, one should attempt to group
+// incoming work (if it is otherwise unbounded) into transactions of the
+// same number of entries. It does no semantic harm to pick a different
+// size, just fail to batch quite as evenly.
+static const size_t LEDGER_ENTRY_BATCH_COMMIT_SIZE = 0xfff;
+
 class Database;
 struct InflationVotes;
 struct LedgerEntry;

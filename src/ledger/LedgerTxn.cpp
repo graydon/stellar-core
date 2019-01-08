@@ -1197,6 +1197,46 @@ LedgerTxnRoot::commitChild(EntryIterator iter)
     mImpl->commitChild(std::move(iter));
 }
 
+// Accumulate any sufficiently-simple cases into our buffers, returning
+// true if the entry was accumulated, false otherwise (in which case the
+// entry will be committed on its own, normally).
+bool
+BulkLedgerEntryChangeAccumulator::accumulate(EntryIterator const& iter)
+{
+    if (iter.key().type() == ACCOUNT)
+    {
+        if (iter.entryExists())
+        {
+            mAccountsToUpsert.push_back(iter.clone());
+            return true;
+        }
+        else
+        {
+            mAccountsToDelete.push_back(iter.clone());
+            return true;
+        }
+    }
+    return false;
+}
+
+void
+LedgerTxnRoot::Impl::bulkApply(BulkLedgerEntryChangeAccumulator& bleca,
+                               size_t sizeLimit)
+{
+    auto& upsertAccounts = bleca.getAccountsToUpsert();
+    if (upsertAccounts.size() > sizeLimit)
+    {
+        bulkUpsertAccounts(upsertAccounts);
+        upsertAccounts.clear();
+    }
+    auto& deleteAccounts = bleca.getAccountsToDelete();
+    if (deleteAccounts.size() > sizeLimit)
+    {
+        bulkDeleteAccounts(deleteAccounts);
+        deleteAccounts.clear();
+    }
+}
+
 void
 LedgerTxnRoot::Impl::commitChild(EntryIterator iter)
 {
@@ -1204,10 +1244,15 @@ LedgerTxnRoot::Impl::commitChild(EntryIterator iter)
     // guarantee, so use std::unique_ptr<...>::swap to achieve it
     auto childHeader = std::make_unique<LedgerHeader>(mChild->getHeader());
 
+    auto bleca = BulkLedgerEntryChangeAccumulator();
     try
     {
         for (; (bool)iter; ++iter)
         {
+            bulkApply(bleca);
+            if (bleca.accumulate(iter))
+                continue;
+
             auto const& key = iter.key();
             switch (key.type())
             {
@@ -1227,7 +1272,7 @@ LedgerTxnRoot::Impl::commitChild(EntryIterator iter)
                 throw std::runtime_error("Unknown key type");
             }
         }
-
+        bulkApply(bleca, /*sizeLimit:*/ 0);
         mTransaction->commit();
         mDatabase.clearPreparedStatementCache();
     }
@@ -1587,6 +1632,13 @@ LedgerTxnRoot::Impl::getNewestVersion(LedgerKey const& key) const
 
     putInEntryCache(cacheKey, entry);
     return entry;
+}
+
+void
+LedgerTxnRoot::Impl::dropFromEntryCacheIfPresent(LedgerKey const& key)
+{
+    auto cacheKey = getEntryCacheKey(key);
+    mEntryCache.erase_if_exists(cacheKey);
 }
 
 void

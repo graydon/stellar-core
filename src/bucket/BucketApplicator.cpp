@@ -68,7 +68,7 @@ BucketApplicator::advance()
             }
         }
 
-        if ((++count & 0xff) == 0xff)
+        if ((++count > LEDGER_ENTRY_BATCH_COMMIT_SIZE))
         {
             break;
         }
