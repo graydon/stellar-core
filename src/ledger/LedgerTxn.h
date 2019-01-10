@@ -174,6 +174,27 @@ namespace stellar
 // size, just fail to batch quite as evenly.
 static const size_t LEDGER_ENTRY_BATCH_COMMIT_SIZE = 0xfff;
 
+// If a LedgerTxn has had an eraseWithoutLoading call, the usual "exact"
+// level of consistency that a LedgerTxn maintains with the database will
+// be very slightly weakened: one or more "erase" events may be in
+// memory that would normally (in the "loading" case) have been annihilated
+// on contact with an in-memory insert.
+//
+// This "extra deletes" inconsistency is mostly harmless, it only has two
+// effects:
+//
+//    - LedgerTxnDeltas should not be calculated from a LedgerTxn in
+//      this state (since it will be incorrect!)
+//
+//    - The count of rows in the database effected when applying the
+//      "erase" events might not be the expected number, so the consistency
+//      check we do there should be relaxed.
+enum class LedgerTxnConsistency
+{
+    EXACT,
+    EXTRA_DELETES
+};
+
 class Database;
 struct InflationVotes;
 struct LedgerEntry;
@@ -264,7 +285,7 @@ class AbstractLedgerTxnParent
     // commitChild and rollbackChild are called by a child AbstractLedgerTxn
     // to trigger an atomic commit or an atomic rollback of the data stored in
     // the child.
-    virtual void commitChild(EntryIterator iter) = 0;
+    virtual void commitChild(EntryIterator iter, LedgerTxnConsistency cons) = 0;
     virtual void rollbackChild() = 0;
 
     // getAllOffers, getBestOffer, and getOffersByAccountAndAsset are used to
@@ -301,6 +322,8 @@ class AbstractLedgerTxnParent
     // or if the corresponding LedgerEntry has been erased.
     virtual std::shared_ptr<LedgerEntry const>
     getNewestVersion(LedgerKey const& key) const = 0;
+
+    virtual void dropFromEntryCacheIfPresent(LedgerKey const& key) = 0;
 };
 
 // An abstraction for an object that is an AbstractLedgerTxnParent and has
@@ -363,6 +386,18 @@ class AbstractLedgerTxn : public AbstractLedgerTxnParent
     virtual void erase(LedgerKey const& key) = 0;
     virtual LedgerTxnEntry load(LedgerKey const& key) = 0;
     virtual ConstLedgerTxnEntry loadWithoutRecord(LedgerKey const& key) = 0;
+
+    // Somewhat unsafe, non-recommended access methods: for use only during
+    // bulk-loading as in catchup from buckets. These methods set an entry
+    // to a new live (or dead) value in the transaction _without consulting
+    // with the database_ about the current state of it.
+    //
+    // REITERATED WARNING: do _not_ call these methods from normal online
+    // transaction processing code, or any code that is sensitive to the
+    // state of the database. These are only here for clobbering it with
+    // new data.
+    virtual void createOrUpdateWithoutLoading(LedgerEntry const& entry) = 0;
+    virtual void eraseWithoutLoading(LedgerKey const& key) = 0;
 
     // getChanges, getDelta, getDeadEntries, and getLiveEntries are used to
     // extract information about changes contained in the AbstractLedgerTxn
@@ -443,7 +478,7 @@ class LedgerTxn final : public AbstractLedgerTxn
 
     void commit() override;
 
-    void commitChild(EntryIterator iter) override;
+    void commitChild(EntryIterator iter, LedgerTxnConsistency cons) override;
 
     LedgerTxnEntry create(LedgerEntry const& entry) override;
 
@@ -478,7 +513,12 @@ class LedgerTxn final : public AbstractLedgerTxn
     std::shared_ptr<LedgerEntry const>
     getNewestVersion(LedgerKey const& key) const override;
 
+    void dropFromEntryCacheIfPresent(LedgerKey const& key) override;
+
     LedgerTxnEntry load(LedgerKey const& key) override;
+
+    void createOrUpdateWithoutLoading(LedgerEntry const& entry) override;
+    void eraseWithoutLoading(LedgerKey const& key) override;
 
     std::map<AccountID, std::vector<LedgerTxnEntry>> loadAllOffers() override;
 
@@ -513,7 +553,7 @@ class LedgerTxnRoot : public AbstractLedgerTxnParent
 
     void addChild(AbstractLedgerTxn& child) override;
 
-    void commitChild(EntryIterator iter) override;
+    void commitChild(EntryIterator iter, LedgerTxnConsistency cons) override;
 
     uint64_t countObjects(LedgerEntryType let) const;
     uint64_t countObjects(LedgerEntryType let,
@@ -543,6 +583,7 @@ class LedgerTxnRoot : public AbstractLedgerTxnParent
 
     std::shared_ptr<LedgerEntry const>
     getNewestVersion(LedgerKey const& key) const override;
+    void dropFromEntryCacheIfPresent(LedgerKey const& key) override;
 
     void rollbackChild() override;
 

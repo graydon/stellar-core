@@ -289,7 +289,8 @@ LedgerTxnRoot::Impl::deleteAccount(LedgerKey const& key)
             auto timer = mDatabase.getDeleteTimer("account");
             st.execute(true);
         }
-        if (st.get_affected_rows() != 1)
+        if (st.get_affected_rows() != 1 &&
+            mConsistency == LedgerTxnConsistency::EXACT)
         {
             throw std::runtime_error("Could not update data in SQL");
         }
@@ -352,10 +353,14 @@ sociGenericBulkUpsertAccounts(Database& DB,
         auto timer = DB.getUpsertTimer("account");
         st.execute(true);
     }
+    if (st.get_affected_rows() != accountIDs.size())
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
 }
 
 static void
-sociGenericBulkDeleteAccounts(Database& DB,
+sociGenericBulkDeleteAccounts(Database& DB, LedgerTxnConsistency cons,
                               std::vector<std::string> const& accountIDs)
 {
     std::string sql = "DELETE FROM accounts WHERE accountid = :id";
@@ -366,6 +371,11 @@ sociGenericBulkDeleteAccounts(Database& DB,
     {
         auto timer = DB.getDeleteTimer("account");
         st.execute(true);
+    }
+    if (st.get_affected_rows() != accountIDs.size() &&
+        cons == LedgerTxnConsistency::EXACT)
+    {
+        throw std::runtime_error("Could not update data in SQL");
     }
 }
 
@@ -464,10 +474,14 @@ postgresSpecificBulkUpsertAccounts(
         auto timer = DB.getUpsertTimer("account");
         st.execute(true);
     }
+    if (st.get_affected_rows() != accountIDs.size())
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
 }
 
 static void
-postgresSpecificBulkDeleteAccounts(Database& DB,
+postgresSpecificBulkDeleteAccounts(Database& DB, LedgerTxnConsistency cons,
                                    std::vector<std::string> const& accountIDs)
 {
     soci::session& session = DB.getSession();
@@ -486,6 +500,11 @@ postgresSpecificBulkDeleteAccounts(Database& DB,
     {
         auto timer = DB.getDeleteTimer("account");
         st.execute(true);
+    }
+    if (st.get_affected_rows() != accountIDs.size() &&
+        cons == LedgerTxnConsistency::EXACT)
+    {
+        throw std::runtime_error("Could not update data in SQL");
     }
 }
 #endif
@@ -621,12 +640,12 @@ LedgerTxnRoot::Impl::bulkDeleteAccounts(
     // condition 2-way split will need to change if we support more.
     if (mDatabase.isSqlite())
     {
-        sociGenericBulkDeleteAccounts(mDatabase, accountIDs);
+        sociGenericBulkDeleteAccounts(mDatabase, mConsistency, accountIDs);
     }
     else
     {
 #ifdef USE_POSTGRES
-        postgresSpecificBulkDeleteAccounts(mDatabase, accountIDs);
+        postgresSpecificBulkDeleteAccounts(mDatabase, mConsistency, accountIDs);
 #else
         throw std::runtime_error("Not compiled with postgres support");
 #endif

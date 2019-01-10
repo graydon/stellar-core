@@ -502,7 +502,8 @@ LedgerTxnRoot::Impl::deleteOffer(LedgerKey const& key)
         auto timer = mDatabase.getDeleteTimer("offer");
         st.execute(true);
     }
-    if (st.get_affected_rows() != 1)
+    if (st.get_affected_rows() != 1 &&
+        mConsistency == LedgerTxnConsistency::EXACT)
     {
         throw std::runtime_error("Could not update data in SQL");
     }
@@ -571,10 +572,15 @@ sociGenericBulkUpsertOffers(Database& DB,
         auto timer = DB.getUpsertTimer("offer");
         st.execute(true);
     }
+    if (st.get_affected_rows() != offerIDs.size())
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
 }
 
 static void
-sociGenericBulkDeleteOffers(Database& DB, std::vector<int64_t> const& offerIDs)
+sociGenericBulkDeleteOffers(Database& DB, LedgerTxnConsistency cons,
+                            std::vector<int64_t> const& offerIDs)
 {
     std::string sql = "DELETE FROM offers WHERE offerid = :id";
     auto prep = DB.getPreparedStatement(sql);
@@ -584,6 +590,11 @@ sociGenericBulkDeleteOffers(Database& DB, std::vector<int64_t> const& offerIDs)
     {
         auto timer = DB.getDeleteTimer("offer");
         st.execute(true);
+    }
+    if (st.get_affected_rows() != offerIDs.size() &&
+        cons == LedgerTxnConsistency::EXACT)
+    {
+        throw std::runtime_error("Could not update data in SQL");
     }
 }
 
@@ -694,10 +705,14 @@ postgresSpecificBulkUpsertOffers(
         auto timer = DB.getUpsertTimer("offer");
         st.execute(true);
     }
+    if (st.get_affected_rows() != offerIDs.size())
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
 }
 
 static void
-postgresSpecificBulkDeleteOffers(Database& DB,
+postgresSpecificBulkDeleteOffers(Database& DB, LedgerTxnConsistency cons,
                                  std::vector<int64_t> const& offerIDs)
 {
     soci::session& session = DB.getSession();
@@ -718,6 +733,11 @@ postgresSpecificBulkDeleteOffers(Database& DB,
     {
         auto timer = DB.getDeleteTimer("offer");
         st.execute(true);
+    }
+    if (st.get_affected_rows() != offerIDs.size() &&
+        cons == LedgerTxnConsistency::EXACT)
+    {
+        throw std::runtime_error("Could not update data in SQL");
     }
 }
 
@@ -847,12 +867,12 @@ LedgerTxnRoot::Impl::bulkDeleteOffers(std::vector<EntryIterator> const& entries)
     // condition 2-way split will need to change if we support more.
     if (mDatabase.isSqlite())
     {
-        sociGenericBulkDeleteOffers(mDatabase, offerIDs);
+        sociGenericBulkDeleteOffers(mDatabase, mConsistency, offerIDs);
     }
     else
     {
 #ifdef USE_POSTGRES
-        postgresSpecificBulkDeleteOffers(mDatabase, offerIDs);
+        postgresSpecificBulkDeleteOffers(mDatabase, mConsistency, offerIDs);
 #else
         throw std::runtime_error("Not compiled with postgres support");
 #endif

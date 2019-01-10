@@ -130,9 +130,11 @@ class LedgerTxn::Impl
     std::unordered_map<LedgerKey, std::shared_ptr<EntryImplBase>> mActive;
     bool const mShouldUpdateLastModified;
     bool mIsSealed;
+    LedgerTxnConsistency mConsistency;
 
     void throwIfChild() const;
     void throwIfSealed() const;
+    void throwIfNotExactConsistency() const;
 
     // getDeltaVotes has the basic exception safety guarantee. If it throws an
     // exception, then
@@ -175,7 +177,7 @@ class LedgerTxn::Impl
     void commit();
 
     // commitChild has the strong exception safety guarantee.
-    void commitChild(EntryIterator iter);
+    void commitChild(EntryIterator iter, LedgerTxnConsistency cons);
 
     // create has the basic exception safety guarantee. If it throws an
     // exception, then
@@ -267,12 +269,34 @@ class LedgerTxn::Impl
     std::shared_ptr<LedgerEntry const>
     getNewestVersion(LedgerKey const& key) const;
 
+    // dropFromEntryCacheIfPresent has the strong exception safety guarantee.
+    // If it throws an exception, the state of the LedgerTxnRoot entry cache
+    // will be unchanged.
+    void dropFromEntryCacheIfPresent(LedgerKey const& key);
+
     // load has the basic exception safety guarantee. If it throws an exception,
     // then
     // - the prepared statement cache may be, but is not guaranteed to be,
     //   modified
     // - the entry cache may be, but is not guaranteed to be, cleared.
     LedgerTxnEntry load(LedgerTxn& self, LedgerKey const& key);
+
+    // createOrUpdateWithoutLoading has the basic exception safety guarantee.
+    // If it throws an exception, then
+    // - the entry cache in the parent LedgerTxnRoot may, but is not guaranteed
+    //   to, have the given entry removed.
+    // - the current LedgerTxn::Impl may, but is not guaranteed to, have
+    //   the given entry added.
+    void createOrUpdateWithoutLoading(LedgerTxn& self,
+                                      LedgerEntry const& entry);
+
+    // eraseWithoutLoading has the basic exception safety guarantee. If it throws
+    // an exception, then
+    // - the entry cache in the parent LedgerTxnRoot may, but is not guaranteed
+    //   to, have the entry assiated with the given key removed.
+    // - the current LedgerTxn::Impl may, but is not guaranteed to, have
+    //   the entry associated with the given key removed.
+    void eraseWithoutLoading(LedgerKey const& key);
 
     // loadAllOffers has the basic exception safety guarantee. If it throws an
     // exception, then
@@ -375,6 +399,7 @@ class LedgerTxnRoot::Impl
     mutable BestOffersCache mBestOffersCache;
     std::unique_ptr<soci::transaction> mTransaction;
     AbstractLedgerTxn* mChild;
+    LedgerTxnConsistency mConsistency;
 
     void throwIfChild() const;
 
@@ -429,7 +454,6 @@ class LedgerTxnRoot::Impl
     getFromEntryCache(EntryCacheKey const& key) const;
     void putInEntryCache(EntryCacheKey const& key,
                          std::shared_ptr<LedgerEntry const> const& entry) const;
-    void dropFromEntryCacheIfPresent(LedgerKey const& key);
 
     BestOffersCacheEntry&
     getFromBestOffersCache(Asset const& buying, Asset const& selling,
@@ -445,7 +469,7 @@ class LedgerTxnRoot::Impl
     void addChild(AbstractLedgerTxn& child);
 
     // commitChild has the strong exception safety guarantee.
-    void commitChild(EntryIterator iter);
+    void commitChild(EntryIterator iter, LedgerTxnConsistency cons);
 
     // countObjects has the strong exception safety guarantee.
     uint64_t countObjects(LedgerEntryType let) const;
@@ -504,6 +528,11 @@ class LedgerTxnRoot::Impl
     // - the entry cache may be, but is not guaranteed to be, cleared.
     std::shared_ptr<LedgerEntry const>
     getNewestVersion(LedgerKey const& key) const;
+
+    // dropFromEntryCacheIfPresent has the strong exception guarantee. If
+    // it throws an exception, no side effects or state-changes will have
+    // occurred.
+    void dropFromEntryCacheIfPresent(LedgerKey const& key);
 
     // rollbackChild has the strong exception safety guarantee.
     void rollbackChild();

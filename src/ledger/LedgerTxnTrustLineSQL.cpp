@@ -178,7 +178,8 @@ LedgerTxnRoot::Impl::deleteTrustLine(LedgerKey const& key)
         auto timer = mDatabase.getDeleteTimer("trust");
         st.execute(true);
     }
-    if (st.get_affected_rows() != 1)
+    if (st.get_affected_rows() != 1 &&
+        mConsistency == LedgerTxnConsistency::EXACT)
     {
         throw std::runtime_error("Could not update data in SQL");
     }
@@ -230,10 +231,14 @@ sociGenericBulkUpsertTrustLines(Database& DB,
         auto timer = DB.getUpsertTimer("trustline");
         st.execute(true);
     }
+    if (st.get_affected_rows() != accountIDs.size())
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
 }
 
 static void
-sociGenericBulkDeleteTrustLines(Database& DB,
+sociGenericBulkDeleteTrustLines(Database& DB, LedgerTxnConsistency cons,
                                 std::vector<std::string> const& accountIDs,
                                 std::vector<std::string> const& issuers,
                                 std::vector<std::string> const& assetCodes)
@@ -249,6 +254,11 @@ sociGenericBulkDeleteTrustLines(Database& DB,
     {
         auto timer = DB.getDeleteTimer("trustline");
         st.execute(true);
+    }
+    if (st.get_affected_rows() != accountIDs.size() &&
+        cons == LedgerTxnConsistency::EXACT)
+    {
+        throw std::runtime_error("Could not update data in SQL");
     }
 }
 
@@ -331,10 +341,14 @@ postgresSpecificBulkUpsertTrustLines(
         auto timer = DB.getUpsertTimer("trustline");
         st.execute(true);
     }
+    if (st.get_affected_rows() != accountIDs.size())
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
 }
 
 static void
-postgresSpecificBulkDeleteTrustLines(Database& DB,
+postgresSpecificBulkDeleteTrustLines(Database& DB, LedgerTxnConsistency cons,
                                      std::vector<std::string> const& accountIDs,
                                      std::vector<std::string> const& issuers,
                                      std::vector<std::string> const& assetCodes)
@@ -363,6 +377,11 @@ postgresSpecificBulkDeleteTrustLines(Database& DB,
     {
         auto timer = DB.getDeleteTimer("trustline");
         st.execute(true);
+    }
+    if (st.get_affected_rows() != accountIDs.size() &&
+        cons == LedgerTxnConsistency::EXACT)
+    {
+        throw std::runtime_error("Could not update data in SQL");
     }
 }
 
@@ -478,14 +497,14 @@ LedgerTxnRoot::Impl::bulkDeleteTrustLines(
     // condition 2-way split will need to change if we support more.
     if (mDatabase.isSqlite())
     {
-        sociGenericBulkDeleteTrustLines(mDatabase, accountIDs, issuers,
-                                        assetCodes);
+        sociGenericBulkDeleteTrustLines(mDatabase, mConsistency, accountIDs,
+                                        issuers, assetCodes);
     }
     else
     {
 #ifdef USE_POSTGRES
-        postgresSpecificBulkDeleteTrustLines(mDatabase, accountIDs, issuers,
-                                             assetCodes);
+        postgresSpecificBulkDeleteTrustLines(mDatabase, mConsistency,
+                                             accountIDs, issuers, assetCodes);
 #else
         throw std::runtime_error("Not compiled with postgres support");
 #endif
