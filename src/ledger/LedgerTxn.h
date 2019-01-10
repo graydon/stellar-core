@@ -230,6 +230,8 @@ class EntryIterator
     bool entryExists() const;
 
     LedgerKey const& key() const;
+
+    EntryIterator clone() const;
 };
 
 // An abstraction for an object that can be the parent of an AbstractLedgerTxn
