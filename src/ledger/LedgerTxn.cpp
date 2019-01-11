@@ -1216,6 +1216,19 @@ BulkLedgerEntryChangeAccumulator::accumulate(EntryIterator const& iter)
             return true;
         }
     }
+    else if (iter.key().type() == TRUSTLINE)
+    {
+        if (iter.entryExists())
+        {
+            mTrustLinesToUpsert.push_back(iter.clone());
+            return true;
+        }
+        else
+        {
+            mTrustLinesToDelete.push_back(iter.clone());
+            return true;
+        }
+    }
     return false;
 }
 
@@ -1234,6 +1247,18 @@ LedgerTxnRoot::Impl::bulkApply(BulkLedgerEntryChangeAccumulator& bleca,
     {
         bulkDeleteAccounts(deleteAccounts);
         deleteAccounts.clear();
+    }
+    auto& upsertTrustLines = bleca.getTrustLinesToUpsert();
+    if (upsertTrustLines.size() > sizeLimit)
+    {
+        bulkUpsertTrustLines(upsertTrustLines);
+        upsertTrustLines.clear();
+    }
+    auto& deleteTrustLines = bleca.getTrustLinesToDelete();
+    if (deleteTrustLines.size() > sizeLimit)
+    {
+        bulkDeleteTrustLines(deleteTrustLines);
+        deleteTrustLines.clear();
     }
 }
 
