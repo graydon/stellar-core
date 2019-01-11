@@ -7,6 +7,7 @@
 #include "database/Database.h"
 #include "ledger/LedgerTxnImpl.h"
 #include "util/Decoder.h"
+#include "util/types.h"
 
 namespace stellar
 {
@@ -75,10 +76,11 @@ LedgerTxnRoot::Impl::insertOrUpdateData(LedgerEntry const& entry, bool isInsert)
 
     auto prep = mDatabase.getPreparedStatement(sql);
     auto& st = prep.statement();
+    uint32_t signedLastModified = unsignedToSigned(entry.lastModifiedLedgerSeq);
     st.exchange(soci::use(actIDStrKey, "aid"));
     st.exchange(soci::use(dataName, "dn"));
     st.exchange(soci::use(dataValue, "dv"));
-    st.exchange(soci::use(entry.lastModifiedLedgerSeq, "lm"));
+    st.exchange(soci::use(signedLastModified, "lm"));
     st.define_and_bind();
     st.execute(true);
     if (st.get_affected_rows() != 1)

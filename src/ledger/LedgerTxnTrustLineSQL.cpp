@@ -130,6 +130,8 @@ LedgerTxnRoot::Impl::insertOrUpdateTrustLine(LedgerEntry const& entry,
     }
     auto prep = mDatabase.getPreparedStatement(sql);
     auto& st = prep.statement();
+    int32_t signedLastModified = unsignedToSigned(entry.lastModifiedLedgerSeq);
+    int32_t signedFlags = unsignedToSigned(tl.flags);
     st.exchange(soci::use(accountIDStr, "id"));
     if (isInsert)
     {
@@ -139,8 +141,8 @@ LedgerTxnRoot::Impl::insertOrUpdateTrustLine(LedgerEntry const& entry,
     st.exchange(soci::use(assetCodeStr, "ac"));
     st.exchange(soci::use(tl.balance, "b"));
     st.exchange(soci::use(tl.limit, "tl"));
-    st.exchange(soci::use(tl.flags, "f"));
-    st.exchange(soci::use(entry.lastModifiedLedgerSeq, "lm"));
+    st.exchange(soci::use(signedFlags, "f"));
+    st.exchange(soci::use(signedLastModified, "lm"));
     st.exchange(soci::use(liabilities.buying, liabilitiesInd, "bl"));
     st.exchange(soci::use(liabilities.selling, liabilitiesInd, "sl"));
     st.define_and_bind();
@@ -404,7 +406,8 @@ LedgerTxnRoot::Impl::bulkUpsertTrustLines(
                             assetCodeStr);
 
         accountIDs.push_back(accountIDStr);
-        assetTypes.push_back(unsignedToSigned(tl.asset.type()));
+        assetTypes.push_back(
+            unsignedToSigned(static_cast<uint32_t>(tl.asset.type())));
         issuers.push_back(issuerStr);
         assetCodes.push_back(assetCodeStr);
         tlimits.push_back(tl.limit);

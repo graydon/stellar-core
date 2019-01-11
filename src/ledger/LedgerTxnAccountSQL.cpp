@@ -248,14 +248,16 @@ LedgerTxnRoot::Impl::insertOrUpdateAccount(LedgerEntry const& entry,
     }
     auto prep = mDatabase.getPreparedStatement(sql);
     soci::statement& st = prep.statement();
+    int32_t signedNumSubEntries = unsignedToSigned(account.numSubEntries);
+    int32_t signedFlags = unsignedToSigned(account.flags);
     st.exchange(soci::use(actIDStrKey, "id"));
     st.exchange(soci::use(account.balance, "v1"));
     st.exchange(soci::use(account.seqNum, "v2"));
-    st.exchange(soci::use(account.numSubEntries, "v3"));
+    st.exchange(soci::use(signedNumSubEntries, "v3"));
     st.exchange(soci::use(inflationDestStrKey, inflation_ind, "v4"));
     st.exchange(soci::use(homeDomain, "v5"));
     st.exchange(soci::use(thresholds, "v6"));
-    st.exchange(soci::use(account.flags, "v7"));
+    st.exchange(soci::use(signedFlags, "v7"));
     st.exchange(soci::use(entry.lastModifiedLedgerSeq, "v8"));
     st.exchange(soci::use(liabilities.buying, liabilitiesInd, "v9"));
     st.exchange(soci::use(liabilities.selling, liabilitiesInd, "v10"));

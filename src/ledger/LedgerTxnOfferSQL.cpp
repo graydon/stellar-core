@@ -90,7 +90,8 @@ LedgerTxnRoot::Impl::loadOffer(LedgerKey const& key) const
     auto prep = mDatabase.getPreparedStatement(sql);
     auto& st = prep.statement();
     st.exchange(soci::use(actIDStrKey));
-    st.exchange(soci::use(offerID));
+    int64_t signedOfferID = unsignedToSigned(offerID);
+    st.exchange(soci::use(signedOfferID));
 
     std::vector<LedgerEntry> offers;
     {
@@ -458,7 +459,10 @@ LedgerTxnRoot::Impl::insertOrUpdateOffer(LedgerEntry const& entry,
     {
         st.exchange(soci::use(actIDStrKey, "sid"));
     }
-    st.exchange(soci::use(offer.offerID, "oid"));
+    int64_t signedOfferID = unsignedToSigned(offer.offerID);
+    int32_t signedLastModified = unsignedToSigned(entry.lastModifiedLedgerSeq);
+    int32_t signedFlags = unsignedToSigned(offer.flags);
+    st.exchange(soci::use(signedOfferID, "oid"));
     st.exchange(soci::use(sellingType, "sat"));
     st.exchange(soci::use(sellingAssetCode, selling_ind, "sac"));
     st.exchange(soci::use(sellingIssuerStrKey, selling_ind, "si"));
@@ -469,8 +473,8 @@ LedgerTxnRoot::Impl::insertOrUpdateOffer(LedgerEntry const& entry,
     st.exchange(soci::use(offer.price.n, "pn"));
     st.exchange(soci::use(offer.price.d, "pd"));
     st.exchange(soci::use(price, "p"));
-    st.exchange(soci::use(offer.flags, "f"));
-    st.exchange(soci::use(entry.lastModifiedLedgerSeq, "l"));
+    st.exchange(soci::use(signedFlags, "f"));
+    st.exchange(soci::use(signedLastModified, "l"));
     st.define_and_bind();
     {
         auto timer = isInsert ? mDatabase.getInsertTimer("offer")
@@ -491,7 +495,8 @@ LedgerTxnRoot::Impl::deleteOffer(LedgerKey const& key)
     auto prep =
         mDatabase.getPreparedStatement("DELETE FROM offers WHERE offerid=:s");
     auto& st = prep.statement();
-    st.exchange(soci::use(offer.offerID));
+    int64_t signedOfferID = unsignedToSigned(offer.offerID);
+    st.exchange(soci::use(signedOfferID));
     st.define_and_bind();
     {
         auto timer = mDatabase.getDeleteTimer("offer");
