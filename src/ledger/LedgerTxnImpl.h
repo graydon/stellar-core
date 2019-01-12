@@ -46,6 +46,8 @@ class BulkLedgerEntryChangeAccumulator
 
     std::vector<EntryIterator> mAccountsToUpsert;
     std::vector<EntryIterator> mAccountsToDelete;
+    std::vector<EntryIterator> mOffersToUpsert;
+    std::vector<EntryIterator> mOffersToDelete;
     std::vector<EntryIterator> mTrustLinesToUpsert;
     std::vector<EntryIterator> mTrustLinesToDelete;
 
@@ -60,6 +62,18 @@ class BulkLedgerEntryChangeAccumulator
     getAccountsToDelete()
     {
         return mAccountsToDelete;
+    }
+
+    std::vector<EntryIterator>&
+    getOffersToUpsert()
+    {
+        return mOffersToUpsert;
+    }
+
+    std::vector<EntryIterator>&
+    getOffersToDelete()
+    {
+        return mOffersToDelete;
     }
 
     std::vector<EntryIterator>&
@@ -387,6 +401,8 @@ class LedgerTxnRoot::Impl
                    size_t sizeLimit = LEDGER_ENTRY_BATCH_COMMIT_SIZE);
     void bulkUpsertAccounts(std::vector<EntryIterator> const& entries);
     void bulkDeleteAccounts(std::vector<EntryIterator> const& entries);
+    void bulkUpsertOffers(std::vector<EntryIterator> const& entries);
+    void bulkDeleteOffers(std::vector<EntryIterator> const& entries);
     void bulkUpsertTrustLines(std::vector<EntryIterator> const& entries);
     void bulkDeleteTrustLines(std::vector<EntryIterator> const& entries);
 
