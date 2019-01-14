@@ -47,7 +47,8 @@ EntryIterator::getImpl() const
     return mImpl;
 }
 
-EntryIterator& EntryIterator::operator++()
+EntryIterator&
+EntryIterator::operator++()
 {
     getImpl()->advance();
     return *this;
@@ -1203,46 +1204,36 @@ LedgerTxnRoot::commitChild(EntryIterator iter)
 bool
 BulkLedgerEntryChangeAccumulator::accumulate(EntryIterator const& iter)
 {
-    if (iter.key().type() == ACCOUNT)
+    switch (iter.key().type())
     {
+    case ACCOUNT:
         if (iter.entryExists())
-        {
             mAccountsToUpsert.push_back(iter.clone());
-            return true;
-        }
         else
-        {
             mAccountsToDelete.push_back(iter.clone());
-            return true;
-        }
-    }
-    else if (iter.key().type() == OFFER)
-    {
+        break;
+    case TRUSTLINE:
         if (iter.entryExists())
-        {
-            mOffersToUpsert.push_back(iter.clone());
-            return true;
-        }
-        else
-        {
-            mOffersToDelete.push_back(iter.clone());
-            return true;
-        }
-    }
-    else if (iter.key().type() == TRUSTLINE)
-    {
-        if (iter.entryExists())
-        {
             mTrustLinesToUpsert.push_back(iter.clone());
-            return true;
-        }
         else
-        {
             mTrustLinesToDelete.push_back(iter.clone());
-            return true;
-        }
+        break;
+    case OFFER:
+        if (iter.entryExists())
+            mOffersToUpsert.push_back(iter.clone());
+        else
+            mOffersToDelete.push_back(iter.clone());
+        break;
+    case DATA:
+        if (iter.entryExists())
+            mAccountDataToUpsert.push_back(iter.clone());
+        else
+            mAccountDataToDelete.push_back(iter.clone());
+        break;
+    default:
+        assert(false);
     }
-    return false;
+    return true;
 }
 
 void
@@ -1261,6 +1252,18 @@ LedgerTxnRoot::Impl::bulkApply(BulkLedgerEntryChangeAccumulator& bleca,
         bulkDeleteAccounts(deleteAccounts);
         deleteAccounts.clear();
     }
+    auto& upsertTrustLines = bleca.getTrustLinesToUpsert();
+    if (upsertTrustLines.size() > sizeLimit)
+    {
+        bulkUpsertTrustLines(upsertTrustLines);
+        upsertTrustLines.clear();
+    }
+    auto& deleteTrustLines = bleca.getTrustLinesToDelete();
+    if (deleteTrustLines.size() > sizeLimit)
+    {
+        bulkDeleteTrustLines(deleteTrustLines);
+        deleteTrustLines.clear();
+    }
     auto& upsertOffers = bleca.getOffersToUpsert();
     if (upsertOffers.size() > sizeLimit)
     {
@@ -1273,17 +1276,17 @@ LedgerTxnRoot::Impl::bulkApply(BulkLedgerEntryChangeAccumulator& bleca,
         bulkDeleteOffers(deleteOffers);
         deleteOffers.clear();
     }
-    auto& upsertTrustLines = bleca.getTrustLinesToUpsert();
-    if (upsertTrustLines.size() > sizeLimit)
+    auto& upsertAccountData = bleca.getAccountDataToUpsert();
+    if (upsertAccountData.size() > sizeLimit)
     {
-        bulkUpsertTrustLines(upsertTrustLines);
-        upsertTrustLines.clear();
+        bulkUpsertAccountData(upsertAccountData);
+        upsertAccountData.clear();
     }
-    auto& deleteTrustLines = bleca.getTrustLinesToDelete();
-    if (deleteTrustLines.size() > sizeLimit)
+    auto& deleteAccountData = bleca.getAccountDataToDelete();
+    if (deleteAccountData.size() > sizeLimit)
     {
-        bulkDeleteTrustLines(deleteTrustLines);
-        deleteTrustLines.clear();
+        bulkDeleteAccountData(deleteAccountData);
+        deleteAccountData.clear();
     }
 }
 
