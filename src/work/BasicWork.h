@@ -11,16 +11,76 @@ namespace stellar
 
 class Application;
 
-/** BasicWork is an implementation of a finite state machine,
- * that is used for async or long-running tasks that:
- *  - May need to be broken into steps, so as not to block the main thread
- *  - May fail and need to retry, after some delay
+/**
+ * BasicWork is an implementation of a finite state machine, that is used
+ * for async or long-running tasks that:
+ *
+ *   - May need to be broken into steps, so as not to block the main
+ *     thread.
+ *
+ *   - May fail and need to retry, after some delay.
+ *
+ *   - May be uniformly, actively aborted while running.
  *
  *  BasicWork manages all state transitions via `crankWork` and `setState`.
- *  It also supports a retry mechanism internal to BasicWork.
- *  While customers can trigger cranking and check on BasicWork's status,
- *  it is implementers' responsibility to implement `onRun`, that
- *  hints the next desired state.
+ *  It also supports a retry mechanism internal to BasicWork. While
+ *  customers can trigger cranking, check on BasicWork's status and/or call
+ *  `shutdown`, it is implementers' responsibility to implement `onRun`,
+ *  that hints the next desired state, and `onAbort`, that cancels ongoing
+ *  work.
+ *
+ *  The implementer's return value from `onRun` is the `State` type, which
+ *  has only 5 values (WORK_{RUNNING,WAITING,SUCCESS,FAILURE,ABORTED}),
+ *  each of which has a corresponding InternalState value.
+ *
+ *  BasicWork _internally_ uses the `InternalState` type, which has 8 values
+ *  (the values of the State type, plus PENDING, RETRYING and ABORTING). It
+ *  uses these to provide central treatments of (re)initialization, retrying
+ *  and aborting.
+ *
+ *  The legal state transitions (and event edges) are as follows:
+ *
+ *
+ *       +--------------------------startWork--------------------------+
+ *       |                                                             |
+ *       v                                               +----------+  |
+ *  +---------+                                          |*SUCCESS* |  |
+ *  | PENDING |>-+                  +-onSuccess--------->|  (done)  |>-+
+ *  +---------+  |                  |                    +----------+  |
+ *       v       |                  |                    +----------+  |
+ *       |    onReset,              |                    |*FAILURE* |  |
+ *       |   retries=0   +-------+  +-onFailureRaise,--->|  (done)  |>-+
+ *       |       |       |       |  |     onReset        +----------+  |
+ *       |       |       v       |  |                    +----------+  |
+ *       |       |  +---------+  |  |                    |*ABORTED* |  |
+ *       |       +->| RUNNING |--+--+-----------------+  |  (done)  |>-+
+ *       |       |  +---------+                       |  +----------+
+ *       |       |       v                            |        ^
+ *       |       |       |                            |        |
+ *       |       |       +-onFailureRetry,--+     shutdown     |
+ *       |       |       |     onReset      |         |        |
+ *       |       |       |                  v         |        |
+ *       |       |       |            +-----------+   |        |
+ *       |       |       |            | RETRYING  |   |        |
+ *       |    wakeUp,    |            +-----------+   |        |
+ *       |    notify     |                  v         |    onAbort
+ *       |       |       |                  |         |    (true),
+ *       |       |       +--waitForRetry----+         |    onReset
+ *       |       |       |                            |        |
+ *       |       |       v                            |        |
+ *       |       | +-----------+                      |        |
+ *       |       | |  WAITING  |>------shutdown-------+        |
+ *       |       | +-----------+                      |        |
+ *       |       |       v                            |        |
+ *       |       |       |                            v        |
+ *       |       +-------+                      +-----------+  |
+ *       +----------------------shutdown-----+->| ABORTING  |--+
+ *                                           |  +-----------+
+ *                                           |        |
+ *                                           |        |
+ *                                           +onAbort-+
+ *                                            (false)
+ *
  */
 
 class BasicWork : public std::enable_shared_from_this<BasicWork>,
@@ -86,34 +146,40 @@ class BasicWork : public std::enable_shared_from_this<BasicWork>,
     }
 
   protected:
-    // Implementers can override these callbacks to customize functionality.
-    // `onReset` is expected to restore work's state to its initial condition;
-    // this includes cleaning up side effects (e.g. produced files), restoring
-    // member variables etc.
-    // `onRun` performs necessary work logic, and hints the
-    // next state transition. `onSuccess` is called when work transitions into
-    // WORK_SUCCESS state. Similarly, `onFailure*` methods are called upon
-    // transitioning into appropriate failure states (Note that implementers
-    // return WORK_FAILURE, and which method gets called in determined by the
-    // retry strategy.
 
-    virtual void onReset();
+    // Implementers _must_ override `onRun`, as it performs necessary work
+    // logic, and hints the next state transition.
     virtual State onRun() = 0;
 
-    // Implementers must decide what they want to do when asked to shutdown
-    // Some examples would be aborting children, then aborting self (e.g.
-    // `Work`) or killing a process that it's managing (`RunCommandWork`)
+    // Implementers _must_ decide what they want to do when asked to
+    // shutdown. Abort is not just destruction or cleanup: it's active
+    // intervention in otherwise-running work, to _make it stop_. Some
+    // examples would be aborting children, then aborting self
+    // (e.g. `Work`) or killing a process that it's managing
+    // (`RunCommandWork`)
     virtual bool onAbort() = 0;
+
+    // Implementers may (but need not) override these callbacks to
+    // customize functionality. `onReset` is expected to restore work's
+    // state to its initial condition; this includes cleaning up side
+    // effects (e.g. produced files), restoring member variables
+    // etc. `onSuccess` is called when work transitions into WORK_SUCCESS
+    // state. Similarly, `onFailure*` methods are called upon transitioning
+    // into appropriate failure states. Note that implementers return a
+    // general WORK_FAILURE value from `onRun`, and it is the base class
+    // here `BasicWork` that translates that general signal of failure into
+    // a decision to retry or fail permanently, using its retry counter and
+    // schedule.
+    virtual void onReset();
     virtual void onFailureRetry();
     virtual void onFailureRaise();
     virtual void onSuccess();
 
-    // A helper method that implementers can use if they plan to
-    // utilize WAITING state. This tells the work to return to RUNNING
-    // state, and propagate the notification up to the scheduler
-    // An example use of this would be RunCommandWork:
-    // a timer is used to async_wait for a process to exit,
-    // with a call to `wakeUp` upon completion.
+    // A helper method that implementers can use if they plan to utilize
+    // WAITING state. This tells the work to return to RUNNING state, and
+    // propagate the notification up to the scheduler. An example use of
+    // this would be RunCommandWork: a timer is used to async_wait for a
+    // process to exit, with a call to `wakeUp` upon completion.
     void wakeUp();
 
     // Default wakeUp callback that implementers can use
@@ -127,16 +193,16 @@ class BasicWork : public std::enable_shared_from_this<BasicWork>,
     // state transitions.
     enum class InternalState
     {
-        // Work has been created but hasn't started yet
+        // Work has been created but hasn't started yet.
         PENDING,
         RUNNING,
         WAITING,
         // WorkScheduler is shutting down, this state prevents wakeUp callbacks
-        // from messing with BasicWork's state while it is shutting down
+        // from messing with BasicWork's state while it is shutting down.
         ABORTING,
         ABORTED,
         // `onRun` returned WORK_FAILURE. If there are retries left, go into
-        // RETRYING state
+        // RETRYING state.
         RETRYING,
         SUCCESS,
         FAILURE
@@ -144,9 +210,9 @@ class BasicWork : public std::enable_shared_from_this<BasicWork>,
     using Transition = std::pair<InternalState, InternalState>;
 
     // `reset` is called on transitions like retry, failure, before
-    // restarting successful work and during destruction. This method ensures
-    // that all the references (including children) are properly cleaned up for
-    // safe destruction.
+    // restarting successful work and during destruction. This method
+    // ensures that all the references (including children) are properly
+    // cleaned up for safe destruction.
     void reset();
 
     VirtualClock::duration getRetryDelay() const;

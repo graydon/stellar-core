@@ -17,17 +17,19 @@ namespace stellar
 class Application;
 
 /**
- * Work is an extension of BasicWork,
- * which additionally manages children. This allows the following:
- *  - Work might be dependent on the state of its children before performing
- *  its duties
- *  - Work may have children that are independent and could run in parallel,
- *  or dispatch children serially.
+ * Work is an extension of BasicWork which additionally manages children.
+ * This allows the following:
  *
- *  It's worth noting that now since crank calls are propagated down the tree
- *  from the work scheduler, implementations should aim to create flatter
- *  structures for better efficiency;
- *  They can utilize WorkSequence if serial order needs to be enforced
+ *  - Work might be dependent on the state of its children before
+ *    performing its duties.
+ *
+ *  - Work may have children that are independent and could run in
+ *    parallel, or dispatch children serially.
+ *
+ *  It's worth noting that now since crank calls are propagated down the
+ *  tree from the work scheduler, implementations should aim to create
+ *  flatter structures for better efficiency; they can use WorkSequence
+ *  if a long serial order needs to be enforced.
  */
 class Work : public BasicWork
 {
@@ -82,8 +84,13 @@ class Work : public BasicWork
     void onFailureRaise() override;
     void onFailureRetry() override;
 
-    // Implementers decide what they want to do: spawn more children,
-    // wait for all children to finish, or perform Work
+    // Work::onRun() above implements logic that propagates onRun() calls
+    // to the next runnable child in round-robin order; when no children
+    // are runnable, it proceeds to call this `doWork` function, which
+    // implementers must override to define what they want to do _locally_
+    // at this level of a work-supervision tree: spawn more children,
+    // inspect and/or wait for existing children to finish, or perform
+    // other local work of their own.
     virtual BasicWork::State doWork() = 0;
 
     // Provide additional cleanup logic for reset
