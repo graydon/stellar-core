@@ -255,12 +255,12 @@ TEST_CASE("bucket list", "[bucket]")
         autocheck::generator<std::vector<LedgerKey>> deadGen;
         CLOG(DEBUG, "Bucket") << "Adding batches to bucket list";
         for (uint32_t i = 1;
-             !app->getClock().getIOService().stopped() && i < 130; ++i)
+             !app->getClock().getIOService().stopped() && i <= 0x56789ab; ++i)
         {
             app->getClock().crank(false);
             bl.addBatch(*app, i, LedgerTestUtils::generateValidLedgerEntries(8),
                         deadGen(5));
-            if (i % 10 == 0)
+            if (true /*(i & 0xfff) == 0x9ab*/) {
                 CLOG(DEBUG, "Bucket") << "Added batch " << i
                                       << ", hash=" << binToHex(bl.getHash());
             for (uint32_t j = 0; j < BucketList::kNumLevels; ++j)
@@ -268,11 +268,25 @@ TEST_CASE("bucket list", "[bucket]")
                 auto const& lev = bl.getLevel(j);
                 auto currSz = countEntries(lev.getCurr());
                 auto snapSz = countEntries(lev.getSnap());
+                auto sizeOfCurr = BucketList::sizeOfCurr(i, j);
+                auto sizeOfSnap = BucketList::sizeOfSnap(i, j);
+
+                CLOG(INFO, "Bucket")
+                    << "ledger " << std::hex << i << " level " << j
+                    << " levelHalf=" << BucketList::levelHalf(j)
+                    << " sizeOfCurr=" << sizeOfCurr << " vs. currRange "
+                    << ((lev.getCurr()->ledgerHi - lev.getCurr()->ledgerLo) + 1)
+                    << "=[" << lev.getCurr()->ledgerLo << "," << lev.getCurr()->ledgerHi << "]; "
+                    << " sizeOfSnap=" << sizeOfSnap << " vs. snapRange "
+                    << ((lev.getSnap()->ledgerHi - lev.getSnap()->ledgerLo) + 1)
+                    << "=[" << lev.getSnap()->ledgerLo << "," << lev.getSnap()->ledgerHi << "]";
+
                 // CLOG(DEBUG, "Bucket") << "level " << j
                 //            << " curr=" << currSz
                 //            << " snap=" << snapSz;
                 CHECK(currSz <= BucketList::levelHalf(j) * 100);
                 CHECK(snapSz <= BucketList::levelHalf(j) * 100);
+            }
             }
         }
     }

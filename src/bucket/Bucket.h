@@ -39,6 +39,10 @@ class Bucket : public std::enable_shared_from_this<Bucket>,
     size_t mSize{0};
 
   public:
+
+    uint32_t ledgerLo;
+    uint32_t ledgerHi;
+
     // Create an empty bucket. The empty bucket has hash '000000...' and its
     // filename is the empty string.
     Bucket();

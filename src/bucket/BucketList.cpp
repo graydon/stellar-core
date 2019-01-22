@@ -415,9 +415,12 @@ BucketList::addBatch(Application& app, uint32_t currLedger,
     }
 
     assert(shadows.size() == 0);
+    auto b = Bucket::fresh(app.getBucketManager(), liveEntries, deadEntries);
+    b->ledgerLo = currLedger;
+    b->ledgerHi = currLedger;
     mLevels[0].prepare(
         app, currLedger,
-        Bucket::fresh(app.getBucketManager(), liveEntries, deadEntries),
+        b,
         shadows);
     mLevels[0].commit();
 }

@@ -34,6 +34,8 @@ namespace stellar
 Bucket::Bucket(std::string const& filename, Hash const& hash)
     : mFilename(filename), mHash(hash)
 {
+    ledgerLo = 0;
+    ledgerHi = 0;
     assert(filename.empty() || fs::exists(filename));
     if (!filename.empty())
     {
@@ -45,6 +47,8 @@ Bucket::Bucket(std::string const& filename, Hash const& hash)
 
 Bucket::Bucket()
 {
+    ledgerLo = 0;
+    ledgerHi = 0;
 }
 
 Hash const&
@@ -260,6 +264,17 @@ Bucket::merge(BucketManager& bucketManager,
             ++ni;
         }
     }
-    return out.getBucket(bucketManager);
+    auto b = out.getBucket(bucketManager);
+    if (oldBucket->ledgerLo == 0 && oldBucket->ledgerHi == 0) {
+        b->ledgerLo = newBucket->ledgerLo;
+        b->ledgerHi = newBucket->ledgerHi;
+    } else if (newBucket->ledgerLo == 0 && newBucket->ledgerHi == 0) {
+        b->ledgerLo = oldBucket->ledgerLo;
+        b->ledgerHi = oldBucket->ledgerHi;
+    } else {
+        b->ledgerLo = std::min(oldBucket->ledgerLo, newBucket->ledgerLo);
+        b->ledgerHi = std::max(oldBucket->ledgerHi, newBucket->ledgerHi);
+    }
+    return b;
 }
 }
