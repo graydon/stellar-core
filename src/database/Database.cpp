@@ -38,6 +38,9 @@
 extern "C" int
 sqlite3_carray_init(sqlite_api::sqlite3* db, char** pzErrMsg,
                     const sqlite_api::sqlite3_api_routines* pApi);
+extern "C" int
+sqlite3_csv_init(sqlite_api::sqlite3* db, char** pzErrMsg,
+                 const sqlite_api::sqlite3_api_routines* pApi);
 extern "C" void register_factory_sqlite3();
 
 #ifdef USE_POSTGRES
@@ -105,6 +108,7 @@ Database::Database(Application& app)
         auto sqlite3 = dynamic_cast<soci::sqlite3_session_backend*>(
             mSession.get_backend());
         sqlite3_carray_init(sqlite3->conn_, nullptr, nullptr);
+        sqlite3_csv_init(sqlite3->conn_, nullptr, nullptr);
     }
     else
     {
