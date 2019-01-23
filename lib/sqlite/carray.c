@@ -51,6 +51,13 @@
 ** the integer value of "pointer" as a pointer to the array and "count"
 ** as the number of elements in the array.  The virtual table steps through
 ** the array, element by element.
+**
+** This file has been slightly extended to include support for nullable
+** values in 'char*' (CARRAY_TEXT) fields, as well as additional field
+** types 'int32*' (CARRAY_INT32PTR), 'int64*' (CARRAY_INT64PTR) and
+** 'double*' (CARRAY_DOUBLEPTR) that convey nullable numeric values. In all
+** cases, one indicates an SQL NULL by providing a null C pointer in the
+** corresponding array entry.
 */
 #include "sqlite3ext.h"
 SQLITE_EXTENSION_INIT1
@@ -66,11 +73,15 @@ SQLITE_EXTENSION_INIT1
 #define CARRAY_INT64    1
 #define CARRAY_DOUBLE   2
 #define CARRAY_TEXT     3
+#define CARRAY_INT32PTR  4
+#define CARRAY_INT64PTR  5
+#define CARRAY_DOUBLEPTR 6
 
 /*
 ** Names of types
 */
-static const char *azType[] = { "int32", "int64", "double", "char*" };
+static const char *azType[] = { "int32", "int64", "double", "char*",
+                                "int32*", "int64*", "double*" };
 
 
 /* carray_cursor is a subclass of sqlite3_vtab_cursor which will
@@ -200,7 +211,38 @@ static int carrayColumn(
         }
         case CARRAY_TEXT: {
           const char **p = (const char**)pCur->pPtr;
-          sqlite3_result_text(ctx, p[pCur->iRowid-1], -1, SQLITE_TRANSIENT);
+          if (p[pCur->iRowid-1] == NULL) {
+              sqlite3_result_null(ctx);
+          } else {
+              sqlite3_result_text(ctx, p[pCur->iRowid-1], -1, SQLITE_TRANSIENT);
+          }
+          return SQLITE_OK;
+        }
+        case CARRAY_INT32PTR: {
+          int **p = (int**)pCur->pPtr;
+          if (p[pCur->iRowid-1] == NULL) {
+              sqlite3_result_null(ctx);
+          } else {
+              sqlite3_result_int(ctx, *(p[pCur->iRowid-1]));
+          }
+          return SQLITE_OK;
+        }
+        case CARRAY_INT64PTR: {
+          sqlite3_int64 **p = (sqlite3_int64**)pCur->pPtr;
+          if (p[pCur->iRowid-1] == NULL) {
+              sqlite3_result_null(ctx);
+          } else {
+              sqlite3_result_int64(ctx, *(p[pCur->iRowid-1]));
+          }
+          return SQLITE_OK;
+        }
+        case CARRAY_DOUBLEPTR: {
+          double **p = (double**)pCur->pPtr;
+          if (p[pCur->iRowid-1] == NULL) {
+              sqlite3_result_null(ctx);
+          } else {
+              sqlite3_result_double(ctx, *(p[pCur->iRowid-1]));
+          }
           return SQLITE_OK;
         }
       }

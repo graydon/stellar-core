@@ -8,6 +8,7 @@
 #include "ledger/LedgerTxnImpl.h"
 #include "util/Decoder.h"
 #include "util/types.h"
+#include <soci-sqlite3.h>
 
 namespace stellar
 {
@@ -114,53 +115,108 @@ LedgerTxnRoot::Impl::deleteData(LedgerKey const& key)
 }
 
 static void
-sociGenericBulkUpsertAccountData(Database& DB,
-                                 std::vector<std::string> const& accountIDs,
-                                 std::vector<std::string> const& dataNames,
-                                 std::vector<std::string> const& dataValues,
-                                 std::vector<int32_t> lastModifieds)
+sqliteSpecificBulkUpsertAccountData(Database& DB,
+                                    std::vector<std::string> const& accountIDs,
+                                    std::vector<std::string> const& dataNames,
+                                    std::vector<std::string> const& dataValues,
+                                    std::vector<int32_t> lastModifieds)
 {
-    std::string sql = "INSERT INTO accountdata ( "
-                      "accountid, dataname, datavalue, lastmodified "
-                      ") VALUES ( "
-                      ":id, :v1, :v2, :v3 "
-                      ") ON CONFLICT (accountid, dataname) DO UPDATE SET "
-                      "datavalue = excluded.datavalue, "
-                      "lastmodified = excluded.lastmodified ";
+    std::vector<const char*> cStrAccountIDs, cStrDataNames, cStrDataValues;
+    marshalToSqliteArray(cStrAccountIDs, accountIDs);
+    marshalToSqliteArray(cStrDataNames, dataNames);
+    marshalToSqliteArray(cStrDataValues, dataValues);
+
+    std::string sqlJoin =
+        "SELECT v1.value, v2.value, v3.value, v4.value "
+        " FROM "
+        "           (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v1 "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v2 ON v1.rowid = v2.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v3 ON v1.rowid = v3.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32') ORDER BY rowid) AS v4 ON v1.rowid = v4.rowid ";
+
+    std::string sql =
+        "WITH r AS ( " + sqlJoin + " ) "
+        "INSERT INTO accountdata ( "
+        "accountid, dataname, datavalue, lastmodified "
+        ") SELECT * FROM r "
+
+        // NB: this 'WHERE true' is the official way to resolve a
+        // parsing ambiguity wrt. the following 'ON' token. Really.
+        // See: https://www.sqlite.org/lang_insert.html
+        "WHERE true "
+
+        "ON CONFLICT (accountid, dataname) DO UPDATE SET "
+        "datavalue = excluded.datavalue, "
+        "lastmodified = excluded.lastmodified ";
+
     auto prep = DB.getPreparedStatement(sql);
-    soci::statement& st = prep.statement();
-    st.exchange(soci::use(accountIDs, "id"));
-    st.exchange(soci::use(dataNames, "v1"));
-    st.exchange(soci::use(dataValues, "v2"));
-    st.exchange(soci::use(lastModifieds, "v3"));
-    st.define_and_bind();
+    auto sqliteStatement = dynamic_cast<soci::sqlite3_statement_backend*>(prep.statement().get_backend());
+    auto st = sqliteStatement->stmt_;
+    sqlite3_reset(st);
+    sqlite3_bind_pointer(st, 1, cStrAccountIDs.data(), "carray", 0);
+    sqlite3_bind_int(st, 2, cStrAccountIDs.size());
+    sqlite3_bind_pointer(st, 3, cStrDataNames.data(), "carray", 0);
+    sqlite3_bind_int(st, 4, cStrDataNames.size());
+    sqlite3_bind_pointer(st, 5, cStrDataValues.data(), "carray", 0);
+    sqlite3_bind_int(st, 6, cStrDataValues.size());
+    sqlite3_bind_pointer(st, 7, const_cast<int32_t*>(lastModifieds.data()), "carray", 0);
+    sqlite3_bind_int(st, 8, lastModifieds.size());
+
     {
         auto timer = DB.getUpsertTimer("data");
-        st.execute(true);
+        if (sqlite3_step(st) != SQLITE_DONE)
+        {
+            throw std::runtime_error("SQLite failure");
+        }
     }
-    if (st.get_affected_rows() != accountIDs.size())
+
+    soci::session& session = DB.getSession();
+    auto sqlite =
+        dynamic_cast<soci::sqlite3_session_backend*>(session.get_backend());
+    if (sqlite3_changes(sqlite->conn_) != accountIDs.size())
     {
         throw std::runtime_error("Could not update data in SQL");
     }
 }
 
 static void
-sociGenericBulkDeleteAccountData(Database& DB, LedgerTxnConsistency cons,
-                                 std::vector<std::string> const& accountIDs,
-                                 std::vector<std::string> const& dataNames)
+sqliteSpecificBulkDeleteAccountData(Database& DB, LedgerTxnConsistency cons,
+                                    std::vector<std::string> const& accountIDs,
+                                    std::vector<std::string> const& dataNames)
 {
-    std::string sql = "DELETE FROM accountdata WHERE accountid = :id AND "
-                      " dataname = :dataname ";
+    std::vector<const char*> cStrAccountIDs, cStrDataNames;
+    marshalToSqliteArray(cStrAccountIDs, accountIDs);
+    marshalToSqliteArray(cStrDataNames, dataNames);
+
+    std::string sqlJoin =
+        "SELECT v1.value, v2.value "
+        " FROM "
+        "           (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v1 "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v2 ON v1.rowid = v2.rowid ";
+
+    std::string sql = "WITH r AS ( " + sqlJoin + " ) "
+        "DELETE FROM accountdata WHERE (accountid, dataname) in (SELECT * FROM r)";
+
     auto prep = DB.getPreparedStatement(sql);
-    soci::statement& st = prep.statement();
-    st.exchange(soci::use(accountIDs, "id"));
-    st.exchange(soci::use(dataNames, "dataname"));
-    st.define_and_bind();
+    auto sqliteStatement = dynamic_cast<soci::sqlite3_statement_backend*>(prep.statement().get_backend());
+    auto st = sqliteStatement->stmt_;
+    sqlite3_reset(st);
+    sqlite3_bind_pointer(st, 1, cStrAccountIDs.data(), "carray", 0);
+    sqlite3_bind_int(st, 2, cStrAccountIDs.size());
+    sqlite3_bind_pointer(st, 3, cStrDataNames.data(), "carray", 0);
+    sqlite3_bind_int(st, 4, cStrDataNames.size());
+
     {
         auto timer = DB.getDeleteTimer("data");
-        st.execute(true);
+        if (sqlite3_step(st) != SQLITE_DONE)
+        {
+            throw std::runtime_error("SQLite failure");
+        }
     }
-    if (st.get_affected_rows() != accountIDs.size() &&
+    soci::session& session = DB.getSession();
+    auto sqlite =
+        dynamic_cast<soci::sqlite3_session_backend*>(session.get_backend());
+    if (sqlite3_changes(sqlite->conn_) != accountIDs.size() &&
         cons == LedgerTxnConsistency::EXACT)
     {
         throw std::runtime_error("Could not update data in SQL");
@@ -286,8 +342,8 @@ LedgerTxnRoot::Impl::bulkUpsertAccountData(
     // condition 2-way split will need to change if we support more.
     if (mDatabase.isSqlite())
     {
-        sociGenericBulkUpsertAccountData(mDatabase, accountIDs, dataNames,
-                                         dataValues, lastModifieds);
+        sqliteSpecificBulkUpsertAccountData(mDatabase, accountIDs, dataNames,
+                                            dataValues, lastModifieds);
     }
     else
     {
@@ -319,8 +375,8 @@ LedgerTxnRoot::Impl::bulkDeleteAccountData(
     // condition 2-way split will need to change if we support more.
     if (mDatabase.isSqlite())
     {
-        sociGenericBulkDeleteAccountData(mDatabase, mConsistency, accountIDs,
-                                         dataNames);
+        sqliteSpecificBulkDeleteAccountData(mDatabase, mConsistency, accountIDs,
+                                            dataNames);
     }
     else
     {

@@ -12,6 +12,7 @@
 #include "util/XDROperators.h"
 #include "util/types.h"
 #include "xdrpp/marshal.h"
+#include <soci-sqlite3.h>
 
 namespace stellar
 {
@@ -298,31 +299,67 @@ LedgerTxnRoot::Impl::deleteAccount(LedgerKey const& key)
 }
 
 static void
-sociGenericBulkUpsertAccounts(Database& DB,
-                              std::vector<std::string> const& accountIDs,
-                              std::vector<int64_t> const& balances,
-                              std::vector<int64_t> const& seqNums,
-                              std::vector<int32_t> const& subEntryNums,
-                              std::vector<std::string> const& inflationDests,
-                              std::vector<soci::indicator>& inflationDestInds,
-                              std::vector<int32_t> const& flags,
-                              std::vector<std::string> const& homeDomains,
-                              std::vector<std::string> const& thresholds,
-                              std::vector<std::string> const& signers,
-                              std::vector<soci::indicator>& signerInds,
-                              std::vector<int32_t> const& lastModifieds,
-                              std::vector<int64_t> const& buyingLiabilities,
-                              std::vector<int64_t> const& sellingLiabilities,
-                              std::vector<soci::indicator>& liabilitiesInds)
+sqliteSpecificBulkUpsertAccounts(Database& DB,
+                                 std::vector<std::string> const& accountIDs,
+                                 std::vector<int64_t> const& balances,
+                                 std::vector<int64_t> const& seqNums,
+                                 std::vector<int32_t> const& subEntryNums,
+                                 std::vector<std::string> const& inflationDests,
+                                 std::vector<soci::indicator>& inflationDestInds,
+                                 std::vector<int32_t> const& flags,
+                                 std::vector<std::string> const& homeDomains,
+                                 std::vector<std::string> const& thresholds,
+                                 std::vector<std::string> const& signers,
+                                 std::vector<soci::indicator>& signerInds,
+                                 std::vector<int32_t> const& lastModifieds,
+                                 std::vector<int64_t> const& buyingLiabilities,
+                                 std::vector<int64_t> const& sellingLiabilities,
+                                 std::vector<soci::indicator>& liabilitiesInds)
 {
+    std::vector<const char*> cStrAccountIDs, cStrInflationDests, cStrHomeDomains,
+        cStrThresholds, cStrSigners;
+    marshalToSqliteArray(cStrAccountIDs, accountIDs);
+    marshalToSqliteArray(cStrInflationDests, inflationDests, &inflationDestInds);
+    marshalToSqliteArray(cStrHomeDomains, homeDomains);
+    marshalToSqliteArray(cStrThresholds, thresholds);
+    marshalToSqliteArray(cStrSigners, signers, &signerInds);
+
+    std::vector<const int64_t *> buyingLiabilityPtrs, sellingLiabilityPtrs;
+    marshalToSqliteArray(buyingLiabilityPtrs, buyingLiabilities, liabilitiesInds);
+    marshalToSqliteArray(sellingLiabilityPtrs, sellingLiabilities, liabilitiesInds);
+
+    std::string sqlJoin =
+        "SELECT v1.value, v2.value, v3.value, v4.value, v5.value, "
+        "v6.value, v7.value, v8.value, v9.value, v10.value, v11.value, "
+        "v12.value"
+        " FROM "
+        "           (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v1 "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int64') ORDER BY rowid) AS v2 ON v1.rowid = v2.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int64') ORDER BY rowid) AS v3 ON v1.rowid = v3.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32') ORDER BY rowid) AS v4 ON v1.rowid = v4.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v5 ON v1.rowid = v5.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v6 ON v1.rowid = v6.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v7 ON v1.rowid = v7.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*') ORDER BY rowid) AS v8 ON v1.rowid = v8.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32') ORDER BY rowid) AS v9 ON v1.rowid = v9.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32') ORDER BY rowid) AS v10 ON v1.rowid = v10.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int64*') ORDER BY rowid) AS v11 ON v1.rowid = v11.rowid "
+        "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int64*') ORDER BY rowid) AS v12 ON v1.rowid = v12.rowid ";
+
     std::string sql =
+        "WITH r AS ( " + sqlJoin + " ) "
         "INSERT INTO accounts ( "
-        "accountid, balance, seqnum, numsubentries, inflationdest,"
-        "homedomain, thresholds, signers, flags, lastmodified, "
-        "buyingliabilities, sellingliabilities "
-        ") VALUES ( "
-        ":id, :v1, :v2, :v3, :v4, :v5, :v6, :v7, :v8, :v9, :v10, :v11 "
-        ") ON CONFLICT (accountid) DO UPDATE SET "
+        "accountid, balance, seqnum, "
+        "numsubentries, inflationdest, homedomain, thresholds, signers, "
+        "flags, lastmodified, buyingliabilities, sellingliabilities "
+        ") SELECT * FROM r "
+
+        // NB: this 'WHERE true' is the official way to resolve a
+        // parsing ambiguity wrt. the following 'ON' token. Really.
+        // See: https://www.sqlite.org/lang_insert.html
+        "WHERE true "
+
+        "ON CONFLICT (accountid) DO UPDATE SET "
         "balance = excluded.balance, "
         "seqnum = excluded.seqnum, "
         "numsubentries = excluded.numsubentries, "
@@ -334,45 +371,82 @@ sociGenericBulkUpsertAccounts(Database& DB,
         "lastmodified = excluded.lastmodified, "
         "buyingliabilities = excluded.buyingliabilities, "
         "sellingliabilities = excluded.sellingliabilities";
+
     auto prep = DB.getPreparedStatement(sql);
-    soci::statement& st = prep.statement();
-    st.exchange(soci::use(accountIDs, "id"));
-    st.exchange(soci::use(balances, "v1"));
-    st.exchange(soci::use(seqNums, "v2"));
-    st.exchange(soci::use(subEntryNums, "v3"));
-    st.exchange(soci::use(inflationDests, inflationDestInds, "v4"));
-    st.exchange(soci::use(homeDomains, "v5"));
-    st.exchange(soci::use(thresholds, "v6"));
-    st.exchange(soci::use(signers, signerInds, "v7"));
-    st.exchange(soci::use(flags, "v8"));
-    st.exchange(soci::use(lastModifieds, "v9"));
-    st.exchange(soci::use(buyingLiabilities, liabilitiesInds, "v10"));
-    st.exchange(soci::use(sellingLiabilities, liabilitiesInds, "v11"));
-    st.define_and_bind();
+    auto sqliteStatement = dynamic_cast<soci::sqlite3_statement_backend*>(prep.statement().get_backend());
+    auto st = sqliteStatement->stmt_;
+    sqlite3_reset(st);
+    sqlite3_bind_pointer(st, 1, cStrAccountIDs.data(), "carray", 0);
+    sqlite3_bind_int(st, 2, cStrAccountIDs.size());
+    sqlite3_bind_pointer(st, 3, const_cast<int64_t*>(balances.data()), "carray", 0);
+    sqlite3_bind_int(st, 4, balances.size());
+    sqlite3_bind_pointer(st, 5, const_cast<int64_t*>(seqNums.data()), "carray", 0);
+    sqlite3_bind_int(st, 6, seqNums.size());
+    sqlite3_bind_pointer(st, 7, const_cast<int32_t*>(subEntryNums.data()), "carray", 0);
+    sqlite3_bind_int(st, 8, subEntryNums.size());
+    sqlite3_bind_pointer(st, 9, cStrInflationDests.data(), "carray", 0);
+    sqlite3_bind_int(st, 10, cStrInflationDests.size());
+    sqlite3_bind_pointer(st, 11, cStrHomeDomains.data(), "carray", 0);
+    sqlite3_bind_int(st, 12, cStrHomeDomains.size());
+    sqlite3_bind_pointer(st, 13, cStrThresholds.data(), "carray", 0);
+    sqlite3_bind_int(st, 14, cStrThresholds.size());
+    sqlite3_bind_pointer(st, 15, cStrSigners.data(), "carray", 0);
+    sqlite3_bind_int(st, 16, cStrSigners.size());
+    sqlite3_bind_pointer(st, 17, const_cast<int32_t*>(flags.data()), "carray", 0);
+    sqlite3_bind_int(st, 18, flags.size());
+    sqlite3_bind_pointer(st, 19, const_cast<int32_t*>(lastModifieds.data()), "carray", 0);
+    sqlite3_bind_int(st, 20, lastModifieds.size());
+    sqlite3_bind_pointer(st, 21, buyingLiabilityPtrs.data(), "carray", 0);
+    sqlite3_bind_int(st, 22, buyingLiabilityPtrs.size());
+    sqlite3_bind_pointer(st, 23, sellingLiabilityPtrs.data(), "carray", 0);
+    sqlite3_bind_int(st, 24, sellingLiabilityPtrs.size());
+
     {
         auto timer = DB.getUpsertTimer("account");
-        st.execute(true);
+        if (sqlite3_step(st) != SQLITE_DONE)
+        {
+            throw std::runtime_error("SQLite failure");
+        }
     }
-    if (st.get_affected_rows() != accountIDs.size())
+
+    soci::session& session = DB.getSession();
+    auto sqlite =
+        dynamic_cast<soci::sqlite3_session_backend*>(session.get_backend());
+    if (sqlite3_changes(sqlite->conn_) != accountIDs.size())
     {
         throw std::runtime_error("Could not update data in SQL");
     }
 }
 
 static void
-sociGenericBulkDeleteAccounts(Database& DB, LedgerTxnConsistency cons,
-                              std::vector<std::string> const& accountIDs)
+sqliteSpecificBulkDeleteAccounts(Database& DB, LedgerTxnConsistency cons,
+                                 std::vector<std::string> const& accountIDs)
 {
-    std::string sql = "DELETE FROM accounts WHERE accountid = :id";
+    std::vector<const char*> cStrAccountIDs;
+    marshalToSqliteArray(cStrAccountIDs, accountIDs);
+
+    std::string sql = "DELETE FROM accounts "
+        "WHERE accountid in (SELECT value FROM carray(?, ?, 'char*') ORDER BY rowid)";
+
     auto prep = DB.getPreparedStatement(sql);
-    soci::statement& st = prep.statement();
-    st.exchange(soci::use(accountIDs, "id"));
-    st.define_and_bind();
+    auto sqliteStatement = dynamic_cast<soci::sqlite3_statement_backend*>(prep.statement().get_backend());
+    auto st = sqliteStatement->stmt_;
+
+    sqlite3_reset(st);
+    sqlite3_bind_pointer(st, 1, cStrAccountIDs.data(), "carray", 0);
+    sqlite3_bind_int(st, 2, cStrAccountIDs.size());
+
     {
         auto timer = DB.getDeleteTimer("account");
-        st.execute(true);
+        if (sqlite3_step(st) != SQLITE_DONE)
+        {
+            throw std::runtime_error("SQLite failure");
+        }
     }
-    if (st.get_affected_rows() != accountIDs.size() &&
+    soci::session& session = DB.getSession();
+    auto sqlite =
+        dynamic_cast<soci::sqlite3_session_backend*>(session.get_backend());
+    if (sqlite3_changes(sqlite->conn_) != accountIDs.size() &&
         cons == LedgerTxnConsistency::EXACT)
     {
         throw std::runtime_error("Could not update data in SQL");
@@ -603,7 +677,7 @@ LedgerTxnRoot::Impl::bulkUpsertAccounts(
     // condition 2-way split will need to change if we support more.
     if (mDatabase.isSqlite())
     {
-        sociGenericBulkUpsertAccounts(
+        sqliteSpecificBulkUpsertAccounts(
             mDatabase, accountIDs, balances, seqNums, subEntryNums,
             inflationDests, inflationDestInds, flags, homeDomains, thresholds,
             signers, signerInds, lastModifieds, buyingLiabilities,
@@ -640,7 +714,7 @@ LedgerTxnRoot::Impl::bulkDeleteAccounts(
     // condition 2-way split will need to change if we support more.
     if (mDatabase.isSqlite())
     {
-        sociGenericBulkDeleteAccounts(mDatabase, mConsistency, accountIDs);
+        sqliteSpecificBulkDeleteAccounts(mDatabase, mConsistency, accountIDs);
     }
     else
     {

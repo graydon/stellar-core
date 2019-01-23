@@ -544,6 +544,39 @@ class LedgerTxnRoot::Impl
     void writeSignersTableIntoAccountsTable();
 };
 
+inline void
+marshalToSqliteArray(std::vector<const char*> &out,
+                     std::vector<std::string> const& in,
+                     const std::vector<soci::indicator>* ind = nullptr) {
+    out.clear();
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size(); ++i) {
+        const char* p = in[i].c_str();
+        if (ind && (*ind)[i] == soci::i_null)
+        {
+            p = nullptr;
+        }
+        out.emplace_back(p);
+    }
+}
+
+template <typename T>
+inline void
+marshalToSqliteArray(std::vector<const T*> &out,
+                     std::vector<T> const& in,
+                     std::vector<soci::indicator> const& ind) {
+    out.clear();
+    out.reserve(in.size());
+    for (size_t i = 0; i < in.size(); ++i) {
+        const T* p = &in[i];
+        if (ind[i] == soci::i_null)
+        {
+            p = nullptr;
+        }
+        out.emplace_back(p);
+    }
+}
+
 #ifdef USE_POSTGRES
 template <typename T>
 inline void
