@@ -215,7 +215,7 @@ fi
 # extension, which is compiled-out of most platform sqlites. We therefore
 # always use our own bundled copy, version 3.26.0 at the time of this
 # writing.
-sqlite3_CFLAGS='-isystem $(top_srcdir)/lib/sqlite -DSQLITE_CORE -DSQLITE_OMIT_LOAD_EXTENSION=1'
+sqlite3_CFLAGS='-isystem $(top_srcdir)/lib/sqlite -DSQLITE_CORE -DSQLITE_ENABLE_JSON1=1 -DSQLITE_OMIT_LOAD_EXTENSION=1'
 sqlite3_LIBS=
 AC_SUBST(sqlite3_CFLAGS)
 AC_SUBST(sqlite3_LIBS)

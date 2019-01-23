@@ -7,7 +7,9 @@
 #include "database/Database.h"
 #include "ledger/LedgerTxnImpl.h"
 #include "util/XDROperators.h"
+#include "util/Logging.h"
 #include "util/types.h"
+#include <soci-sqlite3.h>
 
 namespace stellar
 {
@@ -510,6 +512,259 @@ LedgerTxnRoot::Impl::deleteOffer(LedgerKey const& key)
 }
 
 static void
+sqliteSpecificBulkUpsertOffersUsingJson(
+    Database& DB, std::vector<EntryIterator> const& entries)
+{
+    std::vector<std::string> jsonArrays;
+    std::vector<const char*> jsonArrayPtrs;
+
+    for (auto const& e : entries)
+    {
+        std::ostringstream oss;
+        assert(e.entryExists());
+        assert(e.entry().data.type() == OFFER);
+        auto const& offer = e.entry().data.offer();
+        std::string sellerIDStr, sellingIssuerStr, sellingAssetCodeStr,
+            buyingIssuerStr, buyingAssetCodeStr;
+        soci::indicator sellingIssuerInd, sellingAssetCodeInd, buyingIssuerInd,
+            buyingAssetCodeInd;
+        getAssetStrings(offer.selling, sellingAssetCodeStr, sellingIssuerStr,
+                        sellingAssetCodeInd, sellingIssuerInd);
+        getAssetStrings(offer.buying, buyingAssetCodeStr, buyingIssuerStr,
+                        buyingAssetCodeInd, buyingIssuerInd);
+
+        oss << '[' << '"' << KeyUtils::toStrKey(offer.sellerID) << '"'
+            << ',' << offer.offerID
+            << ',' << unsignedToSigned(static_cast<uint32_t>(offer.selling.type()));
+        if (sellingAssetCodeInd == soci::i_ok) {
+            oss << ',' << '"' << sellingAssetCodeStr << '"'
+                << ',' << '"' << sellingIssuerStr << '"';
+        } else {
+            oss << ",null,null";
+        }
+        oss << ',' << unsignedToSigned(static_cast<uint32_t>(offer.buying.type()));
+        if (buyingAssetCodeInd == soci::i_ok) {
+            oss << ',' << '"' << buyingAssetCodeStr << '"'
+                << ',' << '"' << buyingIssuerStr << '"';
+        } else {
+            oss << ",null,null";
+        }
+        oss << ',' << offer.amount
+            << ',' << offer.price.n
+            << ',' << offer.price.d;
+        double price = double(offer.price.n) / double(offer.price.d);
+        oss << ',' << price
+            << ',' << unsignedToSigned(offer.flags)
+            << ',' << unsignedToSigned(e.entry().lastModifiedLedgerSeq)
+            << ']';
+        jsonArrays.push_back(oss.str());
+    }
+    marshalToSqliteArray(jsonArrayPtrs, jsonArrays);
+
+    std::string sqlJson =
+        "SELECT "
+        "json_extract(value, '$[0]'), json_extract(value, '$[1]'),"
+        "json_extract(value, '$[2]'), json_extract(value, '$[3]'),"
+        "json_extract(value, '$[4]'), json_extract(value, '$[5]'),"
+        "json_extract(value, '$[6]'), json_extract(value, '$[7]'),"
+        "json_extract(value, '$[8]'), json_extract(value, '$[9]'),"
+        "json_extract(value, '$[10]'), json_extract(value, '$[11]'),"
+        "json_extract(value, '$[12]'), json_extract(value, '$[13]')"
+        " FROM carray(?, ?, 'char*')";
+
+    std::string sql = "WITH j AS ( " + sqlJson + ")"
+                      "INSERT INTO offers ( "
+                      "sellerid, offerid, "
+                      "sellingassettype, sellingassetcode, sellingissuer, "
+                      "buyingassettype, buyingassetcode, buyingissuer, "
+                      "amount, pricen, priced, price, flags, lastmodified "
+                      ") SELECT * from j "
+
+                      // NB: this 'WHERE true' is the official way to resolve a
+                      // parsing ambiguity wrt. the following 'ON' token. Really.
+                      // See: https://www.sqlite.org/lang_insert.html
+                      "WHERE true "
+
+                      "ON CONFLICT (offerid) DO UPDATE SET "
+                      "sellerid = excluded.sellerid, "
+                      "sellingassettype = excluded.sellingassettype, "
+                      "sellingassetcode = excluded.sellingassetcode, "
+                      "sellingissuer = excluded.sellingissuer, "
+                      "buyingassettype = excluded.buyingassettype, "
+                      "buyingassetcode = excluded.buyingassetcode, "
+                      "buyingissuer = excluded.buyingissuer, "
+                      "amount = excluded.amount, "
+                      "pricen = excluded.pricen, "
+                      "priced = excluded.priced, "
+                      "price = excluded.price, "
+                      "flags = excluded.flags, "
+                      "lastmodified = excluded.lastmodified ";
+
+    auto prep = DB.getPreparedStatement(sql);
+    auto sqliteStatement = dynamic_cast<soci::sqlite3_statement_backend*>(prep.statement().get_backend());
+    auto st = sqliteStatement->stmt_;
+
+    sqlite3_reset(st);
+    sqlite3_bind_pointer(st, 1, jsonArrayPtrs.data(), "carray", 0);
+    sqlite3_bind_int(st, 2, jsonArrayPtrs.size());
+
+    {
+        auto timer = DB.getUpsertTimer("offer");
+        CLOG(INFO, "Ledger") << "Bulk-upsert'ing " << jsonArrayPtrs.size()
+                             << " offers";
+        if (sqlite3_step(st) != SQLITE_DONE)
+        {
+            throw std::runtime_error("SQLite failure");
+        }
+        CLOG(INFO, "Ledger") << "Bulk-upserted " << jsonArrayPtrs.size()
+                             << " offers";
+    }
+
+    soci::session& session = DB.getSession();
+    auto sqlite =
+        dynamic_cast<soci::sqlite3_session_backend*>(session.get_backend());
+    if (sqlite3_changes(sqlite->conn_) != jsonArrayPtrs.size())
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
+}
+
+static void
+sqliteSpecificBulkUpsertOffersUsingJoin(
+    Database& DB, std::vector<std::string> const& sellerIDs,
+    std::vector<int64_t> const& offerIDs,
+    std::vector<int32_t> const& sellingAssetTypes,
+    std::vector<std::string> const& sellingAssetCodes,
+    std::vector<std::string> const& sellingIssuers,
+    std::vector<soci::indicator>& sellingAssetCodeInds,
+    std::vector<soci::indicator>& sellingIssuerInds,
+    std::vector<int32_t> const& buyingAssetTypes,
+    std::vector<std::string> const& buyingAssetCodes,
+    std::vector<std::string> const& buyingIssuers,
+    std::vector<soci::indicator>& buyingAssetCodeInds,
+    std::vector<soci::indicator>& buyingIssuerInds,
+    std::vector<int64_t> const& amounts, std::vector<int32_t> const& priceNs,
+    std::vector<int32_t> const& priceDs, std::vector<double> const& prices,
+    std::vector<int32_t> const& flags,
+    std::vector<int32_t> const& lastModifieds)
+{
+    std::vector<const char*> cStrSellerIDs, cStrSellingAssetCodes,
+        cStrSellingIssuers, cStrBuyingAssetCodes, cStrBuyingIssuers;
+
+    marshalToSqliteArray(cStrSellerIDs, sellerIDs);
+    marshalToSqliteArray(cStrSellingAssetCodes, sellingAssetCodes,
+                         &sellingAssetCodeInds);
+    marshalToSqliteArray(cStrSellingIssuers, sellingIssuers,
+                         &sellingIssuerInds);
+    marshalToSqliteArray(cStrBuyingAssetCodes, buyingAssetCodes,
+                         &buyingAssetCodeInds);
+    marshalToSqliteArray(cStrBuyingIssuers, buyingIssuers,
+                         &buyingIssuerInds);
+
+    std::string sqlJoin =
+        "SELECT v1.value, v2.value, v3.value, v4.value, v5.value, "
+        "v6.value, v7.value, v8.value, v9.value, v10.value, v11.value, "
+        "v12.value, v13.value, v14.value"
+        " FROM "
+         "(SELECT rowid, value FROM carray(?, ?, 'char*')) AS v1 "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int64')) AS v2 ON v1.rowid = v2.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32')) AS v3 ON v1.rowid = v3.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*')) AS v4 ON v1.rowid = v4.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*')) AS v5 ON v1.rowid = v5.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32')) AS v6 ON v1.rowid = v6.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*')) AS v7 ON v1.rowid = v7.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'char*')) AS v8 ON v1.rowid = v8.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int64')) AS v9 ON v1.rowid = v9.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32')) AS v10 ON v1.rowid = v10.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32')) AS v11 ON v1.rowid = v11.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'double')) AS v12 ON v1.rowid = v12.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32')) AS v13 ON v1.rowid = v13.rowid "
+         "INNER JOIN (SELECT rowid, value FROM carray(?, ?, 'int32')) AS v14 ON v1.rowid = v14.rowid ";
+
+    std::string sql = "WITH r AS ( " + sqlJoin + ")"
+                      "INSERT INTO offers ( "
+                      "sellerid, offerid, "
+                      "sellingassettype, sellingassetcode, sellingissuer, "
+                      "buyingassettype, buyingassetcode, buyingissuer, "
+                      "amount, pricen, priced, price, flags, lastmodified "
+                      ") SELECT * from r "
+
+                      // NB: this 'WHERE true' is the official way to resolve a
+                      // parsing ambiguity wrt. the following 'ON' token. Really.
+                      // See: https://www.sqlite.org/lang_insert.html
+                      "WHERE true "
+
+                      "ON CONFLICT (offerid) DO UPDATE SET "
+                      "sellerid = excluded.sellerid, "
+                      "sellingassettype = excluded.sellingassettype, "
+                      "sellingassetcode = excluded.sellingassetcode, "
+                      "sellingissuer = excluded.sellingissuer, "
+                      "buyingassettype = excluded.buyingassettype, "
+                      "buyingassetcode = excluded.buyingassetcode, "
+                      "buyingissuer = excluded.buyingissuer, "
+                      "amount = excluded.amount, "
+                      "pricen = excluded.pricen, "
+                      "priced = excluded.priced, "
+                      "price = excluded.price, "
+                      "flags = excluded.flags, "
+                      "lastmodified = excluded.lastmodified ";
+
+    auto prep = DB.getPreparedStatement(sql);
+    auto sqliteStatement = dynamic_cast<soci::sqlite3_statement_backend*>(prep.statement().get_backend());
+    auto st = sqliteStatement->stmt_;
+
+    sqlite3_reset(st);
+    sqlite3_bind_pointer(st, 1, cStrSellerIDs.data(), "carray", 0);
+    sqlite3_bind_int(st, 2, cStrSellerIDs.size());
+    sqlite3_bind_pointer(st, 3, const_cast<int64_t*>(offerIDs.data()), "carray", 0);
+    sqlite3_bind_int(st, 4, offerIDs.size());
+    sqlite3_bind_pointer(st, 5, const_cast<int32_t*>(sellingAssetTypes.data()), "carray", 0);
+    sqlite3_bind_int(st, 6, sellingAssetTypes.size());
+    sqlite3_bind_pointer(st, 7, cStrSellingAssetCodes.data(), "carray", 0);
+    sqlite3_bind_int(st, 8, cStrSellingAssetCodes.size());
+    sqlite3_bind_pointer(st, 9, cStrSellingIssuers.data(), "carray", 0);
+    sqlite3_bind_int(st, 10, cStrSellingIssuers.size());
+    sqlite3_bind_pointer(st, 11, const_cast<int32_t*>(buyingAssetTypes.data()), "carray", 0);
+    sqlite3_bind_int(st, 12, buyingAssetTypes.size());
+    sqlite3_bind_pointer(st, 13, cStrBuyingAssetCodes.data(), "carray", 0);
+    sqlite3_bind_int(st, 14, cStrBuyingAssetCodes.size());
+    sqlite3_bind_pointer(st, 15, cStrBuyingIssuers.data(), "carray", 0);
+    sqlite3_bind_int(st, 16, cStrBuyingIssuers.size());
+    sqlite3_bind_pointer(st, 17, const_cast<int64_t*>(amounts.data()), "carray", 0);
+    sqlite3_bind_int(st, 18, amounts.size());
+    sqlite3_bind_pointer(st, 19, const_cast<int32_t*>(priceNs.data()), "carray", 0);
+    sqlite3_bind_int(st, 20, priceNs.size());
+    sqlite3_bind_pointer(st, 21, const_cast<int32_t*>(priceDs.data()), "carray", 0);
+    sqlite3_bind_int(st, 22, priceDs.size());
+    sqlite3_bind_pointer(st, 23, const_cast<double*>(prices.data()), "carray", 0);
+    sqlite3_bind_int(st, 24, prices.size());
+    sqlite3_bind_pointer(st, 25, const_cast<int32_t*>(flags.data()), "carray", 0);
+    sqlite3_bind_int(st, 26, flags.size());
+    sqlite3_bind_pointer(st, 27, const_cast<int32_t*>(lastModifieds.data()), "carray", 0);
+    sqlite3_bind_int(st, 28, lastModifieds.size());
+
+    {
+        auto timer = DB.getUpsertTimer("offer");
+        CLOG(INFO, "Ledger") << "Bulk-upsert'ing " << cStrSellerIDs.size()
+                             << " offers";
+        if (sqlite3_step(st) != SQLITE_DONE)
+        {
+            throw std::runtime_error("SQLite failure");
+        }
+        CLOG(INFO, "Ledger") << "Bulk-upserted " << cStrSellerIDs.size()
+                             << " offers";
+    }
+
+    soci::session& session = DB.getSession();
+    auto sqlite =
+        dynamic_cast<soci::sqlite3_session_backend*>(session.get_backend());
+    if (sqlite3_changes(sqlite->conn_) != offerIDs.size())
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
+}
+
+static void
 sociGenericBulkUpsertOffers(Database& DB,
                             std::vector<std::string> const& sellerIDs,
                             std::vector<int64_t> const& offerIDs,
@@ -539,6 +794,7 @@ sociGenericBulkUpsertOffers(Database& DB,
                       ":sellerid, :offerid, :v1, :v2, :v3, :v4, :v5, :v6, "
                       ":v7, :v8, :v9, :v10, :v11, :v12 "
                       ") ON CONFLICT (offerid) DO UPDATE SET "
+                      "sellerid = excluded.sellerid, "
                       "sellingassettype = excluded.sellingassettype, "
                       "sellingassetcode = excluded.sellingassetcode, "
                       "sellingissuer = excluded.sellingissuer, "
@@ -672,6 +928,7 @@ postgresSpecificBulkUpsertOffers(
                       "amount, pricen, priced, price, flags, lastmodified "
                       ") SELECT * from r "
                       "ON CONFLICT (offerid) DO UPDATE SET "
+                      "sellerid = excluded.sellerid, "
                       "sellingassettype = excluded.sellingassettype, "
                       "sellingassetcode = excluded.sellingassetcode, "
                       "sellingissuer = excluded.sellingissuer, "
@@ -746,6 +1003,11 @@ postgresSpecificBulkDeleteOffers(Database& DB, LedgerTxnConsistency cons,
 void
 LedgerTxnRoot::Impl::bulkUpsertOffers(std::vector<EntryIterator> const& entries)
 {
+    if (mDatabase.isSqlite())
+    {
+        sqliteSpecificBulkUpsertOffersUsingJson(mDatabase, entries);
+        return;
+    }
     std::vector<std::string> sellerIDs;
     std::vector<int64_t> offerIDs;
     std::vector<int32_t> sellingAssetTypes;
@@ -829,12 +1091,16 @@ LedgerTxnRoot::Impl::bulkUpsertOffers(std::vector<EntryIterator> const& entries)
     // condition 2-way split will need to change if we support more.
     if (mDatabase.isSqlite())
     {
-        sociGenericBulkUpsertOffers(
+        /*sociGenericBulkUpsertOffers*/
+        /*sqliteSpecificBulkUpsertOffersUsingJoin(
             mDatabase, sellerIDs, offerIDs, sellingAssetTypes,
             sellingAssetCodes, sellingIssuers, sellingAssetCodeInds,
             sellingIssuerInds, buyingAssetTypes, buyingAssetCodes,
             buyingIssuers, buyingAssetCodeInds, buyingIssuerInds, amounts,
             priceNs, priceDs, prices, flags, lastModifieds);
+        */
+        sqliteSpecificBulkUpsertOffersUsingJson(mDatabase, entries);
+
     }
     else
     {

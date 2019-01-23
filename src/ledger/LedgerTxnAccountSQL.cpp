@@ -298,6 +298,52 @@ LedgerTxnRoot::Impl::deleteAccount(LedgerKey const& key)
 }
 
 static void
+sqliteSpecificBulkUpsertAccounts(Database& DB, std::string const& json,
+                                 size_t expected)
+{
+    //CLOG(INFO, "Ledger") << "Bulk-upserting JSON: " << json;
+    std::string sql =
+        "WITH j AS (SELECT "
+        "json_extract(value, '$[0]'), json_extract(value, '$[1]'), "
+        "json_extract(value, '$[2]'), json_extract(value, '$[3]'), "
+        "json_extract(value, '$[4]'), json_extract(value, '$[5]'), "
+        "json_extract(value, '$[6]'), json_extract(value, '$[7]'), "
+        "json_extract(value, '$[8]'), json_extract(value, '$[9]'), "
+        "json_extract(value, '$[10]'), json_extract(value, '$[11]') "
+        "FROM json_each(:v0))"
+        "INSERT INTO accounts ( "
+        "accountid, balance, seqnum, "
+        "numsubentries, inflationdest, homedomain, thresholds, signers, "
+        "flags, lastmodified, buyingliabilities, sellingliabilities "
+        ") SELECT * FROM j WHERE true "
+        "ON CONFLICT (accountid) DO UPDATE SET "
+        "balance = excluded.balance, "
+        "seqnum = excluded.seqnum, "
+        "numsubentries = excluded.numsubentries, "
+        "inflationdest = excluded.inflationdest, "
+        "homedomain = excluded.homedomain, "
+        "thresholds = excluded.thresholds, "
+        "signers = excluded.signers, "
+        "flags = excluded.flags, "
+        "lastmodified = excluded.lastmodified, "
+        "buyingliabilities = excluded.buyingliabilities, "
+        "sellingliabilities = excluded.sellingliabilities";
+
+    auto prep = DB.getPreparedStatement(sql);
+    soci::statement& st = prep.statement();
+    st.exchange(soci::use(json, "v0"));
+    st.define_and_bind();
+    {
+        auto timer = DB.getUpsertTimer("account");
+        st.execute(true);
+    }
+    if (st.get_affected_rows() != expected)
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
+}
+
+static void
 sociGenericBulkUpsertAccounts(Database& DB,
                               std::vector<std::string> const& accountIDs,
                               std::vector<int64_t> const& balances,
@@ -380,6 +426,48 @@ sociGenericBulkDeleteAccounts(Database& DB, LedgerTxnConsistency cons,
 }
 
 #ifdef USE_POSTGRES
+static void
+postgresSpecificBulkUpsertAccounts(Database& DB, std::string const& json,
+                                   size_t expected)
+{
+    std::string sql =
+        "WITH j AS (SELECT "
+        "(value->>0)::TEXT, (value->>1)::BIGINT, (value->>2)::BIGINT, (value->>3)::INT, "
+        "(value->>4)::TEXT, (value->>5)::TEXT, (value->>6)::TEXT, (value->>7)::TEXT, "
+        "(value->>8)::INT, (value->>9)::INT, (value->>10)::BIGINT, (value->>11)::BIGINT "
+        "FROM json_array_elements(:v0))"
+        "INSERT INTO accounts ( "
+        "accountid, balance, seqnum, "
+        "numsubentries, inflationdest, homedomain, thresholds, signers, "
+        "flags, lastmodified, buyingliabilities, sellingliabilities "
+        ") SELECT * FROM j "
+        "ON CONFLICT (accountid) DO UPDATE SET "
+        "balance = excluded.balance, "
+        "seqnum = excluded.seqnum, "
+        "numsubentries = excluded.numsubentries, "
+        "inflationdest = excluded.inflationdest, "
+        "homedomain = excluded.homedomain, "
+        "thresholds = excluded.thresholds, "
+        "signers = excluded.signers, "
+        "flags = excluded.flags, "
+        "lastmodified = excluded.lastmodified, "
+        "buyingliabilities = excluded.buyingliabilities, "
+        "sellingliabilities = excluded.sellingliabilities";
+
+    auto prep = DB.getPreparedStatement(sql);
+    soci::statement& st = prep.statement();
+    st.exchange(soci::use(json, "v0"));
+    st.define_and_bind();
+    {
+        auto timer = DB.getUpsertTimer("account");
+        st.execute(true);
+    }
+    if (st.get_affected_rows() != expected)
+    {
+        throw std::runtime_error("Could not update data in SQL");
+    }
+}
+
 static void
 postgresSpecificBulkUpsertAccounts(
     Database& DB, std::vector<std::string> const& accountIDs,
@@ -513,6 +601,85 @@ void
 LedgerTxnRoot::Impl::bulkUpsertAccounts(
     std::vector<EntryIterator> const& entries)
 {
+    // Form a JSON array of arrays representing all the entries we've been
+    // provided: one sub-array per entry. We will transfer this entire
+    // array-of-arrays as a single SQL string binding and decompose it
+    // using built-in JSON-consuming functions in the target SQL engines.
+    // This is the fastest bulk-transfer mechanism we have found.
+    std::ostringstream oss;
+    bool first = true;
+    for (auto const& e : entries)
+    {
+        if (first)
+        {
+            oss << '[';
+            first = false;
+        }
+        else
+        {
+            oss << ',';
+        }
+
+        assert(e.entryExists());
+        assert(e.entry().data.type() == ACCOUNT);
+        auto const& account = e.entry().data.account();
+        oss << '[' << '"' << KeyUtils::toStrKey(account.accountID) << '"'
+            << ',' << '"' << account.balance << '"'
+            << ',' << '"' << account.seqNum << '"'
+            << ',' << unsignedToSigned(account.numSubEntries);
+        if (account.inflationDest)
+        {
+            oss << ',' << '"' << KeyUtils::toStrKey(*account.inflationDest) << '"';
+        }
+        else
+        {
+            oss << ",null";
+        }
+        oss << ',' << '"' << account.homeDomain << '"'
+            << ',' << '"' << decoder::encode_b64(account.thresholds) << '"';
+        if (account.signers.empty())
+        {
+            oss << ",null";
+        }
+        else
+        {
+            oss << ',' << '"'
+                << decoder::encode_b64(xdr::xdr_to_opaque(account.signers))
+                << '"';
+        }
+        oss << ',' << unsignedToSigned(account.flags)
+            << ',' << unsignedToSigned(e.entry().lastModifiedLedgerSeq);
+        if (account.ext.v() >= 1)
+        {
+            oss << ',' << '"' << account.ext.v1().liabilities.buying << '"'
+                << ',' << '"' << account.ext.v1().liabilities.selling << '"';
+        }
+        else
+        {
+            oss << ",null,null";
+        }
+        oss << ']';
+        dropFromEntryCacheIfPresent(e.key());
+    }
+    oss << ']';
+    if (mDatabase.isSqlite())
+    {
+        sqliteSpecificBulkUpsertAccounts(mDatabase, oss.str(), entries.size());
+    }
+    else
+    {
+#ifdef USE_POSTGRES
+        postgresSpecificBulkUpsertAccounts(mDatabase, oss.str(), entries.size());
+#else
+        throw std::runtime_error("Not compiled with postgres support");
+#endif
+    }
+}
+/*
+void
+LedgerTxnRoot::Impl::bulkUpsertAccounts(
+    std::vector<EntryIterator> const& entries)
+{
     std::vector<std::string> accountIDs;
     std::vector<int64_t> balances;
     std::vector<int64_t> seqNums;
@@ -622,7 +789,7 @@ LedgerTxnRoot::Impl::bulkUpsertAccounts(
 #endif
     }
 }
-
+*/
 void
 LedgerTxnRoot::Impl::bulkDeleteAccounts(
     std::vector<EntryIterator> const& entries)
