@@ -12,6 +12,7 @@
 #include "util/XDROperators.h"
 #include "util/types.h"
 #include "xdrpp/marshal.h"
+#include <soci-sqlite3.h>
 
 namespace stellar
 {
@@ -298,7 +299,7 @@ LedgerTxnRoot::Impl::deleteAccount(LedgerKey const& key)
 }
 
 static void
-sqliteSpecificBulkUpsertAccounts(Database& DB, std::string const& json,
+sqliteSpecificBulkUpsertAccounts(Database& DB, std::vector<std::string> const& jsons,
                                  size_t expected)
 {
     //CLOG(INFO, "Ledger") << "Bulk-upserting JSON: " << json;
@@ -310,7 +311,7 @@ sqliteSpecificBulkUpsertAccounts(Database& DB, std::string const& json,
         "json_extract(value, '$[6]'), json_extract(value, '$[7]'), "
         "json_extract(value, '$[8]'), json_extract(value, '$[9]'), "
         "json_extract(value, '$[10]'), json_extract(value, '$[11]') "
-        "FROM json_each(:v0))"
+        "FROM carray(:v0, :sz, 'char*'))"
         "INSERT INTO accounts ( "
         "accountid, balance, seqnum, "
         "numsubentries, inflationdest, homedomain, thresholds, signers, "
@@ -329,18 +330,31 @@ sqliteSpecificBulkUpsertAccounts(Database& DB, std::string const& json,
         "buyingliabilities = excluded.buyingliabilities, "
         "sellingliabilities = excluded.sellingliabilities";
 
+    std::vector<const char*> jsonPtrs;
+    marshalToSqliteArray(jsonPtrs, jsons);
+
     auto prep = DB.getPreparedStatement(sql);
-    soci::statement& st = prep.statement();
-    st.exchange(soci::use(json, "v0"));
-    st.define_and_bind();
+    auto sqliteStatement = dynamic_cast<soci::sqlite3_statement_backend*>(prep.statement().get_backend());
+    auto st = sqliteStatement->stmt_;
+    sqlite3_reset(st);
+    sqlite3_bind_pointer(st, 1, jsonPtrs.data(), "carray", 0);
+    sqlite3_bind_int(st, 2, jsonPtrs.size());
+
+    //soci::statement& st = prep.statement();
+    //st.exchange(soci::use(json, "v0"));
+    //st.define_and_bind();
     {
         auto timer = DB.getUpsertTimer("account");
-        st.execute(true);
+        if (sqlite3_step(st) != SQLITE_DONE)
+        {
+            throw std::runtime_error("SQLite bulk insert failed");
+        }
+        //st.execute(true);
     }
-    if (st.get_affected_rows() != expected)
-    {
-        throw std::runtime_error("Could not update data in SQL");
-    }
+    //if (st.get_affected_rows() != expected)
+    // {
+    //    throw std::runtime_error("Could not update data in SQL");
+    // }
 }
 
 static void
@@ -606,20 +620,11 @@ LedgerTxnRoot::Impl::bulkUpsertAccounts(
     // array-of-arrays as a single SQL string binding and decompose it
     // using built-in JSON-consuming functions in the target SQL engines.
     // This is the fastest bulk-transfer mechanism we have found.
-    std::ostringstream oss;
-    bool first = true;
+    std::vector<std::string> jsons;
+    jsons.reserve(entries.size());
     for (auto const& e : entries)
     {
-        if (first)
-        {
-            oss << '[';
-            first = false;
-        }
-        else
-        {
-            oss << ',';
-        }
-
+        std::ostringstream oss;
         assert(e.entryExists());
         assert(e.entry().data.type() == ACCOUNT);
         auto const& account = e.entry().data.account();
@@ -659,17 +664,17 @@ LedgerTxnRoot::Impl::bulkUpsertAccounts(
             oss << ",null,null";
         }
         oss << ']';
+        jsons.push_back(oss.str());
         dropFromEntryCacheIfPresent(e.key());
     }
-    oss << ']';
     if (mDatabase.isSqlite())
     {
-        sqliteSpecificBulkUpsertAccounts(mDatabase, oss.str(), entries.size());
+        sqliteSpecificBulkUpsertAccounts(mDatabase, jsons, entries.size());
     }
     else
     {
 #ifdef USE_POSTGRES
-        postgresSpecificBulkUpsertAccounts(mDatabase, oss.str(), entries.size());
+        postgresSpecificBulkUpsertAccounts(mDatabase, "", entries.size());
 #else
         throw std::runtime_error("Not compiled with postgres support");
 #endif
