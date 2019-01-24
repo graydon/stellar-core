@@ -228,6 +228,7 @@ sqlite3_statement_backend::bind_and_execute(int number)
             {
                 // preserve the number of rows affected so far.
                 rowsAffectedBulk_ = rowsAffectedBulkTemp;
+                printf("%s\n", sqlite3_errstr(bindRes));
                 throw soci_error("Failure to bind on bulk operations");
             }
         }
