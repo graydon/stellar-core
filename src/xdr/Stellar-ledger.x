@@ -133,13 +133,16 @@ case DATA:
 
 enum BucketEntryType
 {
-    LIVEENTRY = 0,
-    DEADENTRY = 1
+    LIVEENTRY = 0, // Before protocol 11: created-or-updated;
+                   // At-and-after protocol 11: only updated.
+    DEADENTRY = 1,
+    INITENTRY = 2, // At-and-after protocol 11: only created.
 };
 
 union BucketEntry switch (BucketEntryType type)
 {
 case LIVEENTRY:
+case INITENTRY:
     LedgerEntry liveEntry;
 
 case DEADENTRY:

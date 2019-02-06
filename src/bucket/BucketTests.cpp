@@ -80,8 +80,8 @@ fileSize(std::string const& name)
 static size_t
 countEntries(std::shared_ptr<Bucket> bucket)
 {
-    auto pair = bucket->countLiveAndDeadEntries();
-    return pair.first + pair.second;
+    auto e = bucket->countEntries();
+    return e.nLive + e.nInit + e.nDead;
 }
 
 void
@@ -445,18 +445,12 @@ TEST_CASE("bucket tombstones expire at bottom level", "[bucket][tombstones]")
         }
     }
 
-    auto pair0 = bl.getLevel(BucketList::kNumLevels - 3)
-                     .getCurr()
-                     ->countLiveAndDeadEntries();
-    auto pair1 = bl.getLevel(BucketList::kNumLevels - 2)
-                     .getCurr()
-                     ->countLiveAndDeadEntries();
-    auto pair2 = bl.getLevel(BucketList::kNumLevels - 1)
-                     .getCurr()
-                     ->countLiveAndDeadEntries();
-    REQUIRE(pair0.second != 0);
-    REQUIRE(pair1.second != 0);
-    REQUIRE(pair2.second == 0);
+    auto e0 = bl.getLevel(BucketList::kNumLevels - 3).getCurr()->countEntries();
+    auto e1 = bl.getLevel(BucketList::kNumLevels - 2).getCurr()->countEntries();
+    auto e2 = bl.getLevel(BucketList::kNumLevels - 1).getCurr()->countEntries();
+    REQUIRE(e0.nDead != 0);
+    REQUIRE(e1.nDead != 0);
+    REQUIRE(e2.nDead == 0);
 }
 
 TEST_CASE("file backed buckets", "[bucket][bucketbench]")
@@ -562,7 +556,7 @@ TEST_CASE("merging bucket entries", "[bucket]")
         std::shared_ptr<Bucket> b1 =
             Bucket::fresh(app->getBucketManager(), live, dead);
         CHECK(countEntries(b1) == live.size());
-        auto liveCount = b1->countLiveAndDeadEntries().first;
+        auto liveCount = b1->countEntries().nLive;
         CLOG(DEBUG, "Bucket")
             << "post-merge live count: " << liveCount << " of " << live.size();
         CHECK(liveCount == live.size() - dead.size());

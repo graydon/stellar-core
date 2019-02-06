@@ -51,6 +51,12 @@ class FutureBucket
 
     State mState{FB_CLEAR};
 
+    // Each FutureBucket may hold an optional protocol version. This is only
+    // ever written when storing an in-progress FutureBucket to the database
+    // in order to restart a merge, and it is only ever read-back when
+    // restarting such a merge.
+    uint32_t mProtocolVersion;
+
     // These live values hold the input buckets and/or output std::shared_future
     // for a "live" bucket merge in progress. They will be empty when the
     // FutureBucket is constructed, when it is reset, or when it is freshly
@@ -83,7 +89,7 @@ class FutureBucket
     FutureBucket(Application& app, std::shared_ptr<Bucket> const& curr,
                  std::shared_ptr<Bucket> const& snap,
                  std::vector<std::shared_ptr<Bucket>> const& shadows,
-                 bool keepDeadEntries);
+                 bool keepDeadEntries, uint32_t currLedgerProtocol);
 
     FutureBucket() = default;
     FutureBucket(FutureBucket const& other) = default;
@@ -129,6 +135,17 @@ class FutureBucket
         switch (mState)
         {
         case FB_HASH_INPUTS:
+            try
+            {
+                // This will throw when upgrading from a HAS stored
+                // in the database by the LedgerManager from an
+                // older version. We explicitly tolerate that case.
+                ar(cereal::make_nvp("proto", mProtocolVersion));
+            }
+            catch (cereal::Exception& e)
+            {
+                mProtocolVersion = 0;
+            }
             ar(cereal::make_nvp("curr", mInputCurrBucketHash));
             ar(cereal::make_nvp("snap", mInputSnapBucketHash));
             ar(cereal::make_nvp("shadow", mInputShadowBucketHashes));
@@ -156,6 +173,7 @@ class FutureBucket
         case FB_LIVE_INPUTS:
         case FB_HASH_INPUTS:
             ar(cereal::make_nvp("state", FB_HASH_INPUTS));
+            ar(cereal::make_nvp("proto", mProtocolVersion));
             ar(cereal::make_nvp("curr", mInputCurrBucketHash));
             ar(cereal::make_nvp("snap", mInputSnapBucketHash));
             ar(cereal::make_nvp("shadow", mInputShadowBucketHashes));

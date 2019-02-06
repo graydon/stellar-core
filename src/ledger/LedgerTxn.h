@@ -423,14 +423,16 @@ class AbstractLedgerTxn : public AbstractLedgerTxnParent
     //     to the LedgerHeader) in a format convenient for answering queries
     //     about how specific entries and the header have changed. To be used
     //     for invariants.
-    // - getDeadEntries and getLiveEntries
+    // - getDeadEntries, getInitEntries, getLiveEntries
     //     getDeadEntries extracts a list of keys that are now dead, whereas
-    //     getLiveEntries extracts a list of entries that were recorded and
-    //     are still alive. To be inserted into the BucketList.
+    //     getInitEntries extracts a list of entries that were created, and
+    //     getLiveEntries extracts a list of entries that were updated.
+    //     All these are to be inserted into the BucketList.
     // All of these functions throw if the AbstractLedgerTxn has a child.
     virtual LedgerEntryChanges getChanges() = 0;
     virtual LedgerTxnDelta getDelta() = 0;
     virtual std::vector<LedgerKey> getDeadEntries() = 0;
+    virtual std::vector<LedgerEntry> getInitEntries() = 0;
     virtual std::vector<LedgerEntry> getLiveEntries() = 0;
 
     // loadAllOffers, loadBestOffer, and loadOffersByAccountAndAsset are used to
@@ -518,6 +520,8 @@ class LedgerTxn final : public AbstractLedgerTxn
 
     std::vector<InflationWinner>
     queryInflationWinners(size_t maxWinners, int64_t minBalance) override;
+
+    std::vector<LedgerEntry> getInitEntries() override;
 
     std::vector<LedgerEntry> getLiveEntries() override;
 

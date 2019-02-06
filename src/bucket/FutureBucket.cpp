@@ -24,8 +24,10 @@ FutureBucket::FutureBucket(Application& app,
                            std::shared_ptr<Bucket> const& curr,
                            std::shared_ptr<Bucket> const& snap,
                            std::vector<std::shared_ptr<Bucket>> const& shadows,
-                           bool keepDeadEntries)
+                           bool keepDeadEntries,
+                           uint32_t currentProtocolVersion)
     : mState(FB_LIVE_INPUTS)
+    , mProtocolVersion(currentProtocolVersion)
     , mInputCurrBucket(curr)
     , mInputSnapBucket(snap)
     , mInputShadowBuckets(shadows)
@@ -272,15 +274,17 @@ FutureBucket::startMerge(Application& app, bool keepDeadEntries)
                           << " with snap=" << hexAbbrev(snap->getHash());
 
     BucketManager& bm = app.getBucketManager();
+    uint32_t protocolVersion = mProtocolVersion;
 
     using task_t = std::packaged_task<std::shared_ptr<Bucket>()>;
-    std::shared_ptr<task_t> task =
-        std::make_shared<task_t>([curr, snap, &bm, shadows, keepDeadEntries]() {
+    std::shared_ptr<task_t> task = std::make_shared<task_t>(
+        [curr, snap, &bm, shadows, keepDeadEntries, protocolVersion]() {
             CLOG(TRACE, "Bucket")
                 << "Worker merging curr=" << hexAbbrev(curr->getHash())
                 << " with snap=" << hexAbbrev(snap->getHash());
 
-            auto res = Bucket::merge(bm, curr, snap, shadows, keepDeadEntries);
+            auto res = Bucket::merge(bm, curr, snap, shadows, keepDeadEntries,
+                                     protocolVersion);
 
             CLOG(TRACE, "Bucket")
                 << "Worker finished merging curr=" << hexAbbrev(curr->getHash())

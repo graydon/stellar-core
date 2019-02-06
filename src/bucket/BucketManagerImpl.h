@@ -73,6 +73,8 @@ class BucketManagerImpl : public BucketManager
 
     void forgetUnreferencedBuckets() override;
     void addBatch(Application& app, uint32_t currLedger,
+                  uint32_t currLedgerProtocol,
+                  std::vector<LedgerEntry> const& initEntries,
                   std::vector<LedgerEntry> const& liveEntries,
                   std::vector<LedgerKey> const& deadEntries) override;
     void snapshotLedger(LedgerHeader& currentHeader) override;

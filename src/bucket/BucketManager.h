@@ -83,8 +83,13 @@ class BucketManager : NonMovableOrCopyable
     // independently keep them alive.
     virtual void forgetUnreferencedBuckets() = 0;
 
-    // Feed a new batch of entries to the bucket list.
+    // Feed a new batch of entries to the bucket list. This interface expects to
+    // be given separate init (created) and live (updated) entry vectors. The
+    // `currLedger` and `currProtocolVersion` values should be taken from the
+    // ledger at which this batch is being added.
     virtual void addBatch(Application& app, uint32_t currLedger,
+                          uint32_t currLedgerProtocol,
+                          std::vector<LedgerEntry> const& initEntries,
                           std::vector<LedgerEntry> const& liveEntries,
                           std::vector<LedgerKey> const& deadEntries) = 0;
 

@@ -260,6 +260,9 @@ class LedgerTxn::Impl
     std::vector<InflationWinner> queryInflationWinners(size_t maxWinners,
                                                        int64_t minBalance);
 
+    // getInitEntries has the strong exception safety guarantee
+    std::vector<LedgerEntry> getInitEntries();
+
     // getLiveEntries has the strong exception safety guarantee
     std::vector<LedgerEntry> getLiveEntries();
 
