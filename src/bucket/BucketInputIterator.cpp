@@ -17,6 +17,12 @@ BucketInputIterator::loadEntry()
     if (mIn.readOne(mEntry))
     {
         mEntryPtr = &mEntry;
+        if (!mSeenMetadata && mEntry.type() == METAENTRY)
+        {
+            mMetadata = mEntry.metaEntry();
+            mSeenMetadata = true;
+            loadEntry();
+        }
     }
     else
     {
@@ -46,8 +52,14 @@ BucketEntry const& BucketInputIterator::operator*()
     return *mEntryPtr;
 }
 
+BucketMetadata const&
+BucketInputIterator::getMetadata() const
+{
+    return mMetadata;
+}
+
 BucketInputIterator::BucketInputIterator(std::shared_ptr<Bucket const> bucket)
-    : mBucket(bucket), mEntryPtr(nullptr)
+    : mBucket(bucket), mEntryPtr(nullptr), mSeenMetadata(false)
 {
     if (!mBucket->getFilename().empty())
     {

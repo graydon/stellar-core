@@ -840,6 +840,35 @@ LedgerTxn::Impl::queryInflationWinners(size_t maxWinners, int64_t minVotes)
 }
 
 std::vector<LedgerEntry>
+LedgerTxn::getInitEntries()
+{
+    return getImpl()->getInitEntries();
+}
+
+std::vector<LedgerEntry>
+LedgerTxn::Impl::getInitEntries()
+{
+    std::vector<LedgerEntry> res;
+    res.reserve(mEntry.size());
+    maybeUpdateLastModifiedThenInvokeThenSeal([&](EntryMap const& entries) {
+        for (auto const& kv : entries)
+        {
+            auto const& key = kv.first;
+            auto const& entry = kv.second;
+            if (entry)
+            {
+                auto previous = mParent.getNewestVersion(key);
+                if (!previous)
+                {
+                    res.push_back(*entry);
+                }
+            }
+        }
+    });
+    return res;
+}
+
+std::vector<LedgerEntry>
 LedgerTxn::getLiveEntries()
 {
     return getImpl()->getLiveEntries();
@@ -850,13 +879,18 @@ LedgerTxn::Impl::getLiveEntries()
 {
     std::vector<LedgerEntry> res;
     res.reserve(mEntry.size());
-    maybeUpdateLastModifiedThenInvokeThenSeal([&res](EntryMap const& entries) {
+    maybeUpdateLastModifiedThenInvokeThenSeal([&](EntryMap const& entries) {
         for (auto const& kv : entries)
         {
+            auto const& key = kv.first;
             auto const& entry = kv.second;
             if (entry)
             {
-                res.push_back(*entry);
+                auto previous = mParent.getNewestVersion(key);
+                if (previous)
+                {
+                    res.push_back(*entry);
+                }
             }
         }
     });

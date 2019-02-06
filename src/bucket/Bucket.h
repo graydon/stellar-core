@@ -56,26 +56,29 @@ class Bucket : public std::enable_shared_from_this<Bucket>,
     // BucketEntry exists in the bucket. For testing.
     bool containsBucketIdentity(BucketEntry const& id) const;
 
-    // Return the count of live and dead BucketEntries in the bucket. For
-    // testing.
-    std::pair<size_t, size_t> countLiveAndDeadEntries() const;
+    // At version 11, we added support for INITENTRY and METAENTRY. Before this
+    // we were only supporting LIVEENTRY and DEADENTRY.
+    static constexpr uint32_t
+        FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY = 11;
 
     static std::vector<BucketEntry>
-    convertToBucketEntry(std::vector<LedgerEntry> const& liveEntries);
+    convertToBucketEntry(std::vector<LedgerEntry> const& liveEntries,
+                         bool isInit);
     static std::vector<BucketEntry>
     convertToBucketEntry(std::vector<LedgerKey> const& deadEntries);
 
-    // "Applies" the bucket to the database. For each entry in the bucket, if
-    // the entry is live, creates or updates the corresponding entry in the
-    // database; if the entry is dead (a tombstone), deletes the corresponding
-    // entry in the database.
+    // "Applies" the bucket to the database. For each entry in the bucket,
+    // if the entry is init or live, creates or updates the corresponding
+    // entry in the database (respectively; if the entry is dead (a
+    // tombstone), deletes the corresponding entry in the database.
     void apply(Application& app) const;
 
-    // Create a fresh bucket from a given vector of live LedgerEntries and
-    // dead LedgerEntryKeys. The bucket will be sorted, hashed, and adopted
-    // in the provided BucketManager.
+    // Create a fresh bucket from given vectors of init (created) and live
+    // (updated) LedgerEntries, and dead LedgerEntryKeys. The bucket will
+    // be sorted, hashed, and adopted in the provided BucketManager.
     static std::shared_ptr<Bucket>
-    fresh(BucketManager& bucketManager,
+    fresh(BucketManager& bucketManager, uint32_t protocolVersion,
+          std::vector<LedgerEntry> const& initEntries,
           std::vector<LedgerEntry> const& liveEntries,
           std::vector<LedgerKey> const& deadEntries);
 
@@ -87,8 +90,7 @@ class Bucket : public std::enable_shared_from_this<Bucket>,
     merge(BucketManager& bucketManager,
           std::shared_ptr<Bucket> const& oldBucket,
           std::shared_ptr<Bucket> const& newBucket,
-          std::vector<std::shared_ptr<Bucket>> const& shadows =
-              std::vector<std::shared_ptr<Bucket>>(),
-          bool keepDeadEntries = true);
+          std::vector<std::shared_ptr<Bucket>> const& shadows,
+          bool keepDeadEntries);
 };
 }

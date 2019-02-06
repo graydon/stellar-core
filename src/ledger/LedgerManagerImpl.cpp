@@ -1037,7 +1037,9 @@ void
 LedgerManagerImpl::ledgerClosed(AbstractLedgerTxn& ltx)
 {
     auto ledgerSeq = ltx.loadHeader().current().ledgerSeq;
-    mApp.getBucketManager().addBatch(mApp, ledgerSeq, ltx.getLiveEntries(),
+    auto ledgerVers = ltx.loadHeader().current().ledgerVersion;
+    mApp.getBucketManager().addBatch(mApp, ledgerSeq, ledgerVers,
+                                     ltx.getInitEntries(), ltx.getLiveEntries(),
                                      ltx.getDeadEntries());
 
     ltx.unsealHeader([this](LedgerHeader& lh) {

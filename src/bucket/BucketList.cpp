@@ -91,7 +91,7 @@ BucketLevel::commit()
 
 void
 BucketLevel::prepare(Application& app, uint32_t currLedger,
-                     std::shared_ptr<Bucket> snap,
+                     uint32_t currLedgerProtocol, std::shared_ptr<Bucket> snap,
                      std::vector<std::shared_ptr<Bucket>> const& shadows)
 {
     // If more than one absorb is pending at the same time, we have a logic
@@ -327,6 +327,8 @@ BucketList::getLevel(uint32_t i)
 
 void
 BucketList::addBatch(Application& app, uint32_t currLedger,
+                     uint32_t currLedgerProtocol,
+                     std::vector<LedgerEntry> const& initEntries,
                      std::vector<LedgerEntry> const& liveEntries,
                      std::vector<LedgerKey> const& deadEntries)
 {
@@ -410,15 +412,16 @@ BucketList::addBatch(Application& app, uint32_t currLedger,
             //           << " to level " << i;
 
             mLevels[i].commit();
-            mLevels[i].prepare(app, currLedger, snap, shadows);
+            mLevels[i].prepare(app, currLedger, currLedgerProtocol, snap,
+                               shadows);
         }
     }
 
     assert(shadows.size() == 0);
-    mLevels[0].prepare(
-        app, currLedger,
-        Bucket::fresh(app.getBucketManager(), liveEntries, deadEntries),
-        shadows);
+    mLevels[0].prepare(app, currLedger, currLedgerProtocol,
+                       Bucket::fresh(app.getBucketManager(), currLedgerProtocol,
+                                     initEntries, liveEntries, deadEntries),
+                       shadows);
     mLevels[0].commit();
 }
 

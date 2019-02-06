@@ -47,12 +47,13 @@ BucketApplicator::advance(BucketApplicator::Counters& counters)
     {
         BucketEntry const& e = *mBucketIter;
         counters.mark(e);
-        if (e.type() == LIVEENTRY)
+        if (e.type() == LIVEENTRY || e.type() == INITENTRY)
         {
             ltx.createOrUpdateWithoutLoading(e.liveEntry());
         }
         else
         {
+            assert(e.type() == DEADENTRY);
             ltx.eraseWithoutLoading(e.deadEntry());
         }
 
@@ -155,7 +156,7 @@ BucketApplicator::Counters::logDebug(std::string const& bucketName,
 void
 BucketApplicator::Counters::mark(BucketEntry const& e)
 {
-    if (e.type() == LIVEENTRY)
+    if (e.type() == LIVEENTRY || e.type() == INITENTRY)
     {
         switch (e.liveEntry().data.type())
         {

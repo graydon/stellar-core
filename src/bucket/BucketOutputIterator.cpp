@@ -33,22 +33,31 @@ randomBucketName(std::string const& tmpDir)
  * hashes them while writing to either destination. Produces a Bucket when done.
  */
 BucketOutputIterator::BucketOutputIterator(std::string const& tmpDir,
-                                           bool keepDeadEntries)
+                                           BucketMetadata const& meta)
     : mFilename(randomBucketName(tmpDir))
     , mBuf(nullptr)
     , mHasher(SHA256::create())
-    , mKeepDeadEntries(keepDeadEntries)
+    , mMeta(meta)
 {
     CLOG(TRACE, "Bucket") << "BucketOutputIterator opening file to write: "
                           << mFilename;
     // Will throw if unable to open the file
     mOut.open(mFilename);
+
+    if (meta.ledgerVersion >=
+        Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY)
+    {
+        BucketEntry bme;
+        bme.type(METAENTRY);
+        bme.metaEntry() = mMeta;
+        put(bme);
+    }
 }
 
 void
 BucketOutputIterator::put(BucketEntry const& e)
 {
-    if (!mKeepDeadEntries && e.type() == DEADENTRY)
+    if (!mMeta.keepDeadEntries && e.type() == DEADENTRY)
     {
         return;
     }

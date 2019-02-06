@@ -26,11 +26,14 @@ class BucketInputIterator
     BucketEntry const* mEntryPtr;
     XDRInputFileStream mIn;
     BucketEntry mEntry;
-
+    bool mSeenMetadata;
+    BucketMetadata mMetadata;
     void loadEntry();
 
   public:
     operator bool() const;
+
+    BucketMetadata const& getMetadata() const;
 
     BucketEntry const& operator*();
 

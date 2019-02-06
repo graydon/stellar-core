@@ -99,26 +99,45 @@ struct BucketEntryIdCmp
         BucketEntryType aty = a.type();
         BucketEntryType bty = b.type();
 
-        if (aty == LIVEENTRY)
+        if (aty == METAENTRY)
         {
-            if (bty == LIVEENTRY)
+            if (bty == METAENTRY)
+            {
+                return false;
+            }
+            else
+            {
+                return true;
+            }
+        }
+        else if (bty == METAENTRY)
+        {
+            return false;
+        }
+
+        if (aty == LIVEENTRY || aty == INITENTRY)
+        {
+            if (bty == LIVEENTRY || bty == INITENTRY)
             {
                 return LedgerEntryIdCmp{}(a.liveEntry().data,
                                           b.liveEntry().data);
             }
             else
             {
+                assert(bty == DEADENTRY);
                 return LedgerEntryIdCmp{}(a.liveEntry().data, b.deadEntry());
             }
         }
         else
         {
-            if (bty == LIVEENTRY)
+            assert(aty == DEADENTRY);
+            if (bty == LIVEENTRY || bty == INITENTRY)
             {
                 return LedgerEntryIdCmp{}(a.deadEntry(), b.liveEntry().data);
             }
             else
             {
+                assert(bty == DEADENTRY);
                 return LedgerEntryIdCmp{}(a.deadEntry(), b.deadEntry());
             }
         }

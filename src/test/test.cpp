@@ -337,6 +337,27 @@ for_versions(std::vector<uint32> const& versions, Application& app,
 }
 
 void
+for_versions(std::vector<uint32> const& versions, Config const& cfg,
+             std::function<void(Config const&)> const& f)
+{
+    for (auto v : versions)
+    {
+        if (!gTestAllVersions &&
+            std::find(gVersionsToTest.begin(), gVersionsToTest.end(), v) ==
+                gVersionsToTest.end())
+        {
+            continue;
+        }
+        SECTION("protocol version " + std::to_string(v))
+        {
+            Config vcfg = cfg;
+            vcfg.LEDGER_PROTOCOL_VERSION = v;
+            f(vcfg);
+        }
+    }
+}
+
+void
 for_all_versions_except(std::vector<uint32> const& versions, Application& app,
                         std::function<void(void)> const& f)
 {

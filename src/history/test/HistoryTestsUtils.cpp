@@ -95,7 +95,7 @@ S3HistoryConfigurator::configure(Config& mCfg, bool writable) const
 
 BucketOutputIteratorForTesting::BucketOutputIteratorForTesting(
     std::string const& tmpDir)
-    : BucketOutputIterator{tmpDir, false}
+    : BucketOutputIterator{tmpDir, testutil::testBucketMetadata(0, false)}
 {
 }
 
@@ -104,7 +104,7 @@ BucketOutputIteratorForTesting::writeTmpTestBucket()
 {
     auto ledgerEntries =
         LedgerTestUtils::generateValidLedgerEntries(NUM_ITEMS_PER_BUCKET);
-    auto bucketEntries = Bucket::convertToBucketEntry(ledgerEntries);
+    auto bucketEntries = Bucket::convertToBucketEntry(ledgerEntries, false);
 
     for (auto const& bucketEntry : bucketEntries)
     {

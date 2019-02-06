@@ -29,10 +29,10 @@ class BucketOutputIterator
     std::unique_ptr<SHA256> mHasher;
     size_t mBytesPut{0};
     size_t mObjectsPut{0};
-    bool mKeepDeadEntries{true};
+    BucketMetadata mMeta;
 
   public:
-    BucketOutputIterator(std::string const& tmpDir, bool keepDeadEntries);
+    BucketOutputIterator(std::string const& tmpDir, BucketMetadata const& meta);
 
     void put(BucketEntry const& e);
 

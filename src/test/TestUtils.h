@@ -32,6 +32,15 @@ class BucketListDepthModifier
 
     ~BucketListDepthModifier();
 };
+
+inline BucketMetadata
+testBucketMetadata(uint32_t protocolVersion = 0, bool keepDeadEntries = false)
+{
+    BucketMetadata meta;
+    meta.ledgerVersion = protocolVersion;
+    meta.keepDeadEntries = keepDeadEntries;
+    return meta;
+}
 }
 
 class TestInvariantManager : public InvariantManagerImpl
