@@ -62,4 +62,12 @@
 #define ASIO_HAS_STD_SYSTEM_ERROR
 #endif
 
+#ifndef ASIO_ENABLE_HANDLER_TRACKING
+#define ASIO_ENABLE_HANDLER_TRACKING
+#endif
+
+#ifndef ASIO_CUSTOM_HANDLER_TRACKING
+#define ASIO_CUSTOM_HANDLER_TRACKING "util/AsioHandlerTracking.h"
+#endif
+
 #include <asio.hpp>

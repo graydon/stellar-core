@@ -41,6 +41,7 @@
 #include "scp/LocalNode.h"
 #include "scp/QuorumSetUtils.h"
 #include "simulation/LoadGenerator.h"
+#include "util/AsioHandlerTracking.h"
 #include "util/GlobalChecks.h"
 #include "util/LogSlowExecution.h"
 #include "util/StatusManager.h"
@@ -87,6 +88,8 @@ ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
     std::srand(static_cast<uint32>(clock.now().time_since_epoch().count()));
 
     mNetworkID = sha256(mConfig.NETWORK_PASSPHRASE);
+
+    asio_tracking::setApplicationMetrics(mMetrics.get());
 
     unsigned t = std::thread::hardware_concurrency();
     LOG(DEBUG) << "Application constructing "
@@ -280,6 +283,7 @@ ApplicationImpl::getNetworkID() const
 
 ApplicationImpl::~ApplicationImpl()
 {
+    asio_tracking::setApplicationMetrics(nullptr);
     LOG(INFO) << "Application destructing";
     if (mProcessManager)
     {
