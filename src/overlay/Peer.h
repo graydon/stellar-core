@@ -188,6 +188,7 @@ class Peer : public std::enable_shared_from_this<Peer>,
     void sendGetPeers();
     void sendGetScpState(uint32 ledgerSeq);
 
+    virtual bool shouldSendBroadcasts() const;
     void sendMessage(StellarMessage const& msg);
 
     PeerRole

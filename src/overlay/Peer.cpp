@@ -408,6 +408,12 @@ msgSummary(StellarMessage const& msg)
     return "UNKNOWN";
 }
 
+bool
+Peer::shouldSendBroadcasts() const
+{
+    return true;
+}
+
 void
 Peer::sendMessage(StellarMessage const& msg)
 {

@@ -18,6 +18,7 @@ namespace stellar
 
 static auto const MAX_UNAUTH_MESSAGE_SIZE = 0x1000;
 static auto const MAX_MESSAGE_SIZE = 0x1000000;
+static auto const MAX_SEND_QUEUE_DEPTH_FOR_BROADCAST = 25;
 
 // Peer that communicates via a TCP socket.
 class TCPPeer : public Peer
@@ -36,6 +37,7 @@ class TCPPeer : public Peer
     bool mShutdownScheduled{false};
 
     void recvMessage();
+    bool shouldSendBroadcasts() const override;
     void sendMessage(xdr::msg_ptr&& xdrBytes) override;
 
     void messageSender();

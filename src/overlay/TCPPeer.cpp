@@ -127,6 +127,13 @@ TCPPeer::getIP() const
     return result;
 }
 
+bool
+TCPPeer::shouldSendBroadcasts() const
+{
+    return (!mShutdownScheduled &&
+            (mWriteQueue.size() < MAX_SEND_QUEUE_DEPTH_FOR_BROADCAST));
+}
+
 void
 TCPPeer::sendMessage(xdr::msg_ptr&& xdrBytes)
 {

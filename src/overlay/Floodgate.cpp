@@ -104,7 +104,8 @@ Floodgate::broadcast(StellarMessage const& msg, bool force)
     for (auto peer : peers)
     {
         assert(peer.second->isAuthenticated());
-        if (peersTold.find(peer.second) == peersTold.end())
+        if (peersTold.find(peer.second) == peersTold.end() &&
+            peer.second->shouldSendBroadcasts())
         {
             mSendFromBroadcast.Mark();
             peer.second->sendMessage(msg);
