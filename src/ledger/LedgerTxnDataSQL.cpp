@@ -349,8 +349,7 @@ LedgerTxnRoot::Impl::encodeDataNamesBase64()
     }
     if (!dataToEncode.empty())
     {
-        BulkUpsertDataOperation op(mDatabase, dataToEncode.begin(),
-                                   dataToEncode.end());
+        BulkUpsertDataOperation op(mDatabase, dataToEncode);
         mDatabase.doDatabaseTypeSpecificOperation(op);
         CLOG(INFO, "Ledger")
             << "Wrote " << dataToEncode.size() << " data entries";
