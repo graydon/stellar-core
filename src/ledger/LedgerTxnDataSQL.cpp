@@ -63,30 +63,27 @@ class BulkUpsertDataOperation : public DatabaseTypeSpecificOperation
     std::vector<std::string> mDataValues;
     std::vector<int32_t> mLastModifieds;
 
-  public:
     void
-    accumulateEntries(std::vector<LedgerEntry>::const_iterator begin,
-                      std::vector<LedgerEntry>::const_iterator end)
+    accumulateEntry(LedgerEntry const& entry)
     {
-        for (auto e = begin; e != end; ++e)
-        {
-            auto const& entry = *e;
-            assert(entry.data.type() == DATA);
-            DataEntry const& data = entry.data.data();
-            mAccountIDs.emplace_back(KeyUtils::toStrKey(data.accountID));
-            mDataNames.emplace_back(decoder::encode_b64(data.dataName));
-            mDataValues.emplace_back(decoder::encode_b64(data.dataValue));
-            mLastModifieds.emplace_back(
-                unsignedToSigned(entry.lastModifiedLedgerSeq));
-        }
+        assert(entry.data.type() == DATA);
+        DataEntry const& data = entry.data.data();
+        mAccountIDs.emplace_back(KeyUtils::toStrKey(data.accountID));
+        mDataNames.emplace_back(decoder::encode_b64(data.dataName));
+        mDataValues.emplace_back(decoder::encode_b64(data.dataValue));
+        mLastModifieds.emplace_back(
+            unsignedToSigned(entry.lastModifiedLedgerSeq));
     }
 
+  public:
     BulkUpsertDataOperation(Database& DB,
-                            std::vector<LedgerEntry>::const_iterator begin,
-                            std::vector<LedgerEntry>::const_iterator end)
+                            std::vector<LedgerEntry> const& entries)
         : mDB(DB)
     {
-        accumulateEntries(begin, end);
+        for (auto const& e : entries)
+        {
+            accumulateEntry(e);
+        }
     }
 
     BulkUpsertDataOperation(Database& DB,
@@ -98,9 +95,8 @@ class BulkUpsertDataOperation : public DatabaseTypeSpecificOperation
         for (auto const& e : entryIter)
         {
             assert(e.entryExists());
-            entries.emplace_back(e.entry());
+            accumulateEntry(e.entry());
         }
-        accumulateEntries(entries.begin(), entries.end());
     }
 
     void
