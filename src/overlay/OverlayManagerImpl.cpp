@@ -8,6 +8,7 @@
 #include "database/Database.h"
 #include "main/Application.h"
 #include "main/Config.h"
+#include "overlay/OverlayMetrics.h"
 #include "overlay/PeerBareAddress.h"
 #include "overlay/PeerManager.h"
 #include "overlay/RandomPeerSource.h"
@@ -222,12 +223,7 @@ OverlayManagerImpl::OverlayManagerImpl(Application& app)
     , mDoor(mApp)
     , mAuth(mApp)
     , mShuttingDown(false)
-    , mMessagesBroadcast(app.getMetrics().NewMeter(
-          {"overlay", "message", "broadcast"}, "message"))
-    , mPendingPeersSize(
-          app.getMetrics().NewCounter({"overlay", "connection", "pending"}))
-    , mAuthenticatedPeersSize(app.getMetrics().NewCounter(
-          {"overlay", "connection", "authenticated"}))
+    , mOverlayMetrics(app)
     , mTimer(app)
     , mFloodGate(app)
 {
@@ -510,8 +506,8 @@ OverlayManagerImpl::ledgerClosed(uint32_t lastClosedledgerSeq)
 void
 OverlayManagerImpl::updateSizeCounters()
 {
-    mPendingPeersSize.set_count(getPendingPeersCount());
-    mAuthenticatedPeersSize.set_count(getAuthenticatedPeersCount());
+    mOverlayMetrics.mPendingPeersSize.set_count(getPendingPeersCount());
+    mOverlayMetrics.mAuthenticatedPeersSize.set_count(getAuthenticatedPeersCount());
 }
 
 void
@@ -723,7 +719,7 @@ OverlayManagerImpl::recvFloodedMsg(StellarMessage const& msg,
 void
 OverlayManagerImpl::broadcastMessage(StellarMessage const& msg, bool force)
 {
-    mMessagesBroadcast.Mark();
+    mOverlayMetrics.mMessagesBroadcast.Mark();
     mFloodGate.broadcast(msg, force);
 }
 
@@ -737,6 +733,12 @@ std::set<Peer::pointer>
 OverlayManagerImpl::getPeersKnows(Hash const& h)
 {
     return mFloodGate.getPeersKnows(h);
+}
+
+OverlayMetrics&
+OverlayManagerImpl::getOverlayMetrics()
+{
+    return mOverlayMetrics;
 }
 
 PeerAuth&

@@ -8,6 +8,7 @@
 #include "medida/timer.h"
 #include "overlay/LoadManager.h"
 #include "overlay/OverlayManager.h"
+#include "overlay/OverlayMetrics.h"
 #include "overlay/StellarXDR.h"
 #include "util/Logging.h"
 #include "xdrpp/marshal.h"
@@ -212,8 +213,8 @@ LoopbackPeer::deliverOne()
         }
         LoadManager::PeerContext loadCtx(mApp, mPeerID);
         mLastWrite = mApp.getClock().now();
-        mMessageWrite.Mark();
-        mByteWrite.Mark(nBytes);
+        getOverlayMetrics().mMessageWrite.Mark();
+        getOverlayMetrics().mByteWrite.Mark(nBytes);
 
         // CLOG(TRACE, "Overlay") << "LoopbackPeer posted message to remote";
     }
