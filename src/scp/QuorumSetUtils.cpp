@@ -4,9 +4,12 @@
 
 #include "QuorumSetUtils.h"
 
+#include "crypto/SHA.h"
+#include "util/Logging.h"
 #include "util/XDROperators.h"
 #include "xdr/Stellar-SCP.h"
 #include "xdr/Stellar-types.h"
+#include "xdrpp/marshal.h"
 
 #include <algorithm>
 #include <set>
@@ -144,5 +147,144 @@ normalizeQSet(SCPQuorumSet& qSet, NodeID const* idToRemove)
         auto t = qSet.innerSets.back();
         qSet = t;
     }
+}
+
+size_t
+QSetCalculator::getNodeNumber(NodeID node)
+{
+    auto pair = mNodeNumbers.emplace(node, mNodeNumbers.size());
+    return pair.first->second;
+}
+
+size_t
+QSetCalculator::getQSetNumber(Hash qSetHash)
+{
+    auto pair = mQSetNumbers.emplace(qSetHash, mQSetNumbers.size());
+    return pair.first->second;
+}
+
+BitSet&
+QSetCalculator::getNodeQSets(size_t node)
+{
+    while (node >= mNodeQSets.size())
+    {
+        mNodeQSets.push_back(BitSet(mQSetNumbers.size()));
+    }
+    return mNodeQSets.at(node);
+}
+
+BitSet&
+QSetCalculator::getQSetNodes(size_t qset)
+{
+    while (qset >= mQSetNodes.size())
+    {
+        mQSetNodes.push_back(BitSet(mNodeNumbers.size()));
+    }
+    return mQSetNodes.at(qset);
+}
+
+BitSet&
+QSetCalculator::getQSetNodeTransitiveClosures(size_t qSet)
+{
+    while (qSet >= mQSetNodeTransitiveClosures.size())
+    {
+        mQSetNodeTransitiveClosures.push_back(BitSet(mNodeNumbers.size()));
+    }
+    return mQSetNodeTransitiveClosures.at(qSet);
+}
+
+void
+QSetCalculator::addQSetNodesToBitSet(BitSet& bitSet, SCPQuorumSet const& qSet)
+{
+    for (auto const& n : qSet.validators)
+    {
+        bitSet.set(getNodeNumber(n));
+    }
+    for (auto const& q : qSet.innerSets)
+    {
+        addQSetNodesToBitSet(bitSet, q);
+    }
+}
+
+void
+QSetCalculator::addQSet(SCPQuorumSet const& qSet)
+{
+    Hash qSetHash = sha256(xdr::xdr_to_opaque(qSet));
+    size_t qSetNum = getQSetNumber(qSetHash);
+    BitSet& qsBits = getQSetNodes(qSetNum);
+    addQSetNodesToBitSet(qsBits, qSet);
+    BitSet& tcNodes = getQSetNodeTransitiveClosures(qSetNum);
+    computeQSetTransitiveClosure(tcNodes, qSetNum);
+}
+
+void
+QSetCalculator::addQSetForNode(NodeID node, Hash qSetHash)
+{
+    auto nodeNum = getNodeNumber(node);
+    auto qSetNum = getQSetNumber(qSetHash);
+    BitSet &nodeBits = getNodeQSets(nodeNum);
+    if (nodeBits.get(qSetNum))
+        return;
+    nodeBits.set(qSetNum);
+    // We've just changed the mapping from node => qsets,
+    // which means that any qset transitive closure that
+    // included node needs to be recomputed.
+    mDirtyNodesInTransitiveClosures.set(nodeNum);
+}
+
+void
+QSetCalculator::recomputeDirtyTransitiveClosures()
+{
+    if (mDirtyNodesInTransitiveClosures.count() == 0)
+    {
+        return;
+    }
+    for (size_t qSet = 0; qSet < mQSetNodeTransitiveClosures.size(); ++qSet)
+    {
+        BitSet& tc = mQSetNodeTransitiveClosures[qSet];
+        if (tc.intersection_count(mDirtyNodesInTransitiveClosures) != 0)
+        {
+            computeQSetTransitiveClosure(tc, qSet);
+        }
+    }
+    mDirtyNodesInTransitiveClosures.clear();
+}
+
+void
+QSetCalculator::computeQSetTransitiveClosure(BitSet &tcNodes, size_t qSet)
+{
+    tcNodes.clear();
+    BitSet nextQSets(mQSetNodes.size());
+    BitSet nextNodes(mNodeQSets.size());
+    nextQSets.set(qSet);
+    while (nextQSets.count() != 0)
+    {
+        nextNodes.clear();
+        for (size_t qs = 0; nextQSets.next_set(qs); ++qs)
+        {
+            BitSet& qsNodes = getQSetNodes(qs);
+            nextNodes |= (qsNodes - tcNodes);
+            tcNodes |= qsNodes;
+        }
+        nextQSets.clear();
+        for (size_t n = 0; nextNodes.next_set(n); ++n)
+        {
+            BitSet& nodeQSets = getNodeQSets(n);
+            nextQSets |= nodeQSets;
+        }
+    }
+    CLOG(INFO, "SCP") << "QSetCalc: recomputed transitive closure for "
+                      << " qs " << qSet << " "
+                      << tcNodes;
+}
+
+bool
+QSetCalculator::isNodeInQSetTransitiveClosure(NodeID node, Hash qSetHash)
+{
+    recomputeDirtyTransitiveClosures();
+    auto nodeNum = getNodeNumber(node);
+    auto qSetNum = getQSetNumber(qSetHash);
+    BitSet &qsBits = getQSetNodes(qSetNum);
+    return qsBits.get(nodeNum);
 }
 }

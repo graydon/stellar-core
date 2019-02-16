@@ -26,6 +26,9 @@ Slot::Slot(uint64 slotIndex, SCP& scp)
     , mNominationProtocol(*this)
     , mFullyValidated(scp.getLocalNode()->isValidator())
 {
+    mQSetCalc.addQSet(scp.getLocalNode()->getQuorumSet());
+    mQSetCalc.addQSetForNode(getSCP().getLocalNodeID(),
+                             scp.getLocalNode()->getQuorumSetHash());
 }
 
 Value const&
@@ -100,6 +103,14 @@ Slot::recordStatement(SCPStatement const& st)
 {
     mStatementsHistory.emplace_back(
         HistoricalStatement{std::time(nullptr), st, mFullyValidated});
+
+    Hash h = getCompanionQuorumSetHashFromStatement(st);
+    auto qset = getSCPDriver().getQSet(h);
+    if (qset)
+    {
+        mQSetCalc.addQSet(*qset);
+        mQSetCalc.addQSetForNode(st.nodeID, h);
+    }
 }
 
 SCP::EnvelopeState

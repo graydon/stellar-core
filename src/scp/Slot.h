@@ -7,6 +7,7 @@
 #include "BallotProtocol.h"
 #include "LocalNode.h"
 #include "NominationProtocol.h"
+#include "QuorumSetUtils.h"
 #include "lib/json/json-forwards.h"
 #include "scp/SCP.h"
 #include <functional>
@@ -30,6 +31,7 @@ class Slot : public std::enable_shared_from_this<Slot>
 
     BallotProtocol mBallotProtocol;
     NominationProtocol mNominationProtocol;
+    QSetCalculator mQSetCalc;
 
     // keeps track of all statements seen so far for this slot.
     // it is used for debugging purpose
