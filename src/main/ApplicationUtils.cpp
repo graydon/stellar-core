@@ -4,6 +4,7 @@
 
 #include "main/ApplicationUtils.h"
 #include "bucket/Bucket.h"
+#include "bucket/BucketInputIterator.h"
 #include "catchup/CatchupConfiguration.h"
 #include "history/HistoryArchive.h"
 #include "history/HistoryArchiveManager.h"
@@ -18,6 +19,7 @@
 
 #include <lib/http/HttpClient.h>
 #include <locale>
+#include <set>
 
 namespace stellar
 {
@@ -159,6 +161,21 @@ loadXdr(Config cfg, std::string const& bucketFile)
     {
         LOG(INFO) << "Database is not initialized";
     }
+}
+
+void
+loadXdrToMemory(Config cfg, std::string const& bucketFile)
+{
+    uint256 zero;
+    std::shared_ptr<Bucket> bucket = std::make_shared<Bucket>(bucketFile, zero);
+    std::set<LedgerEntry> entries;
+    for (BucketInputIterator iter(bucket); iter; ++iter)
+    {
+        BucketEntry const& e = *iter;
+        if (e.type() == LIVEENTRY)
+            entries.emplace(e.liveEntry());
+    }
+    LOG(INFO) << "Loaded " << entries.size() << " ledger entries to memory";
 }
 
 void

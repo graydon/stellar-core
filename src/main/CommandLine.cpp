@@ -621,6 +621,19 @@ runLoadXDR(CommandLineArgs const& args)
 }
 
 int
+runLoadXDRToMemory(CommandLineArgs const& args)
+{
+    CommandLine::ConfigOption configOption;
+    std::string xdr;
+
+    return runWithHelp(
+        args, {configurationParser(configOption), fileNameParser(xdr)}, [&] {
+            loadXdrToMemory(configOption.getConfig(), xdr);
+            return 0;
+        });
+}
+
+int
 runNewDB(CommandLineArgs const& args)
 {
     CommandLine::ConfigOption configOption;
@@ -791,6 +804,7 @@ handleCommandLine(int argc, char* const* argv)
          {"infer-quorum", "print a quorum set inferred from history",
           runInferQuorum},
          {"load-xdr", "load an XDR bucket file, for testing", runLoadXDR},
+         {"load-xdr-to-memory", "load an XDR bucket file to memory, for testing", runLoadXDRToMemory},
          {"new-db", "creates or restores the DB to the genesis ledger",
           runNewDB},
          {"new-hist", "initialize history archives", runNewHist},

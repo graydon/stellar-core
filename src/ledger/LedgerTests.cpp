@@ -52,3 +52,11 @@ TEST_CASE("cannot close ledger with unsupported ledger version", "[ledger]")
     }
     REQUIRE_THROWS_AS(applyEmptyLedger(), std::runtime_error);
 }
+
+TEST_CASE("ledger entry size measurement", "[!hide][ledgerentrysize]")
+{
+    stellar::LedgerTestUtils::generateValidAccountEntries(100000);
+    stellar::LedgerTestUtils::generateValidOfferEntries(100000);
+    stellar::LedgerTestUtils::generateValidTrustLineEntries(100000);
+    stellar::LedgerTestUtils::generateValidDataEntries(100000);
+}

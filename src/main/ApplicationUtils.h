@@ -16,6 +16,7 @@ void setForceSCPFlag(Config cfg, bool set);
 void initializeDatabase(Config cfg);
 void httpCommand(std::string const& command, unsigned short port);
 void loadXdr(Config cfg, std::string const& bucketFile);
+void loadXdrToMemory(Config cfg, std::string const& bucketFile);
 void showOfflineInfo(Config cfg);
 int reportLastHistoryCheckpoint(Config cfg, std::string const& outputFile);
 void genSeed();
