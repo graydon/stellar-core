@@ -17,11 +17,19 @@ BucketInputIterator::loadEntry()
     if (mIn.readOne(mEntry))
     {
         mEntryPtr = &mEntry;
-        if (!mSeenMetadata && mEntry.type() == METAENTRY)
+        if (mEntry.type() == METAENTRY)
         {
+            // There should only be one METAENTRY in the input stream
+            // and it should be the first record.
+            assert(!mSeenMetadata);
+            assert(!mSeenOtherEntries);
             mMetadata = mEntry.metaEntry();
             mSeenMetadata = true;
             loadEntry();
+        }
+        else
+        {
+            mSeenOtherEntries = true;
         }
     }
     else
@@ -50,6 +58,12 @@ BucketInputIterator::operator bool() const
 BucketEntry const& BucketInputIterator::operator*()
 {
     return *mEntryPtr;
+}
+
+bool
+BucketInputIterator::seenMetadata() const
+{
+    return mSeenMetadata;
 }
 
 BucketMetadata const&

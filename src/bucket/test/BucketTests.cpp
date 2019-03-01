@@ -63,6 +63,10 @@ for_versions_with_differing_bucket_logic(
 EntryCounts::EntryCounts(std::shared_ptr<Bucket> bucket)
 {
     BucketInputIterator iter(bucket);
+    if (iter.seenMetadata())
+    {
+        ++nMeta;
+    }
     while (iter)
     {
         switch ((*iter).type())
@@ -77,7 +81,9 @@ EntryCounts::EntryCounts(std::shared_ptr<Bucket> bucket)
             ++nDead;
             break;
         case METAENTRY:
-            ++nMeta;
+            // This should never happen: only the first record can be METAENTRY
+            // and it is counted above.
+            abort();
         }
         ++iter;
     }

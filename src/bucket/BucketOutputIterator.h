@@ -32,6 +32,14 @@ class BucketOutputIterator
     BucketMetadata mMeta;
 
   public:
+
+    // BucketOutputIterators must _always_ be constructed with BucketMetadata,
+    // regardless of the ledger version the bucket is being written from, even
+    // if it's pre-METAENTRY support. The BucketOutputIterator constructor
+    // inspects the metadata and determines whether it indicates a ledger
+    // version new enough that it should _write_ the metadata to the stream in
+    // the form of a METAENTRY; but that's not a thing the caller gets to decide
+    // (or forget to do), it's handled automatically.
     BucketOutputIterator(std::string const& tmpDir, BucketMetadata const& meta);
 
     void put(BucketEntry const& e);
