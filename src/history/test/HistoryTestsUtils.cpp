@@ -94,8 +94,8 @@ S3HistoryConfigurator::configure(Config& mCfg, bool writable) const
 }
 
 BucketOutputIteratorForTesting::BucketOutputIteratorForTesting(
-    std::string const& tmpDir)
-    : BucketOutputIterator{tmpDir, testutil::testBucketMetadata(0, false)}
+    std::string const& tmpDir, MergeCounters& mc)
+    : BucketOutputIterator{tmpDir, testutil::testBucketMetadata(0, false), mc}
 {
 }
 
@@ -105,10 +105,10 @@ BucketOutputIteratorForTesting::writeTmpTestBucket()
     auto ledgerEntries =
         LedgerTestUtils::generateValidLedgerEntries(NUM_ITEMS_PER_BUCKET);
     auto bucketEntries = Bucket::convertToBucketEntry(ledgerEntries, false);
-
+    MergeCounters mc;
     for (auto const& bucketEntry : bucketEntries)
     {
-        put(bucketEntry);
+        put(bucketEntry, mc);
     }
 
     // Finish writing and close the bucket file
@@ -138,8 +138,8 @@ TestBucketGenerator::generateBucket(TestBucketState state)
         // Skip uploading the file, return any hash
         return binToHex(hash);
     }
-
-    BucketOutputIteratorForTesting bucketOut{mTmpDir->getName()};
+    MergeCounters mc;
+    BucketOutputIteratorForTesting bucketOut{mTmpDir->getName(), mc};
     std::string filename;
     std::tie(filename, hash) = bucketOut.writeTmpTestBucket();
 

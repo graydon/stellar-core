@@ -24,7 +24,7 @@ FutureBucket::FutureBucket(Application& app,
                            std::shared_ptr<Bucket> const& curr,
                            std::shared_ptr<Bucket> const& snap,
                            std::vector<std::shared_ptr<Bucket>> const& shadows,
-                           bool keepDeadEntries)
+                           bool keepDeadEntries, bool countMergeEvents)
     : mState(FB_LIVE_INPUTS)
     , mInputCurrBucket(curr)
     , mInputSnapBucket(snap)
@@ -41,7 +41,7 @@ FutureBucket::FutureBucket(Application& app,
     {
         mInputShadowBucketHashes.push_back(binToHex(b->getHash()));
     }
-    startMerge(app, keepDeadEntries);
+    startMerge(app, keepDeadEntries, countMergeEvents);
 }
 
 void
@@ -251,7 +251,8 @@ FutureBucket::getOutputHash() const
 }
 
 void
-FutureBucket::startMerge(Application& app, bool keepDeadEntries)
+FutureBucket::startMerge(Application& app, bool keepDeadEntries,
+                         bool countMergeEvents)
 {
     // NB: startMerge starts with FutureBucket in a half-valid state; the inputs
     // are live but the merge is not yet running. So you can't call checkState()
@@ -274,13 +275,14 @@ FutureBucket::startMerge(Application& app, bool keepDeadEntries)
     BucketManager& bm = app.getBucketManager();
 
     using task_t = std::packaged_task<std::shared_ptr<Bucket>()>;
-    std::shared_ptr<task_t> task =
-        std::make_shared<task_t>([curr, snap, &bm, shadows, keepDeadEntries]() {
+    std::shared_ptr<task_t> task = std::make_shared<task_t>(
+        [curr, snap, &bm, shadows, keepDeadEntries, countMergeEvents]() {
             CLOG(TRACE, "Bucket")
                 << "Worker merging curr=" << hexAbbrev(curr->getHash())
                 << " with snap=" << hexAbbrev(snap->getHash());
 
-            auto res = Bucket::merge(bm, curr, snap, shadows, keepDeadEntries);
+            auto res = Bucket::merge(bm, curr, snap, shadows, keepDeadEntries,
+                                     countMergeEvents);
 
             CLOG(TRACE, "Bucket")
                 << "Worker finished merging curr=" << hexAbbrev(curr->getHash())
@@ -322,7 +324,7 @@ FutureBucket::makeLive(Application& app, bool keepDeadEntries)
             mInputShadowBuckets.push_back(b);
         }
         mState = FB_LIVE_INPUTS;
-        startMerge(app, keepDeadEntries);
+        startMerge(app, keepDeadEntries, /*countMergeEvents=*/true);
         assert(isLive());
     }
 }

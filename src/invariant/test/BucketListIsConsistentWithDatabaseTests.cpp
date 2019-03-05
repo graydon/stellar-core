@@ -151,25 +151,27 @@ struct BucketListGenerator
     {
         auto& blGenerate = mAppGenerate->getBucketManager().getBucketList();
         auto& bmApply = mAppApply->getBucketManager();
-
+        MergeCounters mergeCounters;
         for (uint32_t i = 0; i <= BucketList::kNumLevels - 1; i++)
         {
             auto& level = blGenerate.getLevel(i);
             {
                 BucketOutputIterator out(bmApply.getTmpDir(),
-                                         testutil::testBucketMetadata(0, true));
+                                         testutil::testBucketMetadata(0, true),
+                                         mergeCounters);
                 for (BucketInputIterator in (level.getCurr()); in; ++in)
                 {
-                    out.put(*in);
+                    out.put(*in, mergeCounters);
                 }
                 out.getBucket(bmApply);
             }
             {
                 BucketOutputIterator out(bmApply.getTmpDir(),
-                                         testutil::testBucketMetadata(0, true));
+                                         testutil::testBucketMetadata(0, true),
+                                         mergeCounters);
                 for (BucketInputIterator in (level.getSnap()); in; ++in)
                 {
-                    out.put(*in);
+                    out.put(*in, mergeCounters);
                 }
                 out.getBucket(bmApply);
             }

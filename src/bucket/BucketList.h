@@ -321,7 +321,8 @@ class BucketLevel
     void commit();
     void prepare(Application& app, uint32_t currLedger,
                  uint32_t currLedgerProtocol, std::shared_ptr<Bucket> snap,
-                 std::vector<std::shared_ptr<Bucket>> const& shadows);
+                 std::vector<std::shared_ptr<Bucket>> const& shadows,
+                 bool countMergeEvents);
     std::shared_ptr<Bucket> snap();
 };
 

@@ -80,7 +80,8 @@ class BucketOutputIteratorForTesting : public BucketOutputIterator
     const size_t NUM_ITEMS_PER_BUCKET = 5;
 
   public:
-    explicit BucketOutputIteratorForTesting(std::string const& tmpDir);
+    explicit BucketOutputIteratorForTesting(std::string const& tmpDir,
+                                            MergeCounters& mc);
     std::pair<std::string, uint256> writeTmpTestBucket();
 };
 

@@ -73,7 +73,8 @@ class FutureBucket
 
     void checkHashesMatch() const;
     void checkState() const;
-    void startMerge(Application& app, bool keepDeadEntries);
+    void startMerge(Application& app, bool keepDeadEntries,
+                    bool countMergeEvents);
 
     void clearInputs();
     void clearOutput();
@@ -83,7 +84,7 @@ class FutureBucket
     FutureBucket(Application& app, std::shared_ptr<Bucket> const& curr,
                  std::shared_ptr<Bucket> const& snap,
                  std::vector<std::shared_ptr<Bucket>> const& shadows,
-                 bool keepDeadEntries);
+                 bool keepDeadEntries, bool countMergeEvents);
 
     FutureBucket() = default;
     FutureBucket(FutureBucket const& other) = default;

@@ -33,7 +33,8 @@ randomBucketName(std::string const& tmpDir)
  * hashes them while writing to either destination. Produces a Bucket when done.
  */
 BucketOutputIterator::BucketOutputIterator(std::string const& tmpDir,
-                                           BucketMetadata const& meta)
+                                           BucketMetadata const& meta,
+                                           MergeCounters& mc)
     : mFilename(randomBucketName(tmpDir))
     , mBuf(nullptr)
     , mHasher(SHA256::create())
@@ -50,15 +51,16 @@ BucketOutputIterator::BucketOutputIterator(std::string const& tmpDir,
         BucketEntry bme;
         bme.type(METAENTRY);
         bme.metaEntry() = mMeta;
-        put(bme);
+        put(bme, mc);
     }
 }
 
 void
-BucketOutputIterator::put(BucketEntry const& e)
+BucketOutputIterator::put(BucketEntry const& e, MergeCounters& mc)
 {
     if (!mMeta.keepDeadEntries && e.type() == DEADENTRY)
     {
+        ++mc.mOutputIteratorTombstoneElisions;
         return;
     }
 
@@ -73,6 +75,7 @@ BucketOutputIterator::put(BucketEntry const& e)
         // merely replace (same identity), the buffered entry.
         if (mCmp(*mBuf, e))
         {
+            ++mc.mOutputIteratorActualWrites;
             mOut.writeOne(*mBuf, mHasher.get(), &mBytesPut);
             mObjectsPut++;
         }
@@ -83,6 +86,7 @@ BucketOutputIterator::put(BucketEntry const& e)
     }
 
     // In any case, replace *mBuf with e.
+    ++mc.mOutputIteratorBufferUpdates;
     *mBuf = e;
 }
 

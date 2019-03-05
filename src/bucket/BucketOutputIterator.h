@@ -4,6 +4,7 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
+#include "bucket/BucketManager.h"
 #include "bucket/LedgerCmp.h"
 #include "util/XDRStream.h"
 #include "xdr/Stellar-ledger.h"
@@ -32,7 +33,6 @@ class BucketOutputIterator
     BucketMetadata mMeta;
 
   public:
-
     // BucketOutputIterators must _always_ be constructed with BucketMetadata,
     // regardless of the ledger version the bucket is being written from, even
     // if it's pre-METAENTRY support. The BucketOutputIterator constructor
@@ -40,9 +40,10 @@ class BucketOutputIterator
     // version new enough that it should _write_ the metadata to the stream in
     // the form of a METAENTRY; but that's not a thing the caller gets to decide
     // (or forget to do), it's handled automatically.
-    BucketOutputIterator(std::string const& tmpDir, BucketMetadata const& meta);
+    BucketOutputIterator(std::string const& tmpDir, BucketMetadata const& meta,
+                         MergeCounters& mc);
 
-    void put(BucketEntry const& e);
+    void put(BucketEntry const& e, MergeCounters& mc);
 
     std::shared_ptr<Bucket> getBucket(BucketManager& bucketManager);
 };

@@ -130,7 +130,7 @@ std::shared_ptr<Bucket>
 Bucket::fresh(BucketManager& bucketManager, uint32_t protocolVersion,
               std::vector<LedgerEntry> const& initEntries,
               std::vector<LedgerEntry> const& liveEntries,
-              std::vector<LedgerKey> const& deadEntries)
+              std::vector<LedgerKey> const& deadEntries, bool countMergeEvents)
 {
     // When building fresh buckets after protocol version 10 (i.e. version
     // 11-or-after) we differentiate INITENTRY from LIVEENTRY. In older
@@ -146,43 +146,70 @@ Bucket::fresh(BucketManager& bucketManager, uint32_t protocolVersion,
     meta.ledgerVersion = protocolVersion;
     meta.keepDeadEntries = true;
 
-    BucketOutputIterator initOut(bucketManager.getTmpDir(), meta);
-    BucketOutputIterator liveOut(bucketManager.getTmpDir(), meta);
-    BucketOutputIterator deadOut(bucketManager.getTmpDir(), meta);
+    MergeCounters mc;
+    BucketOutputIterator initOut(bucketManager.getTmpDir(), meta, mc);
+    BucketOutputIterator liveOut(bucketManager.getTmpDir(), meta, mc);
+    BucketOutputIterator deadOut(bucketManager.getTmpDir(), meta, mc);
     for (auto const& e : init)
     {
-        initOut.put(e);
+        initOut.put(e, mc);
     }
     for (auto const& e : live)
     {
-        liveOut.put(e);
+        liveOut.put(e, mc);
     }
     for (auto const& e : dead)
     {
-        deadOut.put(e);
+        deadOut.put(e, mc);
     }
     auto initBucket = initOut.getBucket(bucketManager);
     auto liveBucket = liveOut.getBucket(bucketManager);
     auto deadBucket = deadOut.getBucket(bucketManager);
+    if (countMergeEvents)
+    {
+        bucketManager.incrMergeCounters(mc);
+    }
 
     std::shared_ptr<Bucket> bucket1, bucket2;
     {
         auto timer = LogSlowExecution("Bucket merge");
         bucket1 = Bucket::merge(bucketManager, initBucket, liveBucket,
-                                /*shadows=*/{}, /*keepDeadEntries*/ true);
+                                /*shadows=*/{}, /*keepDeadEntries*/ true,
+                                countMergeEvents);
     }
     {
         auto timer = LogSlowExecution("Bucket merge");
         bucket2 = Bucket::merge(bucketManager, bucket1, deadBucket,
-                                /*shadows=*/{}, /*keepDeadEntries*/ true);
+                                /*shadows=*/{}, /*keepDeadEntries*/ true,
+                                countMergeEvents);
     }
     return bucket2;
+}
+
+static void
+countShadowedEntryType(MergeCounters& mc, BucketEntry const& e)
+{
+    switch (e.type())
+    {
+    case METAENTRY:
+        ++mc.mMetaEntryShadowElisions;
+        break;
+    case INITENTRY:
+        ++mc.mInitEntryShadowElisions;
+        break;
+    case LIVEENTRY:
+        ++mc.mLiveEntryShadowElisions;
+        break;
+    case DEADENTRY:
+        ++mc.mDeadEntryShadowElisions;
+        break;
+    }
 }
 
 inline void
 maybePut(BucketOutputIterator& out, BucketEntry const& entry,
          std::vector<BucketInputIterator>& shadowIterators,
-         bool keepShadowedLifecycleEntries)
+         bool keepShadowedLifecycleEntries, MergeCounters& mc)
 {
     BucketEntryIdCmp cmp;
     for (auto& si : shadowIterators)
@@ -190,6 +217,7 @@ maybePut(BucketOutputIterator& out, BucketEntry const& entry,
         // Advance the shadowIterator while it's less than the candidate
         while (si && cmp(*si, entry))
         {
+            ++mc.mShadowScanSteps;
             ++si;
         }
         // We have stepped si forward to the point that either si is exhausted,
@@ -245,11 +273,54 @@ maybePut(BucketOutputIterator& out, BucketEntry const& entry,
             // accompished through filtering at the BucketOutputIterator
             // level, and happens independent of ledger protocol version.
             if (entry.type() == LIVEENTRY || !keepShadowedLifecycleEntries)
+            {
+                countShadowedEntryType(mc, entry);
                 return;
+            }
         }
     }
     // Nothing shadowed.
-    out.put(entry);
+    out.put(entry, mc);
+}
+
+static void
+countOldEntryType(MergeCounters& mc, BucketEntry const& e)
+{
+    switch (e.type())
+    {
+    case METAENTRY:
+        ++mc.mOldMetaEntries;
+        break;
+    case INITENTRY:
+        ++mc.mOldInitEntries;
+        break;
+    case LIVEENTRY:
+        ++mc.mOldLiveEntries;
+        break;
+    case DEADENTRY:
+        ++mc.mOldDeadEntries;
+        break;
+    }
+}
+
+static void
+countNewEntryType(MergeCounters& mc, BucketEntry const& e)
+{
+    switch (e.type())
+    {
+    case METAENTRY:
+        ++mc.mNewMetaEntries;
+        break;
+    case INITENTRY:
+        ++mc.mNewInitEntries;
+        break;
+    case LIVEENTRY:
+        ++mc.mNewLiveEntries;
+        break;
+    case DEADENTRY:
+        ++mc.mNewDeadEntries;
+        break;
+    }
 }
 
 std::shared_ptr<Bucket>
@@ -257,7 +328,7 @@ Bucket::merge(BucketManager& bucketManager,
               std::shared_ptr<Bucket> const& oldBucket,
               std::shared_ptr<Bucket> const& newBucket,
               std::vector<std::shared_ptr<Bucket>> const& shadows,
-              bool keepDeadEntries)
+              bool keepDeadEntries, bool countMergeEvents)
 {
     // This is the key operation in the scheme: merging two (read-only)
     // buckets together into a new 3rd bucket, while calculating its hash,
@@ -266,6 +337,7 @@ Bucket::merge(BucketManager& bucketManager,
     assert(oldBucket);
     assert(newBucket);
 
+    MergeCounters mc;
     BucketInputIterator oi(oldBucket);
     BucketInputIterator ni(newBucket);
 
@@ -284,14 +356,22 @@ Bucket::merge(BucketManager& bucketManager,
     BucketMetadata meta;
     meta.ledgerVersion = protocolVersion;
     meta.keepDeadEntries = keepDeadEntries;
-    BucketOutputIterator out(bucketManager.getTmpDir(), meta);
+    BucketOutputIterator out(bucketManager.getTmpDir(), meta, mc);
 
     // When merging buckets after protocol version 10 (i.e. version 11-or-after)
     // we switch shadowing-behaviour to a more conservative mode, in order to
     // support annihilation of INITENTRY and DEADENTRY pairs. See commentary
     // above in `maybePut`.
-    bool keepShadowedLifecycleEntries =
-        (protocolVersion >= FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY);
+    bool keepShadowedLifecycleEntries = true;
+    if (protocolVersion < FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY)
+    {
+        ++mc.mPreInitEntryProtocolMerges;
+        keepShadowedLifecycleEntries = false;
+    }
+    else
+    {
+        ++mc.mPostInitEntryProtocolMerges;
+    }
 
     BucketEntryIdCmp cmp;
     while (oi || ni)
@@ -299,25 +379,37 @@ Bucket::merge(BucketManager& bucketManager,
         if (!ni)
         {
             // Out of new entries, take old entries.
-            maybePut(out, *oi, shadowIterators, keepShadowedLifecycleEntries);
+            ++mc.mOldEntriesDefaultAccepted;
+            countOldEntryType(mc, *oi);
+            maybePut(out, *oi, shadowIterators, keepShadowedLifecycleEntries,
+                     mc);
             ++oi;
         }
         else if (!oi)
         {
             // Out of old entries, take new entries.
-            maybePut(out, *ni, shadowIterators, keepShadowedLifecycleEntries);
+            ++mc.mNewEntriesDefaultAccepted;
+            countNewEntryType(mc, *ni);
+            maybePut(out, *ni, shadowIterators, keepShadowedLifecycleEntries,
+                     mc);
             ++ni;
         }
         else if (cmp(*oi, *ni))
         {
             // Next old-entry has smaller key, take it.
-            maybePut(out, *oi, shadowIterators, keepShadowedLifecycleEntries);
+            ++mc.mOldEntriesDefaultAccepted;
+            countOldEntryType(mc, *oi);
+            maybePut(out, *oi, shadowIterators, keepShadowedLifecycleEntries,
+                     mc);
             ++oi;
         }
         else if (cmp(*ni, *oi))
         {
             // Next new-entry has smaller key, take it.
-            maybePut(out, *ni, shadowIterators, keepShadowedLifecycleEntries);
+            ++mc.mNewEntriesDefaultAccepted;
+            countNewEntryType(mc, *ni);
+            maybePut(out, *ni, shadowIterators, keepShadowedLifecycleEntries,
+                     mc);
             ++ni;
         }
         else
@@ -395,6 +487,9 @@ Bucket::merge(BucketManager& bucketManager,
 
             BucketEntry const& oldEntry = *oi;
             BucketEntry const& newEntry = *ni;
+            countOldEntryType(mc, oldEntry);
+            countNewEntryType(mc, newEntry);
+
             if (newEntry.type() == INITENTRY)
             {
                 // The only legal new-is-INIT case is a merging a
@@ -403,8 +498,9 @@ Bucket::merge(BucketManager& bucketManager,
                 BucketEntry newLive;
                 newLive.type(LIVEENTRY);
                 newLive.liveEntry() = newEntry.liveEntry();
+                ++mc.mNewInitEntriesMergedWithOldDead;
                 maybePut(out, newLive, shadowIterators,
-                         keepShadowedLifecycleEntries);
+                         keepShadowedLifecycleEntries, mc);
             }
             else if (oldEntry.type() == INITENTRY)
             {
@@ -415,24 +511,31 @@ Bucket::merge(BucketManager& bucketManager,
                     BucketEntry newInit;
                     newInit.type(INITENTRY);
                     newInit.liveEntry() = newEntry.liveEntry();
+                    ++mc.mOldInitEntriesMergedWithNewLive;
                     maybePut(out, newInit, shadowIterators,
-                             keepShadowedLifecycleEntries);
+                             keepShadowedLifecycleEntries, mc);
                 }
                 else
                 {
                     // Merge a create+delete to nothingness.
+                    ++mc.mOldInitEntriesMergedWithNewDead;
                     assert(newEntry.type() == DEADENTRY);
                 }
             }
             else
             {
                 // Neither is in INIT state, take the newer one.
+                ++mc.mNewEntriesMergedWithOldNeitherInit;
                 maybePut(out, newEntry, shadowIterators,
-                         keepShadowedLifecycleEntries);
+                         keepShadowedLifecycleEntries, mc);
             }
             ++oi;
             ++ni;
         }
+    }
+    if (countMergeEvents)
+    {
+        bucketManager.incrMergeCounters(mc);
     }
     return out.getBucket(bucketManager);
 }
