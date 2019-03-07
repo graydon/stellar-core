@@ -81,6 +81,11 @@ class LedgerManagerImpl : public LedgerManager
     State mState;
     void setState(State s);
 
+    bool mUseBucketTestingEntries{false};
+    std::vector<LedgerEntry> mBucketTestingInitEntries;
+    std::vector<LedgerEntry> mBucketTestingLiveEntries;
+    std::vector<LedgerKey> mBucketTestingDeadEntries;
+
   protected:
     SyncingLedgerChain mSyncingLedgers;
 
@@ -124,6 +129,11 @@ class LedgerManagerImpl : public LedgerManager
 
     void startCatchup(CatchupConfiguration configuration,
                       bool manualCatchup) override;
+
+    void setNextLedgerEntryBatchForBucketTesting(
+        std::vector<LedgerEntry> const& initEntries,
+        std::vector<LedgerEntry> const& liveEntries,
+        std::vector<LedgerKey> const& deadEntries) override;
 
     void closeLedger(LedgerCloseData const& ledgerData) override;
     void deleteOldEntries(Database& db, uint32_t ledgerSeq,

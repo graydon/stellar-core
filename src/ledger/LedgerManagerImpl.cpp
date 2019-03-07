@@ -737,6 +737,18 @@ LedgerManagerImpl::syncMetrics()
     mApp.syncOwnMetrics();
 }
 
+void
+LedgerManagerImpl::setNextLedgerEntryBatchForBucketTesting(
+    std::vector<LedgerEntry> const& initEntries,
+    std::vector<LedgerEntry> const& liveEntries,
+    std::vector<LedgerKey> const& deadEntries)
+{
+    mUseBucketTestingEntries = true;
+    mBucketTestingInitEntries = initEntries;
+    mBucketTestingLiveEntries = liveEntries;
+    mBucketTestingDeadEntries = deadEntries;
+}
+
 /*
     This is the main method that closes the current ledger based on
 the close context that was computed by SCP or by the historical module
@@ -1038,9 +1050,22 @@ LedgerManagerImpl::ledgerClosed(AbstractLedgerTxn& ltx)
 {
     auto ledgerSeq = ltx.loadHeader().current().ledgerSeq;
     auto ledgerVers = ltx.loadHeader().current().ledgerVersion;
-    mApp.getBucketManager().addBatch(mApp, ledgerSeq, ledgerVers,
-                                     ltx.getInitEntries(), ltx.getLiveEntries(),
-                                     ltx.getDeadEntries());
+    if (mUseBucketTestingEntries)
+    {
+        // Seal the ltx but throw its entries away.
+        ltx.getInitEntries();
+        // Use the testing values.
+        mApp.getBucketManager().addBatch(
+            mApp, ledgerSeq, ledgerVers, mBucketTestingInitEntries,
+            mBucketTestingLiveEntries, mBucketTestingDeadEntries);
+        mUseBucketTestingEntries = false;
+    }
+    else
+    {
+        mApp.getBucketManager().addBatch(
+            mApp, ledgerSeq, ledgerVers, ltx.getInitEntries(),
+            ltx.getLiveEntries(), ltx.getDeadEntries());
+    }
 
     ltx.unsealHeader([this](LedgerHeader& lh) {
         mApp.getBucketManager().snapshotLedger(lh);
