@@ -494,7 +494,11 @@ Bucket::merge(BucketManager& bucketManager,
             {
                 // The only legal new-is-INIT case is a merging a
                 // delete+create to an update.
-                assert(oldEntry.type() == DEADENTRY);
+                if (oldEntry.type() != DEADENTRY)
+                {
+                    throw std::runtime_error(
+                        "Malformed bucket: old non-DEAD + new INIT.");
+                }
                 BucketEntry newLive;
                 newLive.type(LIVEENTRY);
                 newLive.liveEntry() = newEntry.liveEntry();
@@ -519,7 +523,11 @@ Bucket::merge(BucketManager& bucketManager,
                 {
                     // Merge a create+delete to nothingness.
                     ++mc.mOldInitEntriesMergedWithNewDead;
-                    assert(newEntry.type() == DEADENTRY);
+                    if (newEntry.type() != DEADENTRY)
+                    {
+                        throw std::runtime_error(
+                            "Malformed bucket: old INIT + new non-DEAD.");
+                    }
                 }
             }
             else

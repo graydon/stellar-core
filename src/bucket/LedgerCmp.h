@@ -124,20 +124,32 @@ struct BucketEntryIdCmp
             }
             else
             {
-                assert(bty == DEADENTRY);
+                if (bty != DEADENTRY)
+                {
+                    throw std::runtime_error("Malformed bucket: unexpected "
+                                             "non-INIT/LIVE/DEAD entry.");
+                }
                 return LedgerEntryIdCmp{}(a.liveEntry().data, b.deadEntry());
             }
         }
         else
         {
-            assert(aty == DEADENTRY);
+            if (aty != DEADENTRY)
+            {
+                throw std::runtime_error(
+                    "Malformed bucket: unexpected non-INIT/LIVE/DEAD entry.");
+            }
             if (bty == LIVEENTRY || bty == INITENTRY)
             {
                 return LedgerEntryIdCmp{}(a.deadEntry(), b.liveEntry().data);
             }
             else
             {
-                assert(bty == DEADENTRY);
+                if (bty != DEADENTRY)
+                {
+                    throw std::runtime_error("Malformed bucket: unexpected "
+                                             "non-INIT/LIVE/DEAD entry.");
+                }
                 return LedgerEntryIdCmp{}(a.deadEntry(), b.deadEntry());
             }
         }

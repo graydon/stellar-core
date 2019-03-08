@@ -21,8 +21,16 @@ BucketInputIterator::loadEntry()
         {
             // There should only be one METAENTRY in the input stream
             // and it should be the first record.
-            assert(!mSeenMetadata);
-            assert(!mSeenOtherEntries);
+            if (mSeenMetadata)
+            {
+                throw std::runtime_error(
+                    "Malformed bucket: multiple META entries.");
+            }
+            if (mSeenOtherEntries)
+            {
+                throw std::runtime_error(
+                    "Malformed bucket: META after other entries.");
+            }
             mMetadata = mEntry.metaEntry();
             mSeenMetadata = true;
             loadEntry();

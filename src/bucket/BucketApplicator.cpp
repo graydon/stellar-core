@@ -53,7 +53,11 @@ BucketApplicator::advance(BucketApplicator::Counters& counters)
         }
         else
         {
-            assert(e.type() == DEADENTRY);
+            if (e.type() != DEADENTRY)
+            {
+                throw std::runtime_error(
+                    "Malformed bucket: unexpected non-INIT/LIVE/DEAD entry.");
+            }
             ltx.eraseWithoutLoading(e.deadEntry());
         }
 
