@@ -155,7 +155,7 @@ BucketLevel::prepare(Application& app, uint32_t currLedger,
     }
 
     mNextCurr =
-        FutureBucket(app, curr, snap, shadows,
+        FutureBucket(app, curr, snap, shadows, currLedgerProtocol,
                      BucketList::keepDeadEntries(mLevel), countMergeEvents);
     assert(mNextCurr.isMerging());
 }
@@ -526,7 +526,7 @@ BucketList::addBatch(Application& app, uint32_t currLedger,
 }
 
 void
-BucketList::restartMerges(Application& app)
+BucketList::restartMerges(Application& app, uint32_t maxProtocolVersion)
 {
     for (uint32_t i = 0; i < static_cast<uint32>(mLevels.size()); i++)
     {
@@ -534,7 +534,7 @@ BucketList::restartMerges(Application& app)
         auto& next = level.getNext();
         if (next.hasHashes() && !next.isLive())
         {
-            next.makeLive(app, keepDeadEntries(i));
+            next.makeLive(app, maxProtocolVersion, keepDeadEntries(i));
             if (next.isMerging())
             {
                 CLOG(INFO, "Bucket")

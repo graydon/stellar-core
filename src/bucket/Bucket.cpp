@@ -84,7 +84,8 @@ Bucket::containsBucketIdentity(BucketEntry const& id) const
 void
 Bucket::apply(Application& app) const
 {
-    BucketApplicator applicator(app, shared_from_this());
+    BucketApplicator applicator(app, app.getConfig().LEDGER_PROTOCOL_VERSION,
+                                shared_from_this());
     BucketApplicator::Counters counters(std::chrono::system_clock::now());
     while (applicator)
     {
@@ -172,15 +173,15 @@ Bucket::fresh(BucketManager& bucketManager, uint32_t protocolVersion,
     std::shared_ptr<Bucket> bucket1, bucket2;
     {
         auto timer = LogSlowExecution("Bucket merge");
-        bucket1 = Bucket::merge(bucketManager, initBucket, liveBucket,
-                                /*shadows=*/{}, /*keepDeadEntries*/ true,
-                                countMergeEvents);
+        bucket1 = Bucket::merge(
+            bucketManager, protocolVersion, initBucket, liveBucket,
+            /*shadows=*/{}, /*keepDeadEntries*/ true, countMergeEvents);
     }
     {
         auto timer = LogSlowExecution("Bucket merge");
-        bucket2 = Bucket::merge(bucketManager, bucket1, deadBucket,
-                                /*shadows=*/{}, /*keepDeadEntries*/ true,
-                                countMergeEvents);
+        bucket2 = Bucket::merge(
+            bucketManager, protocolVersion, bucket1, deadBucket,
+            /*shadows=*/{}, /*keepDeadEntries*/ true, countMergeEvents);
     }
     return bucket2;
 }
@@ -323,7 +324,7 @@ countNewEntryType(MergeCounters& mc, BucketEntry const& e)
 }
 
 std::shared_ptr<Bucket>
-Bucket::merge(BucketManager& bucketManager,
+Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
               std::shared_ptr<Bucket> const& oldBucket,
               std::shared_ptr<Bucket> const& newBucket,
               std::vector<std::shared_ptr<Bucket>> const& shadows,
@@ -349,6 +350,13 @@ Bucket::merge(BucketManager& bucketManager,
     {
         protocolVersion =
             std::max(si.getMetadata().ledgerVersion, protocolVersion);
+    }
+
+    if (protocolVersion > maxProtocolVersion)
+    {
+        throw std::runtime_error(fmt::format(
+            "bucket protocol version {} exceeds maxProtocolVersion {}",
+            protocolVersion, maxProtocolVersion));
     }
 
     auto timer = bucketManager.getMergeTimer().TimeScope();

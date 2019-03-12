@@ -404,7 +404,7 @@ class BucketList
     // merging buckets between levels. This needs to be called after forcing a
     // BucketList to adopt a new state, either at application restart or when
     // catching up from buckets loaded over the network.
-    void restartMerges(Application& app);
+    void restartMerges(Application& app, uint32_t maxProtocolVersion);
 
     // Add a batch of initial (created), live (updated) and dead entries to the
     // bucketlist, representing the entries effected by closing

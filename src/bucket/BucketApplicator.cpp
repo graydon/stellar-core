@@ -7,6 +7,7 @@
 #include "bucket/Bucket.h"
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
+#include "lib/util/format.h"
 #include "main/Application.h"
 #include "util/Logging.h"
 #include "util/types.h"
@@ -15,9 +16,17 @@ namespace stellar
 {
 
 BucketApplicator::BucketApplicator(Application& app,
+                                   uint32_t maxProtocolVersion,
                                    std::shared_ptr<const Bucket> bucket)
-    : mApp(app), mBucketIter(bucket)
+    : mApp(app), mMaxProtocolVersion(maxProtocolVersion), mBucketIter(bucket)
 {
+    auto protocolVersion = mBucketIter.getMetadata().ledgerVersion;
+    if (protocolVersion > mMaxProtocolVersion)
+    {
+        throw std::runtime_error(fmt::format(
+            "bucket protocol version {} exceeds maxProtocolVersion {}",
+            protocolVersion, mMaxProtocolVersion));
+    }
 }
 
 BucketApplicator::operator bool() const

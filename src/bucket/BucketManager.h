@@ -145,8 +145,9 @@ class BucketManager : NonMovableOrCopyable
     checkForMissingBucketsFiles(HistoryArchiveState const& has) = 0;
 
     // Restart from a saved state: find and attach all buckets in `has`, set
-    // current BL.
-    virtual void assumeState(HistoryArchiveState const& has) = 0;
+    // current BL. Pass `maxProtocolVersion` to any restarted merges.
+    virtual void assumeState(HistoryArchiveState const& has,
+                             uint32_t maxProtocolVersion) = 0;
 
     // Ensure all needed buckets are retained
     virtual void shutdown() = 0;

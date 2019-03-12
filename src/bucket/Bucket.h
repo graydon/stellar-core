@@ -87,8 +87,13 @@ class Bucket : public std::enable_shared_from_this<Bucket>,
     // are overridden in the fresh bucket by keywise-equal entries in
     // `newBucket`. Entries are inhibited from the fresh bucket by keywise-equal
     // entries in any of the buckets in the provided `shadows` vector.
+    //
+    // Each bucket is self-describing in terms of the ledger protocol version it
+    // was constructed under, and the merge algorithm adjusts to the maximum of
+    // the versions attached to each input or shadow bucket. The provided
+    // `maxProtocolVersion` bounds this and should
     static std::shared_ptr<Bucket>
-    merge(BucketManager& bucketManager,
+    merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
           std::shared_ptr<Bucket> const& oldBucket,
           std::shared_ptr<Bucket> const& newBucket,
           std::vector<std::shared_ptr<Bucket>> const& shadows,

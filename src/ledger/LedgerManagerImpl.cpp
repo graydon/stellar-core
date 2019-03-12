@@ -277,10 +277,11 @@ LedgerManagerImpl::loadLastKnownLedger(
                 }
                 else
                 {
-                    mApp.getBucketManager().assumeState(has);
                     {
                         LedgerTxn ltx(mApp.getLedgerTxnRoot());
                         auto header = ltx.loadHeader();
+                        mApp.getBucketManager().assumeState(
+                            has, header.current().ledgerVersion);
                         CLOG(INFO, "Ledger") << "Loaded last known ledger: "
                                              << ledgerAbbrev(header.current());
                         advanceLedgerPointers(header.current());

@@ -126,7 +126,8 @@ TEST_CASE("file backed buckets", "[bucket][bucketbench]")
             for (auto& e : dead)
                 e = deadGen(3);
             {
-                b1 = Bucket::merge(app->getBucketManager(), b1,
+                b1 = Bucket::merge(app->getBucketManager(),
+                                   app->getConfig().LEDGER_PROTOCOL_VERSION, b1,
                                    Bucket::fresh(app->getBucketManager(),
                                                  getAppLedgerVersion(app), {},
                                                  live, dead),
@@ -246,7 +247,8 @@ TEST_CASE("merging bucket entries", "[bucket]")
                 Bucket::fresh(app->getBucketManager(), getAppLedgerVersion(app),
                               {}, live, dead);
             std::shared_ptr<Bucket> b3 =
-                Bucket::merge(app->getBucketManager(), b1, b2,
+                Bucket::merge(app->getBucketManager(),
+                              app->getConfig().LEDGER_PROTOCOL_VERSION, b1, b2,
                               /*shadows=*/{}, /*keepDeadEntries*/ true);
             CHECK(countEntries(b3) == liveCount);
         }
@@ -301,6 +303,26 @@ generateDifferentAccount(std::vector<LedgerEntry> const& others)
             return e;
         }
     }
+}
+
+TEST_CASE("merges refuse to exceed max protocol version",
+          "[bucket][bucketmaxprotocol]")
+{
+    VirtualClock clock;
+    Config const& cfg = getTestConfig();
+    Application::pointer app = createTestApplication(clock, cfg);
+    auto& bm = app->getBucketManager();
+    auto vers = getAppLedgerVersion(app);
+    LedgerEntry liveEntry = generateAccount();
+    LedgerEntry otherLiveA = generateDifferentAccount({liveEntry});
+    auto bold1 = Bucket::fresh(bm, vers - 1, {}, {liveEntry}, {});
+    auto bold2 = Bucket::fresh(bm, vers - 1, {}, {otherLiveA}, {});
+    auto bnew1 = Bucket::fresh(bm, vers, {}, {liveEntry}, {});
+    auto bnew2 = Bucket::fresh(bm, vers, {}, {otherLiveA}, {});
+    REQUIRE_THROWS_AS(Bucket::merge(bm, vers - 1, bnew1, bnew2, {}, true),
+                      std::runtime_error);
+    REQUIRE_THROWS_AS(Bucket::merge(bm, vers - 1, bold1, bold2, {bnew1}, true),
+                      std::runtime_error);
 }
 
 TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
@@ -437,9 +459,11 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
             CHECK(enew.nLive == 0);
             CHECK(enew.nDead == 1);
 
-            auto bmerge1 = Bucket::merge(bm, bold, bmed, /*shadows=*/{},
+            auto bmerge1 = Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION, bold,
+                                         bmed, /*shadows=*/{},
                                          /*keepDeadEntries=*/true);
-            auto bmerge2 = Bucket::merge(bm, bmerge1, bnew, /*shadows=*/{},
+            auto bmerge2 = Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION,
+                                         bmerge1, bnew, /*shadows=*/{},
                                          /*keepDeadEntries=*/true);
             EntryCounts emerge1(bmerge1), emerge2(bmerge2);
             if (initEra)
@@ -473,7 +497,8 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
             auto shadow = Bucket::fresh(bm, vers, {}, {liveEntry}, {});
             auto b1 = Bucket::fresh(bm, vers, {initEntry}, {}, {});
             auto b2 = Bucket::fresh(bm, vers, {otherInitA}, {}, {});
-            auto merged = Bucket::merge(bm, b1, b2, /*shadows=*/{shadow},
+            auto merged = Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION, b1, b2,
+                                        /*shadows=*/{shadow},
                                         /*keepDeadEntries=*/true);
             EntryCounts e(merged);
             if (initEra)
@@ -511,7 +536,8 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
             // just to be a thing-to-merge-level-3-with in the presence of
             // shadowing from 1 and 2.
             auto merge43 =
-                Bucket::merge(bm, level4, level3, {level2, level1}, true);
+                Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION, level4, level3,
+                              {level2, level1}, true);
             EntryCounts e43(merge43);
             if (initEra)
             {
@@ -532,7 +558,8 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
 
             // Do a merge between level 2 and 1, producing potentially
             // an annihilation of their INIT and DEAD pair.
-            auto merge21 = Bucket::merge(bm, level2, level1, {}, true);
+            auto merge21 = Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION,
+                                         level2, level1, {}, true);
             EntryCounts e21(merge21);
             if (initEra)
             {
@@ -553,8 +580,10 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
 
             // Do two more merges: one between the two merges we've
             // done so far, and then finally one with level 5.
-            auto merge4321 = Bucket::merge(bm, merge43, merge21, {}, true);
-            auto merge54321 = Bucket::merge(bm, level5, merge4321, {}, true);
+            auto merge4321 = Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION,
+                                           merge43, merge21, {}, true);
+            auto merge54321 = Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION,
+                                            level5, merge4321, {}, true);
             EntryCounts e54321(merge21);
             if (initEra)
             {
@@ -591,7 +620,8 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
             // shadowing-out the init on level 3. Level 2 is a placeholder here,
             // just to be a thing-to-merge-level-3-with in the presence of
             // shadowing from 1.
-            auto merge32 = Bucket::merge(bm, level3, level2, {level1}, true);
+            auto merge32 = Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION,
+                                         level3, level2, {level1}, true);
             EntryCounts e32(merge32);
             if (initEra)
             {
@@ -613,7 +643,8 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
             // Now do a merge between that 3+2 merge and level 1, and we risk
             // collecting tombstones in the lower levels, which we're expressly
             // trying to _stop_ doing by adding INIT.
-            auto merge321 = Bucket::merge(bm, merge32, level1, {}, true);
+            auto merge321 = Bucket::merge(bm, cfg.LEDGER_PROTOCOL_VERSION,
+                                          merge32, level1, {}, true);
             EntryCounts e321(merge321);
             if (initEra)
             {
