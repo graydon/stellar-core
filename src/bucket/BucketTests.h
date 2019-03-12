@@ -31,6 +31,11 @@ struct EntryCounts
     size_t
     sum() const
     {
+        return nLive + nInit + nDead;
+    }
+    size_t
+    sumIncludingMeta() const
+    {
         return nLive + nInit + nDead + nMeta;
     }
     EntryCounts(std::shared_ptr<stellar::Bucket> bucket);
