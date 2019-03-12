@@ -81,6 +81,7 @@ class BucketOutputIteratorForTesting : public BucketOutputIterator
 
   public:
     explicit BucketOutputIteratorForTesting(std::string const& tmpDir,
+                                            uint32_t protocolVersion,
                                             MergeCounters& mc);
     std::pair<std::string, uint256> writeTmpTestBucket();
 };
