@@ -217,7 +217,7 @@ testListUpgrades(VirtualClock::time_point preferredUpgradeDatetime,
                  bool shouldListAny)
 {
     auto cfg = getTestConfig();
-    cfg.LEDGER_PROTOCOL_VERSION = 10;
+    cfg.LEDGER_PROTOCOL_VERSION = 11;
     cfg.TESTING_UPGRADE_DESIRED_FEE = 100;
     cfg.TESTING_UPGRADE_MAX_TX_PER_LEDGER = 50;
     cfg.TESTING_UPGRADE_RESERVE = 100000000;
@@ -315,7 +315,7 @@ testValidateUpgrades(VirtualClock::time_point preferredUpgradeDatetime,
                      bool canBeValid)
 {
     auto cfg = getTestConfig();
-    cfg.LEDGER_PROTOCOL_VERSION = 10;
+    cfg.LEDGER_PROTOCOL_VERSION = 11;
     cfg.TESTING_UPGRADE_DESIRED_FEE = 100;
     cfg.TESTING_UPGRADE_MAX_TX_PER_LEDGER = 50;
     cfg.TESTING_UPGRADE_RESERVE = 100000000;
@@ -326,7 +326,7 @@ testValidateUpgrades(VirtualClock::time_point preferredUpgradeDatetime,
 
     // a ledgerheader used for base cases
     LedgerHeader baseLH;
-    baseLH.ledgerVersion = 8;
+    baseLH.ledgerVersion = 9;
     baseLH.scpValue.closeTime = checkTime;
 
     auto checkWith = [&](bool nomination) {
@@ -342,34 +342,34 @@ testValidateUpgrades(VirtualClock::time_point preferredUpgradeDatetime,
             {
                 REQUIRE(canBeValid ==
                         Upgrades{cfg}.isValid(
-                            toUpgradeType(makeProtocolVersionUpgrade(10)),
+                            toUpgradeType(makeProtocolVersionUpgrade(11)),
                             ledgerUpgradeType, nomination, cfg, baseLH));
             }
             else
             {
                 REQUIRE(Upgrades{cfg}.isValid(
-                    toUpgradeType(makeProtocolVersionUpgrade(10)),
+                    toUpgradeType(makeProtocolVersionUpgrade(11)),
                     ledgerUpgradeType, nomination, cfg, baseLH));
             }
-            // 10 is queued, so this upgrade is only valid when not nominating
-            bool v9Upgrade = Upgrades{cfg}.isValid(
-                toUpgradeType(makeProtocolVersionUpgrade(9)), ledgerUpgradeType,
-                nomination, cfg, baseLH);
+            // 11 is queued, so this upgrade is only valid when not nominating
+            bool v10Upgrade = Upgrades{cfg}.isValid(
+                toUpgradeType(makeProtocolVersionUpgrade(10)),
+                ledgerUpgradeType, nomination, cfg, baseLH);
             if (nomination)
             {
-                REQUIRE(!v9Upgrade);
+                REQUIRE(!v10Upgrade);
             }
             else
             {
-                REQUIRE(v9Upgrade);
+                REQUIRE(v10Upgrade);
             }
             // rollback not allowed
             REQUIRE(!Upgrades{cfg}.isValid(
-                toUpgradeType(makeProtocolVersionUpgrade(7)), ledgerUpgradeType,
+                toUpgradeType(makeProtocolVersionUpgrade(8)), ledgerUpgradeType,
                 nomination, cfg, baseLH));
             // version is not supported
             REQUIRE(!Upgrades{cfg}.isValid(
-                toUpgradeType(makeProtocolVersionUpgrade(11)),
+                toUpgradeType(makeProtocolVersionUpgrade(12)),
                 ledgerUpgradeType, nomination, cfg, baseLH));
         }
 
@@ -1402,6 +1402,67 @@ TEST_CASE("upgrade to version 10", "[upgrades]")
             REQUIRE(getLiabilities(a1) == Liabilities{0, 0});
             REQUIRE(getAssetLiabilities(a1, cur1) == Liabilities{0, 0});
             REQUIRE(getAssetLiabilities(a1, cur2) == Liabilities{0, 0});
+        }
+    }
+}
+
+TEST_CASE("upgrade to version 11", "[upgrades]")
+{
+    VirtualClock clock;
+    auto cfg = getTestConfig(0);
+    cfg.LEDGER_PROTOCOL_VERSION = 10;
+    auto app = createTestApplication(clock, cfg);
+    app->start();
+    auto &lm = app->getLedgerManager();
+    uint32_t oldProto = 10;
+    uint32_t newProto = 11;
+    auto root = TestAccount{*app, txtest::getRoot(app->getNetworkID())};
+
+    for (size_t i = 0; i < 10; ++i)
+    {
+        auto stranger = TestAccount{
+            *app, txtest::getAccount(fmt::format("stranger{}", i))};
+        TxSetFramePtr txSet = std::make_shared<TxSetFrame>(
+            lm.getLastClosedLedgerHeader().hash);
+        uint32_t ledgerSeq = lm.getLastClosedLedgerNum() + 1;
+        uint64_t minBalance = lm.getLastMinBalance(5);
+        uint64_t big = minBalance + ledgerSeq;
+        uint64_t closeTime = 60 * 5 * ledgerSeq;
+        txSet->add(root.tx({txtest::createAccount(stranger, big)}));
+        // Provoke sortForHash and hash-caching:
+        txSet->getContentsHash();
+
+        // On 3rd iteration of advance, perform a ledger-protocol version
+        // upgrade to the new protocol, to activate INITENTRY behaviour.
+        auto upgrades = xdr::xvector<UpgradeType, 6>{};
+        if (i == 3)
+        {
+            auto ledgerUpgrade = LedgerUpgrade{LEDGER_UPGRADE_VERSION};
+            ledgerUpgrade.newLedgerVersion() = newProto;
+            auto v = xdr::xdr_to_opaque(ledgerUpgrade);
+            upgrades.push_back(UpgradeType{v.begin(), v.end()});
+            CLOG(INFO, "Ledger") << "Ledger " << ledgerSeq
+                                 << " upgrading to v" << newProto;
+        }
+        StellarValue sv(txSet->getContentsHash(), closeTime, upgrades, 0);
+        lm.closeLedger(LedgerCloseData(ledgerSeq, txSet, sv));
+        auto mc = app->getBucketManager().readMergeCounters();
+        CLOG(INFO, "Bucket") << "Ledger " << ledgerSeq << " caused "
+                             << mc.mNewInitEntries << " new INITENTRYs";
+        if (i < 3)
+        {
+            // Check that before upgrade, we did not do any INITENTRY.
+            REQUIRE(mc.mPreInitEntryProtocolMerges != 0);
+            REQUIRE(mc.mPostInitEntryProtocolMerges == 0);
+            REQUIRE(mc.mNewInitEntries == 0);
+            REQUIRE(mc.mOldInitEntries == 0);
+        }
+        else
+        {
+            // Check that after upgrade, we did INITENTRY.
+            REQUIRE(mc.mPostInitEntryProtocolMerges != 0);
+            REQUIRE(mc.mNewInitEntries != 0);
+            REQUIRE(mc.mOldInitEntries != 0);
         }
     }
 }
