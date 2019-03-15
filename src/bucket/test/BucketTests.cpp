@@ -337,19 +337,15 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
 
         SECTION("dead and init account entries merge correctly")
         {
-            auto b1 =
-                Bucket::fresh(bm, vers, {initEntry}, {otherLiveA}, {deadEntry});
+            auto b1 = Bucket::fresh(bm, vers, {initEntry}, {}, {deadEntry});
             // In initEra, the INIT will make it through fresh() to the bucket,
             // and mutually annihilate on contact with the DEAD, leaving 0
             // entries. Pre-initEra, the INIT will downgrade to a LIVE during
             // fresh(), and that will be killed by the DEAD, leaving 1
             // (tombstone) entry.
-            //
-            // otherLiveA is present here only to ensure none of the merges get
-            // reduced to an empty bucket, in which _no_ METAENTRY is deposited.
             EntryCounts e(b1);
             CHECK(e.nInit == 0);
-            CHECK(e.nLive == 1);
+            CHECK(e.nLive == 0);
             if (initEra)
             {
                 CHECK(e.nMeta == 1);
@@ -365,16 +361,13 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
         SECTION("dead and init entries merge with intervening live entries "
                 "correctly")
         {
-            auto b1 = Bucket::fresh(bm, vers, {initEntry},
-                                    {liveEntry, otherLiveA}, {deadEntry});
+            auto b1 =
+                Bucket::fresh(bm, vers, {initEntry}, {liveEntry}, {deadEntry});
             // The same thing should happen here as above, except that the INIT
             // will merge-over the LIVE during fresh().
-            //
-            // otherLiveA is present here only to ensure none of the merges get
-            // reduced to an empty bucket, in which _no_ METAENTRY is deposited.
             EntryCounts e(b1);
             CHECK(e.nInit == 0);
-            CHECK(e.nLive == 1);
+            CHECK(e.nLive == 0);
             if (initEra)
             {
                 CHECK(e.nMeta == 1);
@@ -389,13 +382,13 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
 
         SECTION("dead and init entries annihilate multiple live entries")
         {
-            auto b1 = Bucket::fresh(
-                bm, vers, {initEntry},
-                {liveEntry, liveEntry2, liveEntry3, otherLiveA}, {deadEntry});
+            auto b1 =
+                Bucket::fresh(bm, vers, {initEntry},
+                              {liveEntry, liveEntry2, liveEntry3}, {deadEntry});
             // Same deal here as above.
             EntryCounts e(b1);
             CHECK(e.nInit == 0);
-            CHECK(e.nLive == 1);
+            CHECK(e.nLive == 0);
             if (initEra)
             {
                 CHECK(e.nMeta == 1);
@@ -506,12 +499,8 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
             // and why we had to change the shadowing behaviour when introducing
             // INIT. See comment in `maybePut` in Bucket.cpp.
             //
-            // otherLiveA is present here only to ensure none of the merges get
-            // reduced to an empty bucket, in which _no_ METAENTRY is deposited.
-            //
             // (level1 is newest here, level5 is oldest)
-            auto level1 =
-                Bucket::fresh(bm, vers, {}, {otherLiveA}, {deadEntry});
+            auto level1 = Bucket::fresh(bm, vers, {}, {}, {deadEntry});
             auto level2 = Bucket::fresh(bm, vers, {initEntry2}, {}, {});
             auto level3 = Bucket::fresh(bm, vers, {}, {}, {deadEntry});
             auto level4 = Bucket::fresh(bm, vers, {}, {}, {});
@@ -550,7 +539,7 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
                 // New-style, they mutually annihilate.
                 CHECK(e21.nMeta == 1);
                 CHECK(e21.nInit == 0);
-                CHECK(e21.nLive == 1);
+                CHECK(e21.nLive == 0);
                 CHECK(e21.nDead == 0);
             }
             else
@@ -558,7 +547,7 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
                 // Old-style, we keep the tombstone around.
                 CHECK(e21.nMeta == 0);
                 CHECK(e21.nInit == 0);
-                CHECK(e21.nLive == 1);
+                CHECK(e21.nLive == 0);
                 CHECK(e21.nDead == 1);
             }
 
@@ -572,7 +561,7 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
                 // New-style, we should get a second mutual annihilation.
                 CHECK(e54321.nMeta == 1);
                 CHECK(e54321.nInit == 0);
-                CHECK(e54321.nLive == 1);
+                CHECK(e54321.nLive == 0);
                 CHECK(e54321.nDead == 0);
             }
             else
@@ -580,7 +569,7 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
                 // Old-style, the tombstone should clobber the live entry.
                 CHECK(e54321.nMeta == 0);
                 CHECK(e54321.nInit == 0);
-                CHECK(e54321.nLive == 1);
+                CHECK(e54321.nLive == 0);
                 CHECK(e54321.nDead == 1);
             }
         }
@@ -593,13 +582,9 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
             // shadowing behaviour when introducing INIT. See comment in
             // `maybePut` in Bucket.cpp.
             //
-            // otherLiveA is present here only to ensure none of the merges get
-            // reduced to an empty bucket, in which _no_ METAENTRY is deposited.
-            //
             // (level1 is newest here, level3 is oldest)
             auto level1 = Bucket::fresh(bm, vers, {}, {}, {deadEntry});
-            auto level2 =
-                Bucket::fresh(bm, vers, {}, {liveEntry, otherLiveA}, {});
+            auto level2 = Bucket::fresh(bm, vers, {}, {liveEntry}, {});
             auto level3 = Bucket::fresh(bm, vers, {initEntry}, {}, {});
 
             // Do a merge between levels 3 and 2, with shadow from 1, risking
@@ -613,7 +598,7 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
                 // New-style, we preserve the init entry.
                 CHECK(e32.nMeta == 1);
                 CHECK(e32.nInit == 1);
-                CHECK(e32.nLive == 1);
+                CHECK(e32.nLive == 0);
                 CHECK(e32.nDead == 0);
             }
             else
@@ -621,7 +606,7 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
                 // Old-style, we shadowed-out the live and init entries.
                 CHECK(e32.nMeta == 0);
                 CHECK(e32.nInit == 0);
-                CHECK(e32.nLive == 1);
+                CHECK(e32.nLive == 0);
                 CHECK(e32.nDead == 0);
             }
 
@@ -635,7 +620,7 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
                 // New-style, init meets dead and they annihilate.
                 CHECK(e321.nMeta == 1);
                 CHECK(e321.nInit == 0);
-                CHECK(e321.nLive == 1);
+                CHECK(e321.nLive == 0);
                 CHECK(e321.nDead == 0);
             }
             else
@@ -644,7 +629,7 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
                 // accumulates.
                 CHECK(e321.nMeta == 0);
                 CHECK(e321.nInit == 0);
-                CHECK(e321.nLive == 1);
+                CHECK(e321.nLive == 0);
                 CHECK(e321.nDead == 1);
             }
         }

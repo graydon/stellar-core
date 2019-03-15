@@ -97,13 +97,8 @@ BucketOutputIterator::getBucket(BucketManager& bucketManager)
 {
     if (mBuf)
     {
-        // If we only have a single buffered METAENTRY, don't flush it; this
-        // bucket is empty.
-        if (mBuf->type() != METAENTRY)
-        {
-            mOut.writeOne(*mBuf, mHasher.get(), &mBytesPut);
-            mObjectsPut++;
-        }
+        mOut.writeOne(*mBuf, mHasher.get(), &mBytesPut);
+        mObjectsPut++;
         mBuf.reset();
     }
 
