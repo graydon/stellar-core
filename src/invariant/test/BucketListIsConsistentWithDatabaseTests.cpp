@@ -157,27 +157,25 @@ struct BucketListGenerator
         for (uint32_t i = 0; i <= BucketList::kNumLevels - 1; i++)
         {
             auto& level = blGenerate.getLevel(i);
-            auto meta = testutil::testBucketMetadata(
-                vers, BucketList::keepDeadEntries(i));
+            auto meta = testutil::testBucketMetadata(vers);
+            auto keepDead = BucketList::keepDeadEntries(i);
             {
-                BucketOutputIterator out(bmApply.getTmpDir(), meta,
+                BucketOutputIterator out(bmApply.getTmpDir(), keepDead, meta,
                                          mergeCounters);
                 for (BucketInputIterator in (level.getCurr()); in; ++in)
                 {
                     out.put(*in, mergeCounters);
                 }
                 auto b = out.getBucket(bmApply);
-                assert(b->getHash() == level.getCurr()->getHash());
             }
             {
-                BucketOutputIterator out(bmApply.getTmpDir(), meta,
+                BucketOutputIterator out(bmApply.getTmpDir(), keepDead, meta,
                                          mergeCounters);
                 for (BucketInputIterator in (level.getSnap()); in; ++in)
                 {
                     out.put(*in, mergeCounters);
                 }
                 auto b = out.getBucket(bmApply);
-                assert(b->getHash() == level.getSnap()->getHash());
             }
         }
         return HistoryArchiveState(mLedgerSeq, blGenerate);

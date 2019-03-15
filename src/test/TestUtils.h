@@ -34,11 +34,10 @@ class BucketListDepthModifier
 };
 
 inline BucketMetadata
-testBucketMetadata(uint32_t protocolVersion, bool keepDeadEntries)
+testBucketMetadata(uint32_t protocolVersion)
 {
     BucketMetadata meta;
     meta.ledgerVersion = protocolVersion;
-    meta.keepDeadEntries = keepDeadEntries;
     return meta;
 }
 }

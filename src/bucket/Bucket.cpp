@@ -144,12 +144,11 @@ Bucket::fresh(BucketManager& bucketManager, uint32_t protocolVersion,
 
     BucketMetadata meta;
     meta.ledgerVersion = protocolVersion;
-    meta.keepDeadEntries = true;
 
     MergeCounters mc;
-    BucketOutputIterator initOut(bucketManager.getTmpDir(), meta, mc);
-    BucketOutputIterator liveOut(bucketManager.getTmpDir(), meta, mc);
-    BucketOutputIterator deadOut(bucketManager.getTmpDir(), meta, mc);
+    BucketOutputIterator initOut(bucketManager.getTmpDir(), true, meta, mc);
+    BucketOutputIterator liveOut(bucketManager.getTmpDir(), true, meta, mc);
+    BucketOutputIterator deadOut(bucketManager.getTmpDir(), true, meta, mc);
     for (auto const& e : init)
     {
         initOut.put(e, mc);
@@ -355,8 +354,8 @@ Bucket::merge(BucketManager& bucketManager,
     auto timer = bucketManager.getMergeTimer().TimeScope();
     BucketMetadata meta;
     meta.ledgerVersion = protocolVersion;
-    meta.keepDeadEntries = keepDeadEntries;
-    BucketOutputIterator out(bucketManager.getTmpDir(), meta, mc);
+    BucketOutputIterator out(bucketManager.getTmpDir(), keepDeadEntries, meta,
+                             mc);
 
     // When merging buckets after protocol version 10 (i.e. version 11-or-after)
     // we switch shadowing-behaviour to a more conservative mode, in order to

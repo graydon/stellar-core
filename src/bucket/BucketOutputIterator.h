@@ -30,6 +30,7 @@ class BucketOutputIterator
     std::unique_ptr<SHA256> mHasher;
     size_t mBytesPut{0};
     size_t mObjectsPut{0};
+    bool mKeepDeadEntries{true};
     BucketMetadata mMeta;
 
   public:
@@ -40,8 +41,8 @@ class BucketOutputIterator
     // version new enough that it should _write_ the metadata to the stream in
     // the form of a METAENTRY; but that's not a thing the caller gets to decide
     // (or forget to do), it's handled automatically.
-    BucketOutputIterator(std::string const& tmpDir, BucketMetadata const& meta,
-                         MergeCounters& mc);
+    BucketOutputIterator(std::string const& tmpDir, bool keepDeadEntries,
+                         BucketMetadata const& meta, MergeCounters& mc);
 
     void put(BucketEntry const& e, MergeCounters& mc);
 

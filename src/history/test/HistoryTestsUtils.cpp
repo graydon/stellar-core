@@ -95,8 +95,8 @@ S3HistoryConfigurator::configure(Config& mCfg, bool writable) const
 
 BucketOutputIteratorForTesting::BucketOutputIteratorForTesting(
     std::string const& tmpDir, uint32_t protocolVersion, MergeCounters& mc)
-    : BucketOutputIterator{
-          tmpDir, testutil::testBucketMetadata(protocolVersion, true), mc}
+    : BucketOutputIterator{tmpDir, true,
+                           testutil::testBucketMetadata(protocolVersion), mc}
 {
 }
 

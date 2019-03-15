@@ -144,8 +144,6 @@ struct BucketMetadata
 {
     // Indicates the protocol version used to create / merge this bucket.
     uint32 ledgerVersion;
-    // Indicates whether this is an oldest-level bucket that purges dead entries.
-    bool keepDeadEntries;
 
     // reserved for future use
     union switch (int v)

@@ -33,11 +33,13 @@ randomBucketName(std::string const& tmpDir)
  * hashes them while writing to either destination. Produces a Bucket when done.
  */
 BucketOutputIterator::BucketOutputIterator(std::string const& tmpDir,
+                                           bool keepDeadEntries,
                                            BucketMetadata const& meta,
                                            MergeCounters& mc)
     : mFilename(randomBucketName(tmpDir))
     , mBuf(nullptr)
     , mHasher(SHA256::create())
+    , mKeepDeadEntries(keepDeadEntries)
     , mMeta(meta)
 {
     CLOG(TRACE, "Bucket") << "BucketOutputIterator opening file to write: "
@@ -58,7 +60,7 @@ BucketOutputIterator::BucketOutputIterator(std::string const& tmpDir,
 void
 BucketOutputIterator::put(BucketEntry const& e, MergeCounters& mc)
 {
-    if (!mMeta.keepDeadEntries && e.type() == DEADENTRY)
+    if (!mKeepDeadEntries && e.type() == DEADENTRY)
     {
         ++mc.mOutputIteratorTombstoneElisions;
         return;
