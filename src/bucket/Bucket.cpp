@@ -207,6 +207,19 @@ countShadowedEntryType(MergeCounters& mc, BucketEntry const& e)
 }
 
 inline void
+Bucket::checkProtocolLegality(BucketEntry const& entry,
+                              uint32_t protocolVersion)
+{
+    if (protocolVersion < FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY &&
+        (entry.type() == INITENTRY || entry.type() == METAENTRY))
+    {
+        throw std::runtime_error(fmt::format(
+            "unsupported entry type {} in protocol {} bucket",
+            (entry.type() == INITENTRY ? "INIT" : "META"), protocolVersion));
+    }
+}
+
+inline void
 maybePut(BucketOutputIterator& out, BucketEntry const& entry,
          std::vector<BucketInputIterator>& shadowIterators,
          bool keepShadowedLifecycleEntries, MergeCounters& mc)
@@ -387,6 +400,7 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
         {
             // Out of new entries, take old entries.
             ++mc.mOldEntriesDefaultAccepted;
+            checkProtocolLegality(*oi, protocolVersion);
             countOldEntryType(mc, *oi);
             maybePut(out, *oi, shadowIterators, keepShadowedLifecycleEntries,
                      mc);
@@ -396,6 +410,7 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
         {
             // Out of old entries, take new entries.
             ++mc.mNewEntriesDefaultAccepted;
+            checkProtocolLegality(*ni, protocolVersion);
             countNewEntryType(mc, *ni);
             maybePut(out, *ni, shadowIterators, keepShadowedLifecycleEntries,
                      mc);
@@ -405,6 +420,7 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
         {
             // Next old-entry has smaller key, take it.
             ++mc.mOldEntriesDefaultAccepted;
+            checkProtocolLegality(*oi, protocolVersion);
             countOldEntryType(mc, *oi);
             maybePut(out, *oi, shadowIterators, keepShadowedLifecycleEntries,
                      mc);
@@ -414,6 +430,7 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
         {
             // Next new-entry has smaller key, take it.
             ++mc.mNewEntriesDefaultAccepted;
+            checkProtocolLegality(*ni, protocolVersion);
             countNewEntryType(mc, *ni);
             maybePut(out, *ni, shadowIterators, keepShadowedLifecycleEntries,
                      mc);
@@ -494,6 +511,8 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
 
             BucketEntry const& oldEntry = *oi;
             BucketEntry const& newEntry = *ni;
+            checkProtocolLegality(*oi, protocolVersion);
+            checkProtocolLegality(*ni, protocolVersion);
             countOldEntryType(mc, oldEntry);
             countNewEntryType(mc, newEntry);
 

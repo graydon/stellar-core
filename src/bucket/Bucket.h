@@ -61,6 +61,9 @@ class Bucket : public std::enable_shared_from_this<Bucket>,
     static constexpr uint32_t
         FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY = 11;
 
+    static void checkProtocolLegality(BucketEntry const& entry,
+                                      uint32_t protocolVersion);
+
     static std::vector<BucketEntry>
     convertToBucketEntry(std::vector<LedgerEntry> const& liveEntries,
                          bool isInit);

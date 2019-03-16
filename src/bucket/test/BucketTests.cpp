@@ -325,6 +325,27 @@ TEST_CASE("merges refuse to exceed max protocol version",
                       std::runtime_error);
 }
 
+TEST_CASE("bucket output iterator rejects wrong-version entries",
+          "[bucket][bucketinitoutput]")
+{
+    VirtualClock clock;
+    Config const& cfg = getTestConfig();
+    auto vers_new = Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY;
+    BucketMetadata meta;
+    meta.ledgerVersion = vers_new - 1;
+    Application::pointer app = createTestApplication(clock, cfg);
+    auto& bm = app->getBucketManager();
+    BucketEntry initEntry, metaEntry;
+    initEntry.type(INITENTRY);
+    initEntry.liveEntry() = generateAccount();
+    metaEntry.type(METAENTRY);
+    metaEntry.metaEntry() = meta;
+    MergeCounters mc;
+    BucketOutputIterator out(bm.getTmpDir(), true, meta, mc);
+    REQUIRE_THROWS_AS(out.put(initEntry, mc), std::runtime_error);
+    REQUIRE_THROWS_AS(out.put(metaEntry, mc), std::runtime_error);
+}
+
 TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
 {
     VirtualClock clock;

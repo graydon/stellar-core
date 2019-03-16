@@ -32,6 +32,7 @@ class BucketOutputIterator
     size_t mObjectsPut{0};
     bool mKeepDeadEntries{true};
     BucketMetadata mMeta;
+    bool mPutMeta{false};
 
   public:
     // BucketOutputIterators must _always_ be constructed with BucketMetadata,

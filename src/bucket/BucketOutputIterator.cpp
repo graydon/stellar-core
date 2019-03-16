@@ -54,12 +54,23 @@ BucketOutputIterator::BucketOutputIterator(std::string const& tmpDir,
         bme.type(METAENTRY);
         bme.metaEntry() = mMeta;
         put(bme, mc);
+        mPutMeta = true;
     }
 }
 
 void
 BucketOutputIterator::put(BucketEntry const& e, MergeCounters& mc)
 {
+    Bucket::checkProtocolLegality(e, mMeta.ledgerVersion);
+    if (e.type() == METAENTRY)
+    {
+        if (mPutMeta)
+        {
+            throw std::runtime_error(
+                "putting META entry in bucket after initial entry");
+        }
+    }
+
     if (!mKeepDeadEntries && e.type() == DEADENTRY)
     {
         ++mc.mOutputIteratorTombstoneElisions;

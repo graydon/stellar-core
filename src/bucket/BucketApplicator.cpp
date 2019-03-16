@@ -55,6 +55,7 @@ BucketApplicator::advance(BucketApplicator::Counters& counters)
     for (; mBucketIter; ++mBucketIter)
     {
         BucketEntry const& e = *mBucketIter;
+        Bucket::checkProtocolLegality(e, mMaxProtocolVersion);
         counters.mark(e);
         if (e.type() == LIVEENTRY || e.type() == INITENTRY)
         {

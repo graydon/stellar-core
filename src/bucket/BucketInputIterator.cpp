@@ -38,6 +38,10 @@ BucketInputIterator::loadEntry()
         else
         {
             mSeenOtherEntries = true;
+            if (mSeenMetadata)
+            {
+                Bucket::checkProtocolLegality(mEntry, mMetadata.ledgerVersion);
+            }
         }
     }
     else
