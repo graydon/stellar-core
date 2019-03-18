@@ -63,10 +63,10 @@ namespace stellar
 ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
     : mVirtualClock(clock)
     , mConfig(cfg)
-    , mWorkerIOService(std::thread::hardware_concurrency())
-    , mWork(std::make_unique<asio::io_service::work>(mWorkerIOService))
+    , mWorkerIOContext(std::thread::hardware_concurrency())
+    , mWork(std::make_unique<asio::io_context::work>(mWorkerIOContext))
     , mWorkerThreads()
-    , mStopSignals(clock.getIOService(), SIGINT)
+    , mStopSignals(clock.getIOContext(), SIGINT)
     , mStarted(false)
     , mStopping(false)
     , mStoppingTimer(*this)
@@ -289,7 +289,7 @@ ApplicationImpl::~ApplicationImpl()
         mProcessManager->shutdown();
     }
     reportCfgMetrics();
-    shutdownMainIOService();
+    shutdownMainIOContext();
     joinAllThreads();
     LOG(INFO) << "Application destroyed";
 }
@@ -395,7 +395,7 @@ ApplicationImpl::start()
 void
 ApplicationImpl::runWorkerThread(unsigned i)
 {
-    mWorkerIOService.run();
+    mWorkerIOContext.run();
 }
 
 void
@@ -423,19 +423,19 @@ ApplicationImpl::gracefulStop()
         std::chrono::seconds(SHUTDOWN_DELAY_SECONDS));
 
     mStoppingTimer.async_wait(
-        std::bind(&ApplicationImpl::shutdownMainIOService, this),
+        std::bind(&ApplicationImpl::shutdownMainIOContext, this),
         VirtualTimer::onFailureNoop);
 }
 
 void
-ApplicationImpl::shutdownMainIOService()
+ApplicationImpl::shutdownMainIOContext()
 {
-    if (!mVirtualClock.getIOService().stopped())
+    if (!mVirtualClock.getIOContext().stopped())
     {
         // Drain all events; things are shutting down.
         while (mVirtualClock.cancelAllEvents())
             ;
-        mVirtualClock.getIOService().stop();
+        mVirtualClock.getIOContext().stop();
     }
 }
 
@@ -725,10 +725,10 @@ ApplicationImpl::getStatusManager()
     return *mStatusManager;
 }
 
-asio::io_service&
-ApplicationImpl::getWorkerIOService()
+asio::io_context&
+ApplicationImpl::getWorkerIOContext()
 {
-    return mWorkerIOService;
+    return mWorkerIOContext;
 }
 
 void
@@ -761,7 +761,7 @@ ApplicationImpl::postOnBackgroundThread(std::function<void()>&& f,
 {
     LogSlowExecution isSlow{std::move(jobName), LogSlowExecution::Mode::MANUAL,
                             "executed after"};
-    getWorkerIOService().post([ this, f = std::move(f), isSlow ]() {
+    asio::post(getWorkerIOContext(), [ this, f = std::move(f), isSlow ]() {
         mPostOnBackgroundThreadDelay.Update(isSlow.checkElapsedTime());
         f();
     });
