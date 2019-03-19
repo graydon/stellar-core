@@ -518,8 +518,8 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
 
             if (newEntry.type() == INITENTRY)
             {
-                // The only legal new-is-INIT case is a merging a
-                // delete+create to an update.
+                // The only legal new-is-INIT case is merging a delete+create to
+                // an update.
                 if (oldEntry.type() != DEADENTRY)
                 {
                     throw std::runtime_error(
