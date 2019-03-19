@@ -1063,9 +1063,11 @@ LedgerManagerImpl::ledgerClosed(AbstractLedgerTxn& ltx)
     }
     else
     {
-        mApp.getBucketManager().addBatch(
-            mApp, ledgerSeq, ledgerVers, ltx.getInitEntries(),
-            ltx.getLiveEntries(), ltx.getDeadEntries());
+        std::vector<LedgerEntry> initEntries, liveEntries;
+        std::vector<LedgerKey> deadEntries;
+        ltx.getAllEntries(initEntries, liveEntries, deadEntries);
+        mApp.getBucketManager().addBatch(mApp, ledgerSeq, ledgerVers,
+                                         initEntries, liveEntries, deadEntries);
     }
 
     ltx.unsealHeader([this](LedgerHeader& lh) {

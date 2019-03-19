@@ -629,7 +629,7 @@ LedgerTxn::Impl::getDeadEntries()
             auto const& entry = kv.second;
             if (!entry)
             {
-                res.push_back(key);
+                res.emplace_back(key);
             }
         }
     });
@@ -860,7 +860,7 @@ LedgerTxn::Impl::getInitEntries()
                 auto previous = mParent.getNewestVersion(key);
                 if (!previous)
                 {
-                    res.push_back(*entry);
+                    res.emplace_back(*entry);
                 }
             }
         }
@@ -889,12 +889,58 @@ LedgerTxn::Impl::getLiveEntries()
                 auto previous = mParent.getNewestVersion(key);
                 if (previous)
                 {
-                    res.push_back(*entry);
+                    res.emplace_back(*entry);
                 }
             }
         }
     });
     return res;
+}
+
+void
+LedgerTxn::getAllEntries(std::vector<LedgerEntry>& initEntries,
+                         std::vector<LedgerEntry>& liveEntries,
+                         std::vector<LedgerKey>& deadEntries)
+{
+    getImpl()->getAllEntries(initEntries, liveEntries, deadEntries);
+}
+
+void
+LedgerTxn::Impl::getAllEntries(std::vector<LedgerEntry>& initEntries,
+                               std::vector<LedgerEntry>& liveEntries,
+                               std::vector<LedgerKey>& deadEntries)
+{
+    std::vector<LedgerEntry> resInit, resLive;
+    std::vector<LedgerKey> resDead;
+    resInit.reserve(mEntry.size());
+    resLive.reserve(mEntry.size());
+    resDead.reserve(mEntry.size());
+    maybeUpdateLastModifiedThenInvokeThenSeal([&](EntryMap const& entries) {
+        for (auto const& kv : entries)
+        {
+            auto const& key = kv.first;
+            auto const& entry = kv.second;
+            if (entry)
+            {
+                auto previous = mParent.getNewestVersion(key);
+                if (previous)
+                {
+                    resLive.emplace_back(*entry);
+                }
+                else
+                {
+                    resInit.emplace_back(*entry);
+                }
+            }
+            else
+            {
+                resDead.emplace_back(key);
+            }
+        }
+    });
+    initEntries.swap(resInit);
+    liveEntries.swap(resLive);
+    deadEntries.swap(resDead);
 }
 
 std::shared_ptr<LedgerEntry const>

@@ -272,6 +272,11 @@ class LedgerTxn::Impl
     // getLiveEntries has the strong exception safety guarantee
     std::vector<LedgerEntry> getLiveEntries();
 
+    // getAllEntries has the strong exception safety guarantee
+    void getAllEntries(std::vector<LedgerEntry>& initEntries,
+                       std::vector<LedgerEntry>& liveEntries,
+                       std::vector<LedgerKey>& deadEntries);
+
     // getNewestVersion has the basic exception safety guarantee. If it throws
     // an exception, then
     // - the prepared statement cache may be, but is not guaranteed to be,

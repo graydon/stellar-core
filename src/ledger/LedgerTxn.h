@@ -423,10 +423,12 @@ class AbstractLedgerTxn : public AbstractLedgerTxnParent
     //     to the LedgerHeader) in a format convenient for answering queries
     //     about how specific entries and the header have changed. To be used
     //     for invariants.
-    // - getDeadEntries, getInitEntries, getLiveEntries
+    // - getDeadEntries, getInitEntries, getLiveEntries, getBucketEntries
     //     getDeadEntries extracts a list of keys that are now dead, whereas
     //     getInitEntries extracts a list of entries that were created, and
     //     getLiveEntries extracts a list of entries that were updated.
+    //     getAllEntries just extracts all 3 of the above lists in
+    //     a single pass.
     //     All these are to be inserted into the BucketList.
     // All of these functions throw if the AbstractLedgerTxn has a child.
     virtual LedgerEntryChanges getChanges() = 0;
@@ -434,6 +436,9 @@ class AbstractLedgerTxn : public AbstractLedgerTxnParent
     virtual std::vector<LedgerKey> getDeadEntries() = 0;
     virtual std::vector<LedgerEntry> getInitEntries() = 0;
     virtual std::vector<LedgerEntry> getLiveEntries() = 0;
+    virtual void getAllEntries(std::vector<LedgerEntry>& initEntries,
+                               std::vector<LedgerEntry>& liveEntries,
+                               std::vector<LedgerKey>& deadEntries) = 0;
 
     // loadAllOffers, loadBestOffer, and loadOffersByAccountAndAsset are used to
     // handle some specific queries related to Offers. These functions are built
@@ -524,6 +529,10 @@ class LedgerTxn final : public AbstractLedgerTxn
     std::vector<LedgerEntry> getInitEntries() override;
 
     std::vector<LedgerEntry> getLiveEntries() override;
+
+    void getAllEntries(std::vector<LedgerEntry>& initEntries,
+                       std::vector<LedgerEntry>& liveEntries,
+                       std::vector<LedgerKey>& deadEntries) override;
 
     std::shared_ptr<LedgerEntry const>
     getNewestVersion(LedgerKey const& key) const override;
