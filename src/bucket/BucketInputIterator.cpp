@@ -87,6 +87,9 @@ BucketInputIterator::getMetadata() const
 BucketInputIterator::BucketInputIterator(std::shared_ptr<Bucket const> bucket)
     : mBucket(bucket), mEntryPtr(nullptr), mSeenMetadata(false)
 {
+    // In absence of metadata, we treat every bucket as though it is from
+    // ledger protocol 1, which at least _some_ old buckets actually were.
+    mMetadata.ledgerVersion = 1;
     if (!mBucket->getFilename().empty())
     {
         CLOG(TRACE, "Bucket") << "BucketInputIterator opening file to read: "

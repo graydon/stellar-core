@@ -1051,6 +1051,10 @@ LedgerManagerImpl::ledgerClosed(AbstractLedgerTxn& ltx)
 {
     auto ledgerSeq = ltx.loadHeader().current().ledgerSeq;
     auto ledgerVers = ltx.loadHeader().current().ledgerVersion;
+    CLOG(TRACE, "Ledger") << fmt::format(
+        "sealing ledger {} with version {}, sending to bucket list", ledgerSeq,
+        ledgerVers);
+
     if (mUseBucketTestingEntries)
     {
         // Seal the ltx but throw its entries away.

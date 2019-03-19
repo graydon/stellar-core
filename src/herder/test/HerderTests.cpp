@@ -40,6 +40,10 @@ TEST_CASE("standalone", "[herder]")
     cfg.QUORUM_SET.validators.clear();
     cfg.QUORUM_SET.validators.push_back(v0NodeID);
 
+    // Do our setup in version 1 so that for_all_versions below does not
+    // try to downgrade us from >1 to 1.
+    cfg.LEDGER_PROTOCOL_VERSION = 1;
+
     VirtualClock clock;
     Application::pointer app = createTestApplication(clock, cfg);
 

@@ -365,6 +365,10 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
             std::max(si.getMetadata().ledgerVersion, protocolVersion);
     }
 
+    CLOG(TRACE, "Bucket") << "Bucket::merge() with protocolVersion="
+                          << protocolVersion
+                          << ", maxProtocolVersion=" << maxProtocolVersion;
+
     if (protocolVersion > maxProtocolVersion)
     {
         throw std::runtime_error(fmt::format(
