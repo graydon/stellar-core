@@ -114,7 +114,7 @@ class BucketManager : NonMovableOrCopyable
     // worker threads. Very carefully.
     virtual std::shared_ptr<Bucket>
     adoptFileAsBucket(std::string const& filename, uint256 const& hash,
-                      size_t nObjects = 0, size_t nBytes = 0) = 0;
+                      size_t nObjects, size_t nBytes) = 0;
 
     // Return a bucket by hash if we have it, else return nullptr.
     virtual std::shared_ptr<Bucket> getBucketByHash(uint256 const& hash) = 0;

@@ -203,7 +203,7 @@ TEST_CASE("bucketmanager ownership", "[bucket][bucketmanager]")
         {
             std::shared_ptr<Bucket> b2 =
                 Bucket::fresh(app->getBucketManager(), getAppLedgerVersion(app),
-                              {}, live, dead);
+                              {}, live, dead, /*countMergeEvents=*/true);
             b1 = b2;
 
             // Bucket is referenced by b1, b2 and the BucketManager.
@@ -211,10 +211,10 @@ TEST_CASE("bucketmanager ownership", "[bucket][bucketmanager]")
 
             std::shared_ptr<Bucket> b3 =
                 Bucket::fresh(app->getBucketManager(), getAppLedgerVersion(app),
-                              {}, live, dead);
+                              {}, live, dead, /*countMergeEvents=*/true);
             std::shared_ptr<Bucket> b4 =
                 Bucket::fresh(app->getBucketManager(), getAppLedgerVersion(app),
-                              {}, live, dead);
+                              {}, live, dead, /*countMergeEvents=*/true);
             // Bucket is referenced by b1, b2, b3, b4 and the BucketManager.
             CHECK(b1.use_count() == 5);
         }
