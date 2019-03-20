@@ -122,6 +122,11 @@ nextParameter(std::string::iterator it, std::string::iterator const& end)
 std::string
 removePasswordFromConnectionString(std::string connectionString)
 {
+    // Don't try to parse this as a k=v parameter list.
+    if (connectionString == "sqlite3://:memory:")
+    {
+        return connectionString;
+    }
     auto const protocolSeparator = std::string{"://"};
     auto const p = connectionString.find(protocolSeparator);
     if (p == std::string::npos)
