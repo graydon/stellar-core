@@ -1413,17 +1413,17 @@ TEST_CASE("upgrade to version 11", "[upgrades]")
     cfg.LEDGER_PROTOCOL_VERSION = 10;
     auto app = createTestApplication(clock, cfg);
     app->start();
-    auto &lm = app->getLedgerManager();
+    auto& lm = app->getLedgerManager();
     uint32_t oldProto = 10;
     uint32_t newProto = 11;
     auto root = TestAccount{*app, txtest::getRoot(app->getNetworkID())};
 
     for (size_t i = 0; i < 10; ++i)
     {
-        auto stranger = TestAccount{
-            *app, txtest::getAccount(fmt::format("stranger{}", i))};
-        TxSetFramePtr txSet = std::make_shared<TxSetFrame>(
-            lm.getLastClosedLedgerHeader().hash);
+        auto stranger =
+            TestAccount{*app, txtest::getAccount(fmt::format("stranger{}", i))};
+        TxSetFramePtr txSet =
+            std::make_shared<TxSetFrame>(lm.getLastClosedLedgerHeader().hash);
         uint32_t ledgerSeq = lm.getLastClosedLedgerNum() + 1;
         uint64_t minBalance = lm.getLastMinBalance(5);
         uint64_t big = minBalance + ledgerSeq;
@@ -1441,8 +1441,8 @@ TEST_CASE("upgrade to version 11", "[upgrades]")
             ledgerUpgrade.newLedgerVersion() = newProto;
             auto v = xdr::xdr_to_opaque(ledgerUpgrade);
             upgrades.push_back(UpgradeType{v.begin(), v.end()});
-            CLOG(INFO, "Ledger") << "Ledger " << ledgerSeq
-                                 << " upgrading to v" << newProto;
+            CLOG(INFO, "Ledger")
+                << "Ledger " << ledgerSeq << " upgrading to v" << newProto;
         }
         StellarValue sv(txSet->getContentsHash(), closeTime, upgrades, 0);
         lm.closeLedger(LedgerCloseData(ledgerSeq, txSet, sv));
