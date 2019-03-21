@@ -189,10 +189,10 @@ class Config : public std::enable_shared_from_this<Config>
     uint32_t MINIMUM_IDLE_PERCENT;
 
     // thread-management config
-    size_t WORKER_THREADS;
+    int WORKER_THREADS;
 
     // process-management config
-    size_t MAX_CONCURRENT_SUBPROCESSES;
+    int MAX_CONCURRENT_SUBPROCESSES;
 
     // SCP config
     SecretKey NODE_SEED;
