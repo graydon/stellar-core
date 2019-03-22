@@ -105,8 +105,10 @@ ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
                << "(worker threads: " << t << ")";
     while (t--)
     {
-        auto thread = std::thread{[this]() { mWorkerIOContext.run(); }};
-        runWithLowPriority(thread);
+        auto thread = std::thread{[this]() {
+            runCurrentThreadWithLowPriority();
+            mWorkerIOContext.run();
+        }};
         mWorkerThreads.emplace_back(std::move(thread));
     }
 }

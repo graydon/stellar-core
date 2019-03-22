@@ -9,5 +9,5 @@
 namespace stellar
 {
 
-void runWithLowPriority(std::thread& thread);
+void runCurrentThreadWithLowPriority();
 }

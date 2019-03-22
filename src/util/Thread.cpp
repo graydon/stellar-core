@@ -7,7 +7,7 @@
 
 #ifdef _WIN32
 #else
-#include <pthread.h>
+#include <unistd.h>
 #endif
 
 namespace stellar
@@ -16,9 +16,9 @@ namespace stellar
 #ifdef _WIN32
 
 void
-runWithLowPriority(std::thread& thread)
+runCurrentThreadWithLowPriority()
 {
-    auto native = thread.native_handle();
+    auto native = std::this_thread::get_id();
     auto ret = SetThreadPriority(native, THREAD_PRIORITY_BELOW_NORMAL);
 
     if (!ret)
@@ -30,26 +30,15 @@ runWithLowPriority(std::thread& thread)
 #else
 
 void
-runWithLowPriority(std::thread& thread)
+runCurrentThreadWithLowPriority()
 {
-    auto native = thread.native_handle();
-    int policy;
-    sched_param param;
+    constexpr auto const LOW_PRIORITY_NICE = 5;
 
-    auto ret = pthread_getschedparam(native, &policy, &param);
-    if (ret)
+    auto newNice = nice(LOW_PRIORITY_NICE);
+    if (newNice != LOW_PRIORITY_NICE)
     {
-        CLOG(DEBUG, "Fs") << "Unable to get scheduler parameters for thread: "
-                          << ret;
-        return;
-    }
-
-    ret = pthread_setschedparam(native, SCHED_BATCH, &param);
-    if (ret)
-    {
-        CLOG(DEBUG, "Fs") << "Unable to set scheduler parameters for thread: "
-                          << ret;
-        return;
+        CLOG(DEBUG, "Fs") << "Unable to run worker thread with low priority. "
+                             "Normal priority will be used.";
     }
 }
 
