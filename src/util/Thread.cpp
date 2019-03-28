@@ -13,7 +13,7 @@
 namespace stellar
 {
 
-#ifdef _WIN32
+#if defined(_WIN32)
 
 void
 runCurrentThreadWithLowPriority()
@@ -27,7 +27,7 @@ runCurrentThreadWithLowPriority()
     }
 }
 
-#else
+#elif defined(__linux__)
 
 void
 runCurrentThreadWithLowPriority()
@@ -40,6 +40,22 @@ runCurrentThreadWithLowPriority()
         CLOG(DEBUG, "Fs") << "Unable to run worker thread with low priority. "
                              "Normal priority will be used.";
     }
+}
+
+#elif defined(__APPLE__)
+
+void
+runCurrentThreadWithLowPriority()
+{
+    // probably can use thread_policy_set with THREAD_PRECEDENCE_POLICY to get
+    // desired effect
+}
+
+#else
+
+void
+runCurrentThreadWithLowPriority()
+{
 }
 
 #endif
