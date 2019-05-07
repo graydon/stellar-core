@@ -6,7 +6,7 @@
 #include "main/DeprecatedCommandLine.h"
 #include "util/Logging.h"
 
-#include "crypto/ByteSliceHasher.h"
+#include "crypto/ShortHash.h"
 #include <cstdlib>
 #include <sodium/core.h>
 #include <xdrpp/marshal.h>
