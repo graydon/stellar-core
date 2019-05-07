@@ -2,19 +2,23 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
-#include "ByteSliceHasher.h"
+#include "ShortHash.h"
 #include <sodium.h>
 
 namespace stellar
 {
 namespace shortHash
 {
+
 static unsigned char sKey[crypto_shorthash_KEYBYTES];
+
 void
 initialize()
 {
+    assert(crypto_shorthash_KEYBYTES == 16);
     crypto_shorthash_keygen(sKey);
 }
+
 uint64_t
 computeHash(stellar::ByteSlice const& b)
 {
@@ -24,6 +28,10 @@ computeHash(stellar::ByteSlice const& b)
                      reinterpret_cast<const unsigned char*>(b.data()), b.size(),
                      sKey);
     return res;
+}
+
+XDRSipHasher::XDRSipHasher() : h(sKey)
+{
 }
 }
 }
