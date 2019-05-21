@@ -25,7 +25,7 @@ checkQuorumIntersection(Config const& cfg)
     cfg2.setNoListen();
     Application::pointer app = Application::create(clock, cfg2, false);
     InferredQuorum iq = app->getHistoryManager().inferQuorum();
-    iq.checkQuorumIntersection(cfg2);
+    iq.checkQuorumIntersectionViaCvc(cfg2);
 }
 
 void

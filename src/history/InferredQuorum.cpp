@@ -1,10 +1,12 @@
 #include "history/InferredQuorum.h"
 #include "crypto/SHA.h"
 #include "util/BitsetEnumerator.h"
+#include "util/format.h"
 #include "util/Logging.h"
 #include "xdrpp/marshal.h"
 #include <fstream>
 #include <sstream>
+#include <cvc4/cvc4.h>
 
 namespace stellar
 {
@@ -154,6 +156,183 @@ static bool isQuorum(std::bitset<64> const& q, InferredQuorum const& iq,
         }
     }
     return true;
+}
+
+class NodeExprBiMap {
+    CVC4::ExprManager &mExprManager;
+    std::map<PublicKey, std::shared_ptr<CVC4::Expr>> mNodes;
+    std::map<std::shared_ptr<CVC4::Expr>, PublicKey> mRevNodes;
+public:
+    NodeExprBiMap(CVC4::ExprManager &em) : mExprManager(em) {}
+    std::shared_ptr<CVC4::Expr> getExprForNode(PublicKey const& pk) {
+        auto i = mNodes.find(pk);
+        if (i != mNodes.end()) {
+            return i->second;
+        } else {
+            size_t i = mNodes.size();
+            CLOG(INFO, "History") << "creating const node for " << i;
+            std::shared_ptr<CVC4::Expr> e =
+                std::make_shared<CVC4::Expr>(mExprManager.mkConst(CVC4::Rational(i)));
+            mNodes.insert(std::make_pair(pk, e));
+            mRevNodes.insert(std::make_pair(e, pk));
+            return e;
+        }
+    }
+    PublicKey const& getNodeForExpr(std::shared_ptr<CVC4::Expr> e) {
+        auto i = mRevNodes.find(e);
+        assert(i != mRevNodes.end());
+        return i->second;
+    }
+};
+
+static CVC4::Expr qSetSatisfiedByQuorum(CVC4::ExprManager& em,
+                                        std::string const& parentName,
+                                        CVC4::SetType const& nodeSetTy,
+                                        NodeExprBiMap &nodes,
+                                        CVC4::Expr const& empty,
+                                        SCPQuorumSet const& qset,
+                                        CVC4::Expr const& quorum)
+{
+    using namespace CVC4;
+    // Each qset S has a set of validators and a set of innerSets. S is
+    // satsified by a quorum Q iff S.validators is a subset of Q, and [the sum
+    // of card(S.validators) and (ite
+    // qsetSatisfiedByQuorum(...,S.innerSets[i],...) 1 0) for all innerSets]
+    // exceeds S.threshold.
+    Expr validators = em.mkVar(fmt::format("{}.validators", parentName), nodeSetTy);
+    std::vector<Expr> candidateValidatorExprs;
+    for (auto const& v : qset.validators) {
+        candidateValidatorExprs.push_back(*nodes.getExprForNode(v));
+    }
+    candidateValidatorExprs.push_back(empty);
+    Expr candidateValidators = (candidateValidatorExprs.size() == 1 ? empty :
+                                em.mkExpr(kind::INSERT, candidateValidatorExprs));
+    Expr vCard = em.mkExpr(kind::CARD, validators);
+
+    Expr zero = em.mkConst(Rational(0));
+    Expr one = em.mkConst(Rational(1));
+    std::vector<Expr> summandExprs = { vCard, zero };
+    for (size_t i = 0; i < qset.innerSets.size(); ++i) {
+        std::string innerSetName = fmt::format("{}.innerset_{}", parentName, i);
+        Expr innerSetIsSatisfied = qSetSatisfiedByQuorum(em, innerSetName,
+                                                         nodeSetTy, nodes, empty,
+                                                         qset.innerSets[i], quorum);
+        summandExprs.push_back(em.mkExpr(kind::ITE, innerSetIsSatisfied, one, zero));
+    }
+
+    Expr thresholdMet = em.mkExpr(kind::GEQ,
+                                  em.mkExpr(kind::PLUS, summandExprs),
+                                  em.mkConst(Rational(qset.threshold)));
+    return em.mkExpr(kind::AND,
+                     em.mkExpr(kind::SUBSET, validators, quorum),
+                     em.mkExpr(kind::SUBSET, validators, candidateValidators),
+                     thresholdMet);
+}
+
+bool
+InferredQuorum::checkQuorumIntersectionViaCvc(Config const& cfg) const
+{
+    using namespace CVC4;
+    ExprManager em;
+    SmtEngine smt(&em);
+    LogicInfo logic = smt.getLogicInfo();
+    //logic.enableEverything();
+    logic.enableTheory(theory::THEORY_SETS);
+    smt.setLogic(logic);
+    //smt.setOption("incremental", true);
+    smt.setOption("produce-models", true);
+    smt.setOption("produce-assertions", true);
+
+    // Definition (quorum). A set of nodes U ⊆ V in FBAS ⟨V,Q⟩ is a quorum
+    // iff U =/= ∅ and U contains a slice for each member -- i.e., ∀ v ∈ U,
+    // ∃ q ∈ Q(v) such that q ⊆ U.
+    //
+    // Definition (quorum intersection). An FBAS enjoys quorum intersection
+    // iff any two of its quorums share a node—i.e., for all quorums U1 and
+    // U2, U1 ∩ U2 =/= ∅.
+
+    // Make an integer-expr from 0..numNodes for each node.
+    NodeExprBiMap nodes(em);
+    for (auto const& n : mPubKeys)
+    {
+        nodes.getExprForNode(n.first);
+    }
+
+    Type nodeTy = em.integerType();
+    SetType nodeSetTy = em.mkSetType(nodeTy);
+    Expr quorumA = em.mkVar("QuorumA", nodeSetTy);
+    Expr quorumB = em.mkVar("QuorumB", nodeSetTy);
+    Expr allQsetNodes = em.mkVar("AllQsetNodes", nodeSetTy);
+    Expr empty = em.mkConst(EmptySet(nodeSetTy));
+    smt.assertFormula(em.mkExpr(kind::DISTINCT, empty, quorumA));
+    smt.assertFormula(em.mkExpr(kind::DISTINCT, empty, quorumB));
+    smt.assertFormula(em.mkExpr(kind::DISTINCT, quorumA, quorumB));
+    smt.assertFormula(
+        em.mkExpr(kind::EQUAL, empty,
+                  em.mkExpr(kind::INTERSECTION, quorumA, quorumB)));
+
+    // We're only going to encode node-in-quorum membership and qset
+    // satisfaction for nodes we _have_ qsets for, which might be significantly
+    // fewer than the total set of nodes; we can't really tell how nodes we
+    // don't have qsets for will behave in a network; we exclude them.
+    std::vector<Expr> allQsetNodeExprs;
+    std::vector<Expr> allQsetDisjuncts;
+    size_t nQsets = 0;
+    for (auto const& n : mQsetHashes) {
+        std::shared_ptr<Expr> nodeExpr = nodes.getExprForNode(n.first);
+        allQsetNodeExprs.push_back(*nodeExpr);
+
+        auto qi = mQsets.find(n.second);
+        assert(qi != mQsets.end());
+        SCPQuorumSet qset = qi->second;
+
+        // For each qset-having node, we form a disjunct of the possibility that
+        // the node is in quorum A (and the conjunct that quorum A satisfies its
+        // qset) and the possibility that the node is in quorum B (and the
+        // conjuct that quorum B satisfies its qset).
+        Expr nodeIsInA = em.mkExpr(kind::MEMBER, *nodeExpr, quorumA);
+        Expr qsetIsSatisfiedByA =
+            qSetSatisfiedByQuorum(em, fmt::format("node_{}_qset_in_A", nQsets),
+                                  nodeSetTy, nodes, empty, qset, quorumA);
+        Expr nodeIsInB = em.mkExpr(kind::MEMBER, *nodeExpr, quorumB);
+        Expr qsetIsSatisfiedByB =
+            qSetSatisfiedByQuorum(em, fmt::format("node_{}_qset_in_B", nQsets),
+                                  nodeSetTy, nodes, empty, qset, quorumB);
+        Expr conjA = em.mkExpr(kind::AND, nodeIsInA, qsetIsSatisfiedByA);
+        Expr conjB = em.mkExpr(kind::AND, nodeIsInB, qsetIsSatisfiedByB);
+        Expr disj = em.mkExpr(kind::OR, conjA, conjB);
+        allQsetDisjuncts.push_back(disj);
+        ++nQsets;
+    }
+    allQsetNodeExprs.push_back(empty);
+    smt.assertFormula(em.mkExpr(kind::EQUAL, allQsetNodes,
+                                em.mkExpr(kind::INSERT, allQsetNodeExprs)));
+    smt.assertFormula(em.mkExpr(kind::SUBSET, quorumA, allQsetNodes));
+    smt.assertFormula(em.mkExpr(kind::SUBSET, quorumB, allQsetNodes));
+    smt.assertFormula(em.mkExpr(kind::AND, allQsetDisjuncts));
+
+    Result res = smt.checkSat();
+    if (res.isSat()) {
+        CLOG(WARNING, "History")
+            << "Warning: CVC found pair of non-intersecting quorums:";
+        std::vector<Expr> quorums = {quorumA, quorumB};
+        for (auto const& q : quorums) {
+            Expr concreteQ = smt.getValue(q);
+            CLOG(WARNING, "History") << q.toString() << " : " << concreteQ.toString();
+        }
+    } else {
+        CLOG(INFO, "History")
+            << nQsets << "-node FBAS enjoys quorum intersection according to CVC";
+        CLOG(INFO, "History")
+            << "In other words, the following CVC assertions are deemed not satisfiable:";
+        for (auto const &e : smt.getAssertions()) {
+            CLOG(INFO, "History")
+                << "ASSERT " << e.toString() << ";";
+        }
+    }
+
+    smt.getStatistics().flushInformation(std::cout);
+    return !res.isSat();
 }
 
 bool

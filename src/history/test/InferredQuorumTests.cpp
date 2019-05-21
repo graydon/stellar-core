@@ -204,6 +204,7 @@ TEST_CASE("InferredQuorum non intersection", "[history][inferredquorum]")
 
     Config cfg(getTestConfig(0, Config::TESTDB_IN_MEMORY_SQLITE));
     CHECK(!iq.checkQuorumIntersection(cfg));
+    CHECK(!iq.checkQuorumIntersectionViaCvc(cfg));
 }
 
 TEST_CASE("InferredQuorum non intersection w subquorums",
@@ -290,4 +291,5 @@ TEST_CASE("InferredQuorum non intersection w subquorums",
 
     Config cfg(getTestConfig(0, Config::TESTDB_IN_MEMORY_SQLITE));
     CHECK(!iq.checkQuorumIntersection(cfg));
+    CHECK(!iq.checkQuorumIntersectionViaCvc(cfg));
 }

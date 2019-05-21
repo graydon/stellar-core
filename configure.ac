@@ -155,6 +155,18 @@ AS_IF([test "x$enable_extrachecks" = "xyes"], [
   CXXFLAGS="$CXXFLAGS -D_GLIBCXX_DEBUG=1 -D_LIBCPP_DEBUG=1"
 ])
 
+# We can't use AC_CHECK_LIB as it does not understand C++ name mangling
+AC_LANG_PUSH(C++)
+SAVED_LDFLAGS=$LDFLAGS
+LDFLAGS="$LDFLAGS -lcvc4"
+AC_LINK_IFELSE(
+  [AC_LANG_PROGRAM([#include <cvc4/cvc4.h>],
+                   [CVC4::Configuration::getName()])],
+  [LIBS="$LIBS -lcvc4 -lgmp"] [HAVE_CVC4=1],
+  [AC_MSG_ERROR([cvc4 library and/or development files not installed.])])
+LDFLAGS=$SAVED_LDFLAGS
+AC_LANG_POP(C++)
+
 AC_ARG_ENABLE([ccache],
               AS_HELP_STRING([--enable-ccache], [build with ccache]))
 AS_IF([test "x$enable_ccache" = "xyes"], [

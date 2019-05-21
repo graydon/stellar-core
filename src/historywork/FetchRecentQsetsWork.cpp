@@ -50,7 +50,7 @@ FetchRecentQsetsWork::doWork()
     // Phase 2: download some SCP messages; for now we just pull the past
     // 100 checkpoints = 9 hours of history. A more sophisticated view
     // would survey longer time periods at lower resolution.
-    uint32_t numCheckpoints = 100;
+    uint32_t numCheckpoints = 1000;
     uint32_t step = mApp.getHistoryManager().getCheckpointFrequency();
     uint32_t window = numCheckpoints * step;
     uint32_t lastSeq = mRemoteState.currentLedger;

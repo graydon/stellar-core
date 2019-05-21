@@ -26,5 +26,6 @@ struct InferredQuorum
     std::string toString(Config const& cfg) const;
     void writeQuorumGraph(Config const& cfg, std::ostream& out) const;
     bool checkQuorumIntersection(Config const& cfg) const;
+    bool checkQuorumIntersectionViaCvc(Config const& cfg) const;
 };
 }
