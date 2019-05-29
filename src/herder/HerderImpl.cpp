@@ -1127,6 +1127,7 @@ HerderImpl::restoreSCPState()
             mLastSlotSaved = latestEnvs.back().statement.slotIndex;
             startRebroadcastTimer();
         }
+        mPendingEnvelopes.rebuildQuorumTrackerState();
     }
     catch (std::exception& e)
     {
