@@ -887,12 +887,48 @@ HerderImpl::getJsonInfo(size_t limit, bool fullKeys)
 }
 
 Json::Value
+HerderImpl::getJsonTransitiveQuorumIntersectionInfo() const
+{
+    Json::Value ret;
+    ret["intersection"] =
+        mLastQuorumMapIntersectionState.enjoysQuorunIntersection();
+    ret["node_count"] = static_cast<Json::UInt64>(
+        mLastQuorumMapIntersectionState.mNumNodes);
+    ret["last_check_ledger"] =
+        static_cast<Json::UInt64>(mLastQuorumMapIntersectionState.mLastCheckLedger);
+    if (!mLastQuorumMapIntersectionState.enjoysQuorunIntersection())
+    {
+        ret["last_good_ledger"] =
+            static_cast<Json::UInt64>(mLastQuorumMapIntersectionState.mLastGoodLedger);
+        Json::Value split, a, b;
+        auto const& pair = mLastQuorumMapIntersectionState.mPotentialSplit;
+        for (auto const& k : pair.first)
+        {
+            a.append(mApp.getConfig().toStrKey(k));
+        }
+        for (auto const& k : pair.second)
+        {
+            b.append(mApp.getConfig().toStrKey(k));
+        }
+        split.append(a);
+        split.append(b);
+        ret["potential_split"] = split;
+    }
+    return ret;
+}
+
+Json::Value
 HerderImpl::getJsonQuorumInfo(NodeID const& id, bool summary, bool fullKeys,
                               uint64 index)
 {
     Json::Value ret;
     ret["node"] = mApp.getConfig().toStrKey(id);
-    ret["slots"] = getSCP().getJsonQuorumInfo(id, summary, fullKeys, index);
+    ret["qset"] = getSCP().getJsonQuorumInfo(id, summary, fullKeys, index);
+    bool isSelf = id == mApp.getConfig().NODE_SEED.getPublicKey();
+    if (isSelf && mLastQuorumMapIntersectionState.hasAnyResults())
+    {
+        ret["transitive"] = getJsonTransitiveQuorumIntersectionInfo();
+    }
     return ret;
 }
 
@@ -901,6 +937,12 @@ HerderImpl::getJsonTransitiveQuorumInfo(NodeID const& rootID, bool summary,
                                         bool fullKeys)
 {
     Json::Value ret;
+    bool isSelf = rootID == mApp.getConfig().NODE_SEED.getPublicKey();
+    if (isSelf && mLastQuorumMapIntersectionState.hasAnyResults())
+    {
+        ret = getJsonTransitiveQuorumIntersectionInfo();
+    }
+
     Json::Value& nodes = ret["nodes"];
 
     auto& q = mPendingEnvelopes.getCurrentlyTrackedQuorum();
