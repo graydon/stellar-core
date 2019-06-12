@@ -210,6 +210,9 @@ class Config : public std::enable_shared_from_this<Config>
     bool NODE_IS_VALIDATOR;
     stellar::SCPQuorumSet QUORUM_SET;
 
+    // Whether to run online quorum intersection checks.
+    bool QUORUM_INTERSECTION_CHECKER;
+
     // Invariants
     std::vector<std::string> INVARIANT_CHECKS;
 

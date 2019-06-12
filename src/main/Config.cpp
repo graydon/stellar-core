@@ -105,7 +105,7 @@ Config::Config() : NODE_SEED(SecretKey::random())
     WORKER_THREADS = 11;
     MAX_CONCURRENT_SUBPROCESSES = 16;
     NODE_IS_VALIDATOR = false;
-
+    QUORUM_INTERSECTION_CHECKER = true;
     DATABASE = SecretValue{"sqlite3://:memory:"};
 
     ENTRY_CACHE_SIZE = 100000;
@@ -492,6 +492,10 @@ Config::load(std::string const& filename)
             else if (item.first == "MINIMUM_IDLE_PERCENT")
             {
                 MINIMUM_IDLE_PERCENT = readInt<uint32_t>(item, 0, 100);
+            }
+            else if (item.first == "QUORUM_INTERSECTION_CHECKER")
+            {
+                QUORUM_INTERSECTION_CHECKER = readBool(item);
             }
             else if (item.first == "HISTORY")
             {
