@@ -32,7 +32,7 @@ struct XDRSipHasher
     operator()(T t)
     {
         auto u = xdr::swap32le(xdr::xdr_traits<T>::to_uint(t));
-        h.update(reinterpret_cast<unsigned char*>(&u), sizeof(u));
+        h.update_le_u32(u);
     }
 
     template <typename T>
@@ -41,7 +41,7 @@ struct XDRSipHasher
     operator()(T t)
     {
         auto u = xdr::swap64le(xdr::xdr_traits<T>::to_uint(t));
-        h.update(reinterpret_cast<unsigned char*>(&u), sizeof(u));
+        h.update_le_u64(u);
     }
 
     template <typename T>
@@ -58,7 +58,7 @@ struct XDRSipHasher
         while (len & 3)
         {
             ++len;
-            h.update('\0');
+            h.update_u8('\0');
         }
     }
 
