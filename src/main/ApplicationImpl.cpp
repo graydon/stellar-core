@@ -61,9 +61,11 @@ static const int SHUTDOWN_DELAY_SECONDS = 1;
 namespace stellar
 {
 
-ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
+ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg,
+                                 AppMode mode)
     : mVirtualClock(clock)
     , mConfig(cfg)
+    , mAppMode(mode)
     , mWorkerIOContext(mConfig.WORKER_THREADS)
     , mWork(std::make_unique<asio::io_context::work>(mWorkerIOContext))
     , mWorkerThreads()
@@ -600,6 +602,12 @@ bool
 ApplicationImpl::isStopping() const
 {
     return mStopping;
+}
+
+Application::AppMode
+ApplicationImpl::getMode() const
+{
+    return mAppMode;
 }
 
 VirtualClock&
