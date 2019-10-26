@@ -37,8 +37,51 @@ validateNetworkPassphrase(Application::pointer app)
 }
 
 Application::pointer
-Application::create(VirtualClock& clock, Config const& cfg, bool newDB)
+Application::create(VirtualClock& clock, Config const& cfg, bool newDB,
+                    AppMode mode)
 {
-    return create<ApplicationImpl>(clock, cfg, newDB);
+    return create<ApplicationImpl>(clock, cfg, newDB, mode);
+}
+
+bool
+Application::modeHasOverlay(AppMode m)
+{
+    switch (m)
+    {
+    case AppMode::RUN_LIVE_NODE:
+        return true;
+    case AppMode::RELAY_LIVE_TRAFFIC:
+        return true;
+    case AppMode::REPLAY_HISTORY_FOR_META:
+        return false;
+    }
+}
+
+bool
+Application::modeHasDatabase(AppMode m)
+{
+    switch (m)
+    {
+    case AppMode::RUN_LIVE_NODE:
+        return true;
+    case AppMode::RELAY_LIVE_TRAFFIC:
+        return false;
+    case AppMode::REPLAY_HISTORY_FOR_META:
+        return false;
+    }
+}
+
+bool
+Application::modePublishesHistory(AppMode m)
+{
+    switch (m)
+    {
+    case AppMode::RUN_LIVE_NODE:
+        return true;
+    case AppMode::RELAY_LIVE_TRAFFIC:
+        return false;
+    case AppMode::REPLAY_HISTORY_FOR_META:
+        return false;
+    }
 }
 }

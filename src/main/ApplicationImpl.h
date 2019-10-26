@@ -35,7 +35,8 @@ class LoadGenerator;
 class ApplicationImpl : public Application
 {
   public:
-    ApplicationImpl(VirtualClock& clock, Config const& cfg);
+    ApplicationImpl(VirtualClock& clock, Config const& cfg,
+                    AppMode mode);
     virtual ~ApplicationImpl() override;
 
     virtual void initialize(bool newDB) override;
@@ -47,6 +48,7 @@ class ApplicationImpl : public Application
     virtual State getState() const override;
     virtual std::string getStateHuman() const override;
     virtual bool isStopping() const override;
+    virtual AppMode getMode() const override;
     virtual VirtualClock& getClock() override;
     virtual medida::MetricsRegistry& getMetrics() override;
     virtual void syncOwnMetrics() override;
@@ -122,6 +124,7 @@ class ApplicationImpl : public Application
   private:
     VirtualClock& mVirtualClock;
     Config mConfig;
+    AppMode mAppMode;
 
     // NB: The io_context should come first, then the 'manager' sub-objects,
     // then the threads. Do not reorder these fields.
