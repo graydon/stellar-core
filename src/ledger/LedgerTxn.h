@@ -391,6 +391,50 @@ class AbstractLedgerTxnParent
     // or if the corresponding LedgerEntry has been erased.
     virtual std::shared_ptr<LedgerEntry const>
     getNewestVersion(LedgerKey const& key) const = 0;
+
+    virtual uint64_t
+    countObjects(LedgerEntryType let) const
+    {
+        return 0;
+    }
+    virtual uint64_t
+    countObjects(LedgerEntryType let, LedgerRange const& ledgers) const
+    {
+        return 0;
+    }
+
+    virtual void
+    deleteObjectsModifiedOnOrAfterLedger(uint32_t ledger) const
+    {
+    }
+
+    virtual void
+    dropAccounts()
+    {
+    }
+    virtual void
+    dropData()
+    {
+    }
+    virtual void
+    dropOffers()
+    {
+    }
+    virtual void
+    dropTrustLines()
+    {
+    }
+
+    virtual double
+    getPrefetchHitRate() const
+    {
+        return 100.0;
+    }
+    virtual uint32_t
+    prefetch(std::unordered_set<LedgerKey> const& keys)
+    {
+        return 0;
+    }
 };
 
 // An abstraction for an object that is an AbstractLedgerTxnParent and has
@@ -640,16 +684,16 @@ class LedgerTxnRoot : public AbstractLedgerTxnParent
 
     void commitChild(EntryIterator iter, LedgerTxnConsistency cons) override;
 
-    uint64_t countObjects(LedgerEntryType let) const;
+    uint64_t countObjects(LedgerEntryType let) const override;
     uint64_t countObjects(LedgerEntryType let,
-                          LedgerRange const& ledgers) const;
+                          LedgerRange const& ledgers) const override;
 
-    void deleteObjectsModifiedOnOrAfterLedger(uint32_t ledger) const;
+    void deleteObjectsModifiedOnOrAfterLedger(uint32_t ledger) const override;
 
-    void dropAccounts();
-    void dropData();
-    void dropOffers();
-    void dropTrustLines();
+    void dropAccounts() override;
+    void dropData() override;
+    void dropOffers() override;
+    void dropTrustLines() override;
 
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
     void resetForFuzzer();
@@ -677,7 +721,7 @@ class LedgerTxnRoot : public AbstractLedgerTxnParent
 
     void rollbackChild() override;
 
-    uint32_t prefetch(std::unordered_set<LedgerKey> const& keys);
-    double getPrefetchHitRate() const;
+    uint32_t prefetch(std::unordered_set<LedgerKey> const& keys) override;
+    double getPrefetchHitRate() const override;
 };
 }
