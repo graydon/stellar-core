@@ -218,6 +218,29 @@ class Config : public std::enable_shared_from_this<Config>
     // you want to make that trade.
     bool DISABLE_XDR_FSYNC;
 
+    // A pathname to either a named filesystem FIFO (in POSIX) or a Windows
+    // named pipe (of the form "\\<servername>\pipe\<pipename>" or, if local,
+    // "\\.\pipe\<pipename>"). This will be opened at startup and used as a sink
+    // for streaming fine-grained metadata for each ledger change, both during
+    // catchup and live ledger-closing. Mutually exclusive with
+    // METADATA_OUTPUT_FILE_DESCRIPTOR below.
+    std::string METADATA_OUTPUT_NAMED_PIPE;
+
+    // A file descriptor number (typically one end of an anonymous POSIX pipe
+    // opened and inherited from a parent process) that will be opened at
+    // startup and used as a sink for streaming fine-grained metadata for each
+    // ledger change, both during catchup and live ledger-closing. Mutually
+    // exclusive with METADATA_OUTPUT_NAMED_PIPE above.
+    int METADATA_OUTPUT_FILE_DESCRIPTOR;
+
+    // Soft limit of bytes to buffer in memory when writing metadata to a
+    // local stream. This should be set as high as can be comfortably held in
+    // memory on a given machine: different subsystems will detect and deal with
+    // exceeding this limit differently. Bulk replay as in catchup will block,
+    // normal ledger-closing will emit a warning. Has no effect when not
+    // streaming metadata.
+    size_t METADATA_BUFFER_LIMIT;
+
     // Set of cursors added at each startup with value '1'.
     std::vector<std::string> KNOWN_CURSORS;
 

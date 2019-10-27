@@ -46,6 +46,7 @@ DownloadApplyTxsWork::yieldMoreWork()
         std::make_shared<GetAndUnzipRemoteFileWork>(mApp, ft, mArchive);
 
     auto const& hm = mApp.getHistoryManager();
+    auto const& lm = mApp.getLedgerManager();
     auto low = std::max(LedgerManager::GENESIS_LEDGER_SEQ,
                         hm.prevCheckpointLedger(mCheckpointToQueue));
     auto high = std::min(mCheckpointToQueue, mRange.mLast);
@@ -59,7 +60,7 @@ DownloadApplyTxsWork::yieldMoreWork()
         auto prev = mLastYieldedWork;
         bool pqFellBehind = false;
         auto predicate = [
-            prev, pqFellBehind, waitForPublish = mWaitForPublish, &hm
+            prev, pqFellBehind, waitForPublish = mWaitForPublish, &hm, &lm
         ]() mutable
         {
             if (!prev)
@@ -87,9 +88,11 @@ DownloadApplyTxsWork::yieldMoreWork()
                 {
                     pqFellBehind = true;
                 }
-                res = !pqFellBehind;
-            }
 
+                // Also treat overfilling the LedgerManager's metadata
+                // stream-buffer as a form of "publishing" that's fallen behind.
+                res = !(pqFellBehind || lm.metadataBufferLimitExceeded());
+            }
             return res;
         };
         seq.push_back(std::make_shared<ConditionalWork>(

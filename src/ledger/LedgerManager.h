@@ -164,6 +164,16 @@ class LedgerManager
     virtual bool hasBufferedLedger() const = 0;
     virtual LedgerCloseData popBufferedLedger() = 0;
 
+    // Return false iff we're currently streaming buffered metadata; this may be
+    // true for a while after a catchup replay completes, during which time we
+    // should keep cranking the IO context.
+    virtual bool metadataBufferEmpty() const = 0;
+
+    // Return true iff the current metadata stream buffer exceeds its (soft)
+    // limit. Clients should call this if they wish to throttle their calls to
+    // `closeLedger`, each of which may buffer more metadata.
+    virtual bool metadataBufferLimitExceeded() const = 0;
+
     virtual ~LedgerManager()
     {
     }

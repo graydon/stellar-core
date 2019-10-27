@@ -116,6 +116,9 @@ Config::Config() : NODE_SEED(SecretKey::random())
     UNSAFE_QUORUM = false;
     DISABLE_BUCKET_GC = false;
     DISABLE_XDR_FSYNC = false;
+    METADATA_OUTPUT_NAMED_PIPE = "";
+    METADATA_OUTPUT_FILE_DESCRIPTOR = -1;
+    METADATA_BUFFER_LIMIT = 100000000;
 
     LOG_FILE_PATH = "stellar-core.%datetime{%Y.%M.%d-%H:%m:%s}.log";
     BUCKET_DIR_PATH = "buckets";
@@ -684,6 +687,18 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             {
                 DISABLE_XDR_FSYNC = readBool(item);
             }
+            else if (item.first == "METADATA_OUTPUT_NAMED_PIPE")
+            {
+                METADATA_OUTPUT_NAMED_PIPE = readString(item);
+            }
+            else if (item.first == "METADATA_OUTPUT_FILE_DESCRIPTOR")
+            {
+                METADATA_OUTPUT_FILE_DESCRIPTOR = readInt<int>(item);
+            }
+            else if (item.first == "METADATA_BUFFER_LIMIT")
+            {
+                METADATA_BUFFER_LIMIT = readInt<size_t>(item);
+            }
             else if (item.first == "KNOWN_CURSORS")
             {
                 KNOWN_CURSORS = readStringArray(item);
@@ -1225,6 +1240,14 @@ Config::validateConfig(ValidationThresholdLevels thresholdLevel)
                                   "between {} and 100)",
                                   UNSAFE_QUORUM ? 1 : 51);
         throw std::invalid_argument("Invalid QUORUM_SET");
+    }
+
+    if (METADATA_OUTPUT_FILE_DESCRIPTOR != -1 &&
+        METADATA_OUTPUT_NAMED_PIPE != "")
+    {
+        LOG(FATAL) << "Can only set one of METADATA_OUTPUT_NAMED_PIPE and"
+                   << "METADATA_OUTPUT_FILE_DESCRIPTOR, not both";
+        throw std::invalid_argument("Invalid metadata output configuration");
     }
 }
 
