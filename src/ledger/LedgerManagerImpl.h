@@ -6,11 +6,13 @@
 #include "util/asio.h"
 
 #include "history/HistoryManager.h"
+#include "ledger/LedgerCloseMetaStream.h"
 #include "ledger/LedgerManager.h"
 #include "ledger/SyncingLedgerChain.h"
 #include "main/PersistentState.h"
 #include "transactions/TransactionFrame.h"
 #include "xdr/Stellar-ledger.h"
+#include "util/XDRStream.h"
 #include <string>
 
 /*
@@ -39,6 +41,7 @@ class LedgerManagerImpl : public LedgerManager
 
   protected:
     Application& mApp;
+    std::shared_ptr<LedgerCloseMetaStream> mMetaStream;
 
   private:
     medida::Timer& mTransactionApply;
@@ -67,11 +70,13 @@ class LedgerManagerImpl : public LedgerManager
                          CatchupConfiguration::Mode catchupMode);
 
     void processFeesSeqNums(std::vector<TransactionFramePtr>& txs,
-                            AbstractLedgerTxn& ltxOuter, int64_t baseFee);
+                            AbstractLedgerTxn& ltxOuter, int64_t baseFee,
+                            LedgerCloseMeta *ledgerCloseMeta);
 
     void applyTransactions(std::vector<TransactionFramePtr>& txs,
                            AbstractLedgerTxn& ltx,
-                           TransactionResultSet& txResultSet);
+                           TransactionResultSet& txResultSet,
+                           LedgerCloseMeta *ledgerCloseMeta);
 
     void ledgerClosed(AbstractLedgerTxn& ltx);
 
@@ -142,5 +147,8 @@ class LedgerManagerImpl : public LedgerManager
     void closeLedger(LedgerCloseData const& ledgerData) override;
     void deleteOldEntries(Database& db, uint32_t ledgerSeq,
                           uint32_t count) override;
+
+    void setLedgerCloseMetaStreamFileDescriptor(int fd) override;
+    bool isStreamingMetadata() const override;
 };
 }

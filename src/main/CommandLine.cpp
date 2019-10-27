@@ -5,6 +5,7 @@
 #include "main/CommandLine.h"
 #include "catchup/CatchupConfiguration.h"
 #include "history/InferredQuorumUtils.h"
+#include "ledger/LedgerManager.h"
 #include "main/Application.h"
 #include "main/ApplicationUtils.h"
 #include "main/Config.h"
@@ -175,6 +176,12 @@ clara::Opt
 outputFileParser(std::string& string)
 {
     return clara::Opt{string, "FILE-NAME"}["--output-file"]("output file");
+}
+
+clara::Opt
+outputFileDescriptorParser(int& fd)
+{
+    return clara::Opt{fd, "FD-NUM"}["--output-file-descriptor"]("output file-descriptor number");
 }
 
 clara::Opt
@@ -809,7 +816,7 @@ runReplayLedgerForStreaming(CommandLineArgs const& args)
 {
     CommandLine::ConfigOption configOption;
     std::string catchupString;
-    std::string outputFile;
+    int outputFileDescriptor = -1;
 
     auto validateCatchupString = [&] {
         try
@@ -830,7 +837,7 @@ runReplayLedgerForStreaming(CommandLineArgs const& args)
     return runWithHelp(
         args,
         {configurationParser(configOption), catchupStringParser,
-                outputFileParser(outputFile)},
+                outputFileDescriptorParser(outputFileDescriptor)},
         [&] {
             auto config = configOption.getConfig();
             config.DATABASE = SecretValue {"sqlite3://:memory:"};
@@ -847,13 +854,18 @@ runReplayLedgerForStreaming(CommandLineArgs const& args)
             VirtualClock clock(VirtualClock::REAL_TIME);
             auto app = Application::create(clock, config, /* newDB=*/true,
                                            Application::AppMode::REPLAY_HISTORY_FOR_META);
+            if (outputFileDescriptor != -1)
+            {
+                app->getLedgerManager().setLedgerCloseMetaStreamFileDescriptor(
+                    outputFileDescriptor);
+            }
             Json::Value catchupInfo;
-            auto result =
-                catchup(app, parseCatchup(catchupString), catchupInfo);
-            if (!catchupInfo.isNull())
-                writeCatchupInfo(catchupInfo, outputFile);
-
-            return 0;
+            auto res = catchup(app, parseCatchup(catchupString), catchupInfo);
+            while (app->getLedgerManager().isStreamingMetadata())
+            {
+                app->getClock().crank(true);
+            }
+            return res;
         });
 }
 
