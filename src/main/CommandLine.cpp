@@ -6,6 +6,7 @@
 #include "catchup/CatchupConfiguration.h"
 #include "history/HistoryArchiveManager.h"
 #include "history/InferredQuorumUtils.h"
+#include "ledger/LedgerManager.h"
 #include "main/Application.h"
 #include "main/ApplicationUtils.h"
 #include "main/Config.h"
@@ -465,7 +466,8 @@ CommandLine::writeToStream(std::string const& exeName, std::ostream& os) const
 }
 
 int
-runCatchup(CommandLineArgs const& args)
+runCatchupFull(CommandLineArgs const& args, bool newDb,
+               Application::AppMode mode)
 {
     CommandLine::ConfigOption configOption;
     std::string catchupString;
@@ -533,8 +535,15 @@ runCatchup(CommandLineArgs const& args)
                 config.AUTOMATIC_MAINTENANCE_COUNT = 1000000;
             }
 
+            if (!Application::modeHasDatabase(mode))
+            {
+                // And don't bother fsyncing buckets without a DB,
+                // they're temporary anyways.
+                config.DISABLE_XDR_FSYNC = true;
+            }
+
             VirtualClock clock(VirtualClock::REAL_TIME);
-            auto app = Application::create(clock, config, false);
+            auto app = Application::create(clock, config, newDb, mode);
             auto const& ham = app->getHistoryArchiveManager();
             auto archivePtr = ham.getHistoryArchive(archive);
             if (iequals(archive, "any"))
@@ -550,9 +559,19 @@ runCatchup(CommandLineArgs const& args)
             {
                 writeCatchupInfo(catchupInfo, outputFile);
             }
+            while (!app->getLedgerManager().metadataBufferEmpty())
+            {
+                app->getClock().crank(true);
+            }
 
             return result;
         });
+}
+
+int
+runCatchup(CommandLineArgs const& args)
+{
+    return runCatchupFull(args, false, Application::AppMode::RUN_LIVE_NODE);
 }
 
 int
@@ -826,6 +845,13 @@ runWriteQuorum(CommandLineArgs const& args)
         });
 }
 
+int
+runReplayHistoryForMetadata(CommandLineArgs const& args)
+{
+    return runCatchupFull(args, true,
+                          Application::AppMode::REPLAY_HISTORY_FOR_METADATA);
+}
+
 #ifdef BUILD_TESTS
 int
 runLoadXDR(CommandLineArgs const& args)
@@ -1024,6 +1050,9 @@ handleCommandLine(int argc, char* const* argv)
           runSignTransaction},
          {"upgrade-db", "upgade database schema to current version",
           runUpgradeDB},
+         {"replay-history-for-metadata",
+          "replay a ledger range from history, streaming metadata",
+          runReplayHistoryForMetadata},
 #ifdef BUILD_TESTS
          {"load-xdr", "load an XDR bucket file, for testing", runLoadXDR},
          {"rebuild-ledger-from-buckets",
