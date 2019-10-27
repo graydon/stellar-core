@@ -29,6 +29,7 @@
 #include "medida/metrics_registry.h"
 #include "overlay/StellarXDR.h"
 #include "process/ProcessManager.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/Math.h"
 #include "util/StatusManager.h"
@@ -147,6 +148,12 @@ HistoryManagerImpl::logAndUpdatePublishStatus()
 size_t
 HistoryManagerImpl::publishQueueLength() const
 {
+    if (!Application::modePublishesHistory(mApp.getMode()) ||
+        !Application::modeHasDatabase(mApp.getMode()))
+    {
+        return 0;
+    }
+
     uint32_t count;
     auto prep = mApp.getDatabase().getPreparedStatement(
         "SELECT count(ledger) FROM publishqueue;");
@@ -222,6 +229,11 @@ HistoryManagerImpl::getMaxLedgerQueuedToPublish()
 bool
 HistoryManagerImpl::maybeQueueHistoryCheckpoint()
 {
+    if (!Application::modePublishesHistory(mApp.getMode()))
+    {
+        return false;
+    }
+
     uint32_t seq = mApp.getLedgerManager().getLastClosedLedgerNum() + 1;
     if (seq != nextCheckpointLedger(seq))
     {
@@ -242,6 +254,7 @@ HistoryManagerImpl::maybeQueueHistoryCheckpoint()
 void
 HistoryManagerImpl::queueCurrentHistory()
 {
+    releaseAssertOrThrow(Application::modePublishesHistory(mApp.getMode()));
     auto ledger = mApp.getLedgerManager().getLastClosedLedgerNum();
     HistoryArchiveState has(ledger, mApp.getBucketManager().getBucketList());
 
@@ -273,6 +286,8 @@ HistoryManagerImpl::queueCurrentHistory()
 void
 HistoryManagerImpl::takeSnapshotAndPublish(HistoryArchiveState const& has)
 {
+    releaseAssertOrThrow(Application::modePublishesHistory(mApp.getMode()));
+
     if (mPublishWork)
     {
         return;
@@ -317,6 +332,12 @@ HistoryManagerImpl::publishQueuedHistory()
     }
 #endif
 
+    if (!Application::modePublishesHistory(mApp.getMode()) ||
+        !Application::modeHasDatabase(mApp.getMode()))
+    {
+        return 0;
+    }
+
     std::string state;
 
     auto prep = mApp.getDatabase().getPreparedStatement(
@@ -341,6 +362,13 @@ std::vector<HistoryArchiveState>
 HistoryManagerImpl::getPublishQueueStates()
 {
     std::vector<HistoryArchiveState> states;
+
+    if (!Application::modePublishesHistory(mApp.getMode()) ||
+        !Application::modeHasDatabase(mApp.getMode()))
+    {
+        return states;
+    }
+
     std::string state;
     auto prep = mApp.getDatabase().getPreparedStatement(
         "SELECT state FROM publishqueue;");
@@ -409,6 +437,8 @@ HistoryManagerImpl::historyPublished(
     uint32_t ledgerSeq, std::vector<std::string> const& originalBuckets,
     bool success)
 {
+    releaseAssertOrThrow(Application::modePublishesHistory(mApp.getMode()));
+
     if (success)
     {
         auto iter = mEnqueueTimes.find(ledgerSeq);
