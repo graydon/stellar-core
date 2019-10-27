@@ -6,6 +6,7 @@
 
 #include "catchup/CatchupManager.h"
 #include "history/HistoryManager.h"
+#include "util/LocalStream.h"
 #include <memory>
 
 namespace stellar
@@ -160,6 +161,15 @@ class LedgerManager
     // deletes old entries stored in the database
     virtual void deleteOldEntries(Database& db, uint32_t ledgerSeq,
                                   uint32_t count) = 0;
+
+    // Enable asynchronous streaming of ledger-close metadata to a given
+    // process-local stream handle, throwing if this is already set.
+    virtual void setLedgerCloseMetaStream(localstream::HandleType handle) = 0;
+
+    // Return true iff we're currently streaming metadata; this may be
+    // true for a while after a catchup replay completes, during which
+    // time we should keep cranking the IO context.
+    virtual bool isStreamingMetadata() const = 0;
 
     virtual ~LedgerManager()
     {

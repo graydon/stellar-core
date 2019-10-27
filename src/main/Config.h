@@ -218,6 +218,12 @@ class Config : public std::enable_shared_from_this<Config>
     // you want to make that trade.
     bool DISABLE_XDR_FSYNC;
 
+    // Limit of bytes to buffer in memory when writing metadata to a local
+    // stream. This should be set as high as can be comfortably held in memory
+    // on a given machine: exceeding this limit results in blocking or an error
+    // depending on application mode. Has no effect when not streaming metadata.
+    size_t METADATA_BUFFER_LIMIT;
+
     // Set of cursors added at each startup with value '1'.
     std::vector<std::string> KNOWN_CURSORS;
 

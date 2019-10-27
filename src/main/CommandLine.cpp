@@ -6,6 +6,7 @@
 #include "catchup/CatchupConfiguration.h"
 #include "history/HistoryArchiveManager.h"
 #include "history/InferredQuorumUtils.h"
+#include "ledger/LedgerManager.h"
 #include "main/Application.h"
 #include "main/ApplicationUtils.h"
 #include "main/Config.h"
@@ -177,6 +178,20 @@ clara::Opt
 outputFileParser(std::string& string)
 {
     return clara::Opt{string, "FILE-NAME"}["--output-file"]("output file");
+}
+
+clara::Opt
+outputFileDescriptorParser(int& fd)
+{
+    return clara::Opt{fd, "FD-NUM"}["--output-file-descriptor"](
+        "output file-descriptor number");
+}
+
+clara::Opt
+outputNamedPipeParser(std::string& pipe)
+{
+    return clara::Opt{pipe,
+                      "PIPE-NAME"}["--output-named-pipe"]("output named-pipe");
 }
 
 clara::Opt
@@ -816,6 +831,75 @@ runWriteQuorum(CommandLineArgs const& args)
         });
 }
 
+int
+runReplayHistoryForMetadata(CommandLineArgs const& args)
+{
+    using namespace stellar::localstream;
+    CommandLine::ConfigOption configOption;
+    std::string catchupString;
+    int outputFileDescriptor = -1;
+    std::string outputNamedPipe;
+
+    auto validateCatchupString = [&] {
+        try
+        {
+            parseCatchup(catchupString);
+            return std::string{};
+        }
+        catch (std::runtime_error& e)
+        {
+            return std::string{e.what()};
+        }
+    };
+
+    auto catchupStringParser = ParserWithValidation{
+        clara::Arg(catchupString, "DESTINATION-LEDGER/LEDGER-COUNT").required(),
+        validateCatchupString};
+
+    return runWithHelp(
+        args,
+        {configurationParser(configOption), catchupStringParser,
+         outputFileDescriptorParser(outputFileDescriptor),
+         outputNamedPipeParser(outputNamedPipe)},
+        [&] {
+            auto config = configOption.getConfig();
+            config.DATABASE = SecretValue{"sqlite3://:memory:"};
+            config.AUTOMATIC_MAINTENANCE_PERIOD = std::chrono::seconds{10};
+            config.AUTOMATIC_MAINTENANCE_COUNT = 1000000;
+            config.DISABLE_XDR_FSYNC = true;
+            for (auto& pair : config.HISTORY)
+            {
+                pair.second.mPutCmd = "";
+                pair.second.mMkdirCmd = "";
+            }
+            config.setNoListen();
+
+            VirtualClock clock(VirtualClock::REAL_TIME);
+            auto app = Application::create(
+                clock, config, /* newDB=*/true,
+                Application::AppMode::REPLAY_HISTORY_FOR_METADATA);
+
+            if (outputFileDescriptor != -1)
+            {
+                auto handle =
+                    openWriteHandleFromFileDescriptor(outputFileDescriptor);
+                app->getLedgerManager().setLedgerCloseMetaStream(handle);
+            }
+            else if (!outputNamedPipe.empty())
+            {
+                auto handle = openWriteHandleFromPathname(outputNamedPipe);
+                app->getLedgerManager().setLedgerCloseMetaStream(handle);
+            }
+            Json::Value catchupInfo;
+            auto res = catchup(app, parseCatchup(catchupString), catchupInfo);
+            while (app->getLedgerManager().isStreamingMetadata())
+            {
+                app->getClock().crank(true);
+            }
+            return res;
+        });
+}
+
 #ifdef BUILD_TESTS
 int
 runLoadXDR(CommandLineArgs const& args)
@@ -839,60 +923,6 @@ runRebuildLedgerFromBuckets(CommandLineArgs const& args)
         rebuildLedgerFromBuckets(configOption.getConfig());
         return 0;
     });
-}
-
-int
-runReplayHistoryForMetadata(CommandLineArgs const& args)
-{
-    CommandLine::ConfigOption configOption;
-    std::string catchupString;
-    std::string outputFile;
-
-    auto validateCatchupString = [&] {
-        try
-        {
-            parseCatchup(catchupString);
-            return std::string{};
-        }
-        catch (std::runtime_error& e)
-        {
-            return std::string{e.what()};
-        }
-    };
-
-    auto catchupStringParser = ParserWithValidation{
-        clara::Arg(catchupString, "DESTINATION-LEDGER/LEDGER-COUNT").required(),
-        validateCatchupString};
-
-    return runWithHelp(
-        args,
-        {configurationParser(configOption), catchupStringParser,
-         outputFileParser(outputFile)},
-        [&] {
-            auto config = configOption.getConfig();
-            config.DATABASE = SecretValue{"sqlite3://:memory:"};
-            config.AUTOMATIC_MAINTENANCE_PERIOD = std::chrono::seconds{10};
-            config.AUTOMATIC_MAINTENANCE_COUNT = 1000000;
-            config.DISABLE_XDR_FSYNC = true;
-            for (auto& pair : config.HISTORY)
-            {
-                pair.second.mPutCmd = "";
-                pair.second.mMkdirCmd = "";
-            }
-            config.setNoListen();
-
-            VirtualClock clock(VirtualClock::REAL_TIME);
-            auto app = Application::create(
-                clock, config, /* newDB=*/true,
-                Application::AppMode::REPLAY_HISTORY_FOR_METADATA);
-            Json::Value catchupInfo;
-            auto result =
-                catchup(app, parseCatchup(catchupString), catchupInfo);
-            if (!catchupInfo.isNull())
-                writeCatchupInfo(catchupInfo, outputFile);
-
-            return 0;
-        });
 }
 
 int

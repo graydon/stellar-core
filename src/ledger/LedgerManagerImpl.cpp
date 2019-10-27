@@ -28,6 +28,7 @@
 #include "overlay/OverlayManager.h"
 #include "transactions/OperationFrame.h"
 #include "transactions/TransactionUtils.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/XDROperators.h"
 #include "util/format.h"
@@ -808,6 +809,8 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
     mLastClose = now;
     mLedgerAge.set_count(0);
 
+    std::shared_ptr<AbstractTxSetFrameForApply> txSet = ledgerData.getTxSet();
+
     // If we do not support ledger version, we can't apply that ledger, fail!
     if (header.current().ledgerVersion >
         mApp.getConfig().LEDGER_PROTOCOL_VERSION)
@@ -820,13 +823,12 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
                         header.current().ledgerVersion));
     }
 
-    if (ledgerData.getTxSet()->previousLedgerHash() !=
-        getLastClosedLedgerHeader().hash)
+    if (txSet->previousLedgerHash() != getLastClosedLedgerHeader().hash)
     {
         CLOG(ERROR, "Ledger")
             << "TxSet mismatch: LCD wants "
             << ledgerAbbrev(ledgerData.getLedgerSeq() - 1,
-                            ledgerData.getTxSet()->previousLedgerHash())
+                            txSet->previousLedgerHash())
             << ", LCL is " << ledgerAbbrev(getLastClosedLedgerHeader());
 
         CLOG(ERROR, "Ledger")
@@ -836,13 +838,12 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
         throw std::runtime_error("txset mismatch");
     }
 
-    if (ledgerData.getTxSet()->getContentsHash() !=
-        ledgerData.getValue().txSetHash)
+    if (txSet->getContentsHash() != ledgerData.getValue().txSetHash)
     {
         CLOG(ERROR, "Ledger")
             << "Corrupt transaction set: TxSet hash is "
-            << ledgerData.getTxSet()->getContentsHash()
-            << ", SCP value reports " << ledgerData.getValue().txSetHash;
+            << txSet->getContentsHash() << ", SCP value reports "
+            << ledgerData.getValue().txSetHash;
         CLOG(ERROR, "Ledger") << POSSIBLY_CORRUPTED_QUORUM_SET;
 
         throw std::runtime_error("corrupt transaction set");
@@ -851,6 +852,18 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
     auto const& sv = ledgerData.getValue();
     header.current().scpValue = sv;
 
+    // In addition to the _canonical_ LedgerResultSet hashed into the
+    // LedgerHeader, we optionally collect an even-more-fine-grained record of
+    // the ledger entries modified by each tx during tx processing in a
+    // LedgerCloseMeta, for streaming to attached clients (typically: horizon).
+    std::unique_ptr<LedgerCloseMeta> ledgerCloseMeta;
+    if (mMetaStream)
+    {
+        ledgerCloseMeta = std::make_unique<LedgerCloseMeta>();
+        ledgerCloseMeta->v0().txProcessing.reserve(txSet->sizeTx());
+        txSet->toXDR(ledgerCloseMeta->v0().txSet);
+    }
+
     // the transaction set that was agreed upon by consensus
     // was sorted by hash; we reorder it so that transactions are
     // sorted such that sequence numbers are respected
@@ -858,13 +871,12 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
 
     // first, prefetch source accounts fot txset, then charge fees
     prefetchTxSourceIds(txs);
-    processFeesSeqNums(txs, ltx,
-                       ledgerData.getTxSet()->getBaseFee(header.current()));
+    processFeesSeqNums(txs, ltx, txSet->getBaseFee(header.current()),
+                       ledgerCloseMeta.get());
 
     TransactionResultSet txResultSet;
     txResultSet.results.reserve(txs.size());
-
-    applyTransactions(txs, ltx, txResultSet);
+    applyTransactions(txs, ltx, txResultSet, ledgerCloseMeta.get());
 
     ltx.loadHeader().current().txSetResultHash =
         sha256(xdr::xdr_to_opaque(txResultSet));
@@ -897,6 +909,14 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
             Upgrades::applyTo(lupgrade, ltxUpgrade);
 
             LedgerEntryChanges changes = ltxUpgrade.getChanges();
+            if (ledgerCloseMeta)
+            {
+                auto& up = ledgerCloseMeta->v0().upgradesProcessing;
+                up.emplace_back();
+                UpgradeEntryMeta& uem = up.back();
+                uem.upgrade = lupgrade;
+                uem.changes = changes;
+            }
             // Note: Index from 1 rather than 0 to match the behavior of
             // storeTransaction and storeTransactionFee.
             if (Application::modeHasDatabase(mApp.getMode()))
@@ -919,6 +939,13 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
     }
 
     ledgerClosed(ltx);
+
+    if (mMetaStream)
+    {
+        releaseAssert(ledgerCloseMeta);
+        ledgerCloseMeta->v0().ledgerHeader = mLastClosedLedger;
+        mMetaStream->writeMetaToStream(*ledgerCloseMeta);
+    }
 
     // The next 4 steps happen in a relatively non-obvious, subtle order.
     // This is unfortunate and it would be nice if we could make it not
@@ -971,6 +998,24 @@ LedgerManagerImpl::deleteOldEntries(Database& db, uint32_t ledgerSeq,
 }
 
 void
+LedgerManagerImpl::setLedgerCloseMetaStream(localstream::HandleType handle)
+{
+    if (mMetaStream)
+    {
+        throw std::runtime_error("LedgerManagerImpl already streaming");
+    }
+    mMetaStream = std::make_shared<LedgerCloseMetaStream>(
+        mApp.getClock().getIOContext(), handle,
+        mApp.getConfig().METADATA_BUFFER_LIMIT);
+}
+
+bool
+LedgerManagerImpl::isStreamingMetadata() const
+{
+    return mMetaStream && mMetaStream->isStreaming();
+}
+
+void
 LedgerManagerImpl::advanceLedgerPointers(LedgerHeader const& header)
 {
     auto ledgerHash = sha256(xdr::xdr_to_opaque(header));
@@ -985,7 +1030,8 @@ LedgerManagerImpl::advanceLedgerPointers(LedgerHeader const& header)
 void
 LedgerManagerImpl::processFeesSeqNums(std::vector<TransactionFramePtr>& txs,
                                       AbstractLedgerTxn& ltxOuter,
-                                      int64_t baseFee)
+                                      int64_t baseFee,
+                                      LedgerCloseMeta* ledgerCloseMeta)
 {
     CLOG(DEBUG, "Ledger")
         << "processing fees and sequence numbers with base fee " << baseFee;
@@ -999,6 +1045,12 @@ LedgerManagerImpl::processFeesSeqNums(std::vector<TransactionFramePtr>& txs,
             LedgerTxn ltxTx(ltx);
             tx->processFeeSeqNum(ltxTx, baseFee);
             LedgerEntryChanges changes = ltxTx.getChanges();
+            if (ledgerCloseMeta)
+            {
+                auto& tp = ledgerCloseMeta->v0().txProcessing;
+                tp.emplace_back();
+                tp.back().feeProcessing = changes;
+            }
             // Note to future: when we eliminate the txhistory and txfeehistory
             // tables, the following step can be removed.
             //
@@ -1065,7 +1117,8 @@ LedgerManagerImpl::prefetchTransactionData(
 void
 LedgerManagerImpl::applyTransactions(std::vector<TransactionFramePtr>& txs,
                                      AbstractLedgerTxn& ltx,
-                                     TransactionResultSet& txResultSet)
+                                     TransactionResultSet& txResultSet,
+                                     LedgerCloseMeta* ledgerCloseMeta)
 {
     int index = 0;
 
@@ -1122,8 +1175,32 @@ LedgerManagerImpl::applyTransactions(std::vector<TransactionFramePtr>& txs,
             mInternalErrorCount.inc();
             tx->getResult().result.code(txINTERNAL_ERROR);
         }
+        TransactionResultPair results = tx->getResultPair();
+
+        // First gather the TransactionResultPair into the TxResultSet for
+        // hashing into the ledger header.
+        txResultSet.results.emplace_back(results);
+
+        // Then potentially add that TRP and its associated TransactionMeta
+        // into the associated slot of any LedgerCloseMeta we're collecting.
+        if (ledgerCloseMeta)
+        {
+            TransactionResultMeta& trm =
+                ledgerCloseMeta->v0().txProcessing.at(index);
+            trm.txApplyProcessing = tm;
+            trm.result = results;
+        }
+
+        // Then finally store the results and meta into the txhistory table.
+        // if we're running in a mode that has one.
+        //
+        // Note to future: when we eliminate the txhistory and txfeehistory
+        // tables, the following step can be removed.
+        //
+        // Also note: for historical reasons the history tables number
+        // txs counting from 1, not 0. We preserve this for the time being
+        // in case anyone depends on it.
         ++index;
-        txResultSet.results.emplace_back(tx->getResultPair());
         if (Application::modeHasDatabase(mApp.getMode()))
         {
             auto ledgerSeq = ltx.loadHeader().current().ledgerSeq;
