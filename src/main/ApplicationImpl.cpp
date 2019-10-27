@@ -26,6 +26,7 @@
 #include "invariant/LiabilitiesMatchOffers.h"
 #include "ledger/LedgerManager.h"
 #include "ledger/LedgerTxn.h"
+#include "ledger/InMemoryLedgerTxnRoot.h"
 #include "main/CommandHandler.h"
 #include "main/ExternalQueue.h"
 #include "main/Maintainer.h"
@@ -141,9 +142,20 @@ ApplicationImpl::initialize(bool createNewDB)
     mWorkScheduler = WorkScheduler::create(*this);
     mBanManager = BanManager::create(*this);
     mStatusManager = std::make_unique<StatusManager>();
-    mLedgerTxnRoot = std::make_unique<LedgerTxnRoot>(
-        *mDatabase, mConfig.ENTRY_CACHE_SIZE, mConfig.BEST_OFFERS_CACHE_SIZE,
-        mConfig.PREFETCH_BATCH_SIZE);
+
+    switch (mAppMode)
+    {
+    case AppMode::RUN_LIVE_NODE:
+        mLedgerTxnRoot = std::make_unique<LedgerTxnRoot>(
+            *mDatabase, mConfig.ENTRY_CACHE_SIZE, mConfig.BEST_OFFERS_CACHE_SIZE,
+            mConfig.PREFETCH_BATCH_SIZE);
+        break;
+    case AppMode::REPLAY_HISTORY_FOR_META:
+        mInMemoryLedgerTxnRoot = std::make_unique<InMemoryLedgerTxnRoot>();
+        break;
+    case AppMode::RELAY_LIVE_TRAFFIC:
+        break;
+    }
 
     BucketListIsConsistentWithDatabase::registerInvariant(*this);
     AccountSubEntriesCountIsValid::registerInvariant(*this);
@@ -852,10 +864,19 @@ ApplicationImpl::createLedgerManager()
     return LedgerManager::create(*this);
 }
 
-LedgerTxnRoot&
+AbstractLedgerTxnParent&
 ApplicationImpl::getLedgerTxnRoot()
 {
     assertThreadIsMain();
-    return *mLedgerTxnRoot;
+    switch (mAppMode)
+    {
+    case AppMode::RUN_LIVE_NODE:
+        return *mLedgerTxnRoot;
+    case AppMode::REPLAY_HISTORY_FOR_META:
+        return *mInMemoryLedgerTxnRoot;
+    case AppMode::RELAY_LIVE_TRAFFIC:
+        throw std::runtime_error(
+            "accessing LedgerTxnRoot in RELAY_LIVE_TRAFFIC mode");
+    }
 }
 }

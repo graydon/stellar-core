@@ -30,6 +30,7 @@ class ProcessManager;
 class CommandHandler;
 class Database;
 class LedgerTxnRoot;
+class InMemoryLedgerTxnRoot;
 class LoadGenerator;
 
 class ApplicationImpl : public Application
@@ -114,7 +115,7 @@ class ApplicationImpl : public Application
 
     virtual Hash const& getNetworkID() const override;
 
-    virtual LedgerTxnRoot& getLedgerTxnRoot() override;
+    virtual AbstractLedgerTxnParent& getLedgerTxnRoot() override;
 
   protected:
     std::unique_ptr<LedgerManager>
@@ -156,6 +157,7 @@ class ApplicationImpl : public Application
     std::unique_ptr<BanManager> mBanManager;
     std::unique_ptr<StatusManager> mStatusManager;
     std::unique_ptr<LedgerTxnRoot> mLedgerTxnRoot;
+    std::unique_ptr<InMemoryLedgerTxnRoot> mInMemoryLedgerTxnRoot;
 
 #ifdef BUILD_TESTS
     std::unique_ptr<LoadGenerator> mLoadGenerator;
