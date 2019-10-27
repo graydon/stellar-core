@@ -9,6 +9,7 @@
 #endif
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <thread>
 
 namespace stellar
@@ -47,5 +48,22 @@ printErrorAndAbort(const char* s1, const char* s2)
     std::fflush(stderr);
     dbgAbort();
     std::abort();
+}
+
+void
+printAssertFailureAndAbort(const char* s1, const char* file, int line)
+{
+    std::fprintf(stderr, "%s at %s:%d\n", s1, file, line);
+    std::fflush(stderr);
+    dbgAbort();
+    std::abort();
+}
+
+void
+printAssertFailureAndThrow(const char* s1, const char* file, int line)
+{
+    std::fprintf(stderr, "%s at %s:%d\n", s1, file, line);
+    std::fflush(stderr);
+    throw std::runtime_error(s1);
 }
 }
