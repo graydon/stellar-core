@@ -805,6 +805,59 @@ runRebuildLedgerFromBuckets(CommandLineArgs const& args)
 }
 
 int
+runReplayLedgerForStreaming(CommandLineArgs const& args)
+{
+    CommandLine::ConfigOption configOption;
+    std::string catchupString;
+    std::string outputFile;
+
+    auto validateCatchupString = [&] {
+        try
+        {
+            parseCatchup(catchupString);
+            return std::string{};
+        }
+        catch (std::runtime_error& e)
+        {
+            return std::string{e.what()};
+        }
+    };
+
+    auto catchupStringParser = ParserWithValidation{
+        clara::Arg(catchupString, "DESTINATION-LEDGER/LEDGER-COUNT").required(),
+        validateCatchupString};
+
+    return runWithHelp(
+        args,
+        {configurationParser(configOption), catchupStringParser,
+                outputFileParser(outputFile)},
+        [&] {
+            auto config = configOption.getConfig();
+            config.DATABASE = SecretValue {"sqlite3://:memory:"};
+            config.AUTOMATIC_MAINTENANCE_PERIOD = std::chrono::seconds{10};
+            config.AUTOMATIC_MAINTENANCE_COUNT = 1000000;
+            config.DISABLE_XDR_FSYNC = true;
+            for (auto &pair : config.HISTORY)
+            {
+                pair.second.mPutCmd = "";
+                pair.second.mMkdirCmd = "";
+            }
+            config.setNoListen();
+
+            VirtualClock clock(VirtualClock::REAL_TIME);
+            auto app = Application::create(clock, config, /* newDB=*/true,
+                                           Application::AppMode::REPLAY_HISTORY_FOR_META);
+            Json::Value catchupInfo;
+            auto result =
+                catchup(app, parseCatchup(catchupString), catchupInfo);
+            if (!catchupInfo.isNull())
+                writeCatchupInfo(catchupInfo, outputFile);
+
+            return 0;
+        });
+}
+
+int
 runSimulate(CommandLineArgs const& args)
 {
     CommandLine::ConfigOption configOption;
@@ -982,6 +1035,9 @@ handleCommandLine(int argc, char* const* argv)
          {"rebuild-ledger-from-buckets",
           "rebuild the current database ledger from the bucket list",
           runRebuildLedgerFromBuckets},
+         {"replay-ledger-for-streaming",
+          "replay a ledger range from history, streaming changes",
+          runReplayLedgerForStreaming},
          {"fuzz", "run a single fuzz input and exit", runFuzz},
          {"gen-fuzz", "generate a random fuzzer input file", runGenFuzz},
          {"simulate", "simulate applying ledgers", runSimulate},
