@@ -28,6 +28,10 @@ Maintainer::start()
 void
 Maintainer::scheduleMaintenance()
 {
+    if (!Application::modeHasDatabase(mApp.getMode()))
+    {
+        return;
+    }
     mTimer.expires_from_now(mApp.getConfig().AUTOMATIC_MAINTENANCE_PERIOD);
     mTimer.async_wait([this]() { tick(); }, VirtualTimer::onFailureNoop);
 }
@@ -42,6 +46,10 @@ Maintainer::tick()
 void
 Maintainer::performMaintenance(uint32_t count)
 {
+    if (!Application::modeHasDatabase(mApp.getMode()))
+    {
+        return;
+    }
     LOG(INFO) << "Performing maintenance";
     ExternalQueue ps{mApp};
     ps.deleteOldEntries(count);
