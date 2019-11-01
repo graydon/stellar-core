@@ -7,6 +7,7 @@
 #include "Application.h"
 #include "database/Database.h"
 #include "ledger/LedgerManager.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include <limits>
 #include <regex>
@@ -45,6 +46,10 @@ ExternalQueue::validateResourceID(std::string const& resid)
 void
 ExternalQueue::setInitialCursors(std::vector<std::string> const& initialResids)
 {
+    if (!Application::modeHasDatabase(mApp.getMode()))
+    {
+        return;
+    }
     for (auto const& resid : initialResids)
     {
         addCursorForResource(resid, 1);
@@ -54,6 +59,10 @@ ExternalQueue::setInitialCursors(std::vector<std::string> const& initialResids)
 void
 ExternalQueue::addCursorForResource(std::string const& resid, uint32 cursor)
 {
+    if (!Application::modeHasDatabase(mApp.getMode()))
+    {
+        return;
+    }
     if (getCursor(resid).empty())
     {
         setCursorForResource(resid, cursor);
@@ -63,6 +72,10 @@ ExternalQueue::addCursorForResource(std::string const& resid, uint32 cursor)
 void
 ExternalQueue::setCursorForResource(std::string const& resid, uint32 cursor)
 {
+    if (!Application::modeHasDatabase(mApp.getMode()))
+    {
+        return;
+    }
     checkID(resid);
 
     std::string old(getCursor(resid));
@@ -101,6 +114,10 @@ void
 ExternalQueue::getCursorForResource(std::string const& resid,
                                     std::map<std::string, uint32>& curMap)
 {
+    if (!Application::modeHasDatabase(mApp.getMode()))
+    {
+        return;
+    }
     // no resid set, get all cursors
     if (resid.empty())
     {
@@ -140,6 +157,10 @@ ExternalQueue::getCursorForResource(std::string const& resid,
 void
 ExternalQueue::deleteCursor(std::string const& resid)
 {
+    if (!Application::modeHasDatabase(mApp.getMode()))
+    {
+        return;
+    }
     checkID(resid);
 
     auto timer = mApp.getDatabase().getInsertTimer("pubsub");
@@ -154,6 +175,10 @@ ExternalQueue::deleteCursor(std::string const& resid)
 void
 ExternalQueue::deleteOldEntries(uint32 count)
 {
+    if (!Application::modeHasDatabase(mApp.getMode()))
+    {
+        return;
+    }
     auto& db = mApp.getDatabase();
     int m;
     soci::indicator minIndicator;
@@ -210,6 +235,7 @@ ExternalQueue::checkID(std::string const& resid)
 std::string
 ExternalQueue::getCursor(std::string const& resid)
 {
+    releaseAssertOrThrow(Application::modeHasDatabase(mApp.getMode()));
     checkID(resid);
     std::string res;
 
