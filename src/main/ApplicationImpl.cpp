@@ -126,7 +126,10 @@ ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg,
 void
 ApplicationImpl::initialize(bool createNewDB)
 {
-    mDatabase = std::make_unique<Database>(*this);
+    if (modeHasDatabase(mAppMode))
+    {
+        mDatabase = std::make_unique<Database>(*this);
+    }
     mPersistentState = std::make_unique<PersistentState>(*this);
     mOverlayManager = createOverlayManager();
     mLedgerManager = createLedgerManager();
@@ -183,8 +186,11 @@ ApplicationImpl::initialize(bool createNewDB)
 void
 ApplicationImpl::newDB()
 {
-    mDatabase->initialize();
-    mDatabase->upgradeToCurrentSchema();
+    if (modeHasDatabase(mAppMode))
+    {
+        mDatabase->initialize();
+        mDatabase->upgradeToCurrentSchema();
+    }
     mBucketManager->dropAll();
     mLedgerManager->startNewLedger();
 }
@@ -192,7 +198,10 @@ ApplicationImpl::newDB()
 void
 ApplicationImpl::upgradeDB()
 {
-    mDatabase->upgradeToCurrentSchema();
+    if (modeHasDatabase(mAppMode))
+    {
+        mDatabase->upgradeToCurrentSchema();
+    }
 }
 
 void
@@ -756,6 +765,7 @@ ApplicationImpl::getOverlayManager()
 Database&
 ApplicationImpl::getDatabase() const
 {
+    releaseAssertOrThrow(modeHasDatabase(mAppMode));
     return *mDatabase;
 }
 
