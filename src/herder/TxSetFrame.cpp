@@ -15,6 +15,7 @@
 #include "main/Application.h"
 #include "main/Config.h"
 #include "transactions/TransactionUtils.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/XDROperators.h"
 #include "xdrpp/marshal.h"
@@ -512,6 +513,8 @@ TxSetFrame::getTotalFees(LedgerHeader const& lh) const
 void
 TxSetFrame::toXDR(TransactionSet& txSet)
 {
+    // Should only call toXDR when in sorted-for-hash state.
+    releaseAssertOrThrow(mHashIsValid);
     txSet.txs.resize(xdr::size32(mTransactions.size()));
     for (unsigned int n = 0; n < mTransactions.size(); n++)
     {
