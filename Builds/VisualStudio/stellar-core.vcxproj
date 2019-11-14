@@ -379,6 +379,8 @@ exit /b 0
     <ClCompile Include="..\..\src\ledger\LedgerTxnOfferSQL.cpp" />
     <ClCompile Include="..\..\src\ledger\LedgerTxnTrustLineSQL.cpp" />
     <ClCompile Include="..\..\src\ledger\SyncingLedgerChain.cpp" />
+    <ClCompile Include="..\..\src\ledger\InMemoryLedgerTxnRoot.cpp" />
+    <ClCompile Include="..\..\src\ledger\LedgerCloseMetaStream.cpp" />
     <ClCompile Include="..\..\lib\asio.cpp" />
     <ClCompile Include="..\..\lib\http\connection.cpp" />
     <ClCompile Include="..\..\lib\http\connection_manager.cpp" />
@@ -563,6 +565,7 @@ exit /b 0
     <ClCompile Include="..\..\src\util\Timer.cpp" />
     <ClCompile Include="..\..\src\util\types.cpp" />
     <ClCompile Include="..\..\src\util\MetricResetter.cpp" />
+    <ClCompile Include="..\..\src\util\LocalStream.cpp" />
     <ClCompile Include="..\..\src\process\ProcessManagerImpl.cpp" />
     <ClCompile Include="..\..\src\util\Logging.cpp" />
     <ClCompile Include="..\..\src\work\test\WorkTests.cpp" />
@@ -692,6 +695,8 @@ exit /b 0
     <ClInclude Include="..\..\src\ledger\LedgerTxnHeader.h" />
     <ClInclude Include="..\..\src\ledger\LedgerTxnImpl.h" />
     <ClInclude Include="..\..\src\ledger\SyncingLedgerChain.h" />
+    <ClInclude Include="..\..\src\ledger\InMemoryLedgerTxnRoot.h" />
+    <ClInclude Include="..\..\src\ledger\LedgerCloseMetaStream.h" />
     <ClInclude Include="..\..\src\ledger\test\LedgerTestUtils.h" />
     <ClInclude Include="..\..\src\ledger\TrustLineWrapper.h" />
     <ClInclude Include="..\..\src\main\Application.h" />
@@ -809,6 +814,7 @@ exit /b 0
     <ClInclude Include="..\..\src\util\MetricResetter.h" />
     <ClInclude Include="..\..\src\util\XDRStream.h" />
     <ClInclude Include="..\..\src\util\RandomEvictionCache.h" />
+    <ClInclude Include="..\..\src\util\LocalStream.h" />
     <ClInclude Include="..\..\src\work\BasicWork.h" />
     <ClInclude Include="..\..\src\work\ConditionalWork.h" />
     <ClInclude Include="..\..\src\work\Work.h" />
