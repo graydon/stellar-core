@@ -62,4 +62,8 @@
 #define ASIO_HAS_STD_SYSTEM_ERROR
 #endif
 
+#ifndef ASIO_HAS_WINDOWS_STREAM_HANDLE
+#define ASIO_HAS_WINDOWS_STREAM_HANDLE
+#endif
+
 #include <asio.hpp>

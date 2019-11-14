@@ -1,4 +1,5 @@
 #include "ledger/LedgerTxn.h"
+#include "ledger/LedgerTxnImpl.h"
 #include "xdr/Stellar-ledger-entries.h"
 #include <map>
 #include <set>

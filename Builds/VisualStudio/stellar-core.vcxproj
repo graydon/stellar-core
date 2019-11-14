@@ -314,6 +314,8 @@ exit /b 0
     <ClCompile Include="..\..\src\historywork\BatchDownloadWork.cpp" />
     <ClCompile Include="..\..\src\herder\QuorumIntersectionCheckerImpl.cpp" />
     <ClCompile Include="..\..\src\herder\test\QuorumIntersectionTests.cpp" />
+    <ClCompile Include="..\..\src\ledger\InMemoryLedgerTxnRoot.cpp" />
+    <ClCompile Include="..\..\src\ledger\LedgerCloseMetaStream.cpp" />
     <ClCompile Include="..\..\src\test\FuzzerImpl.cpp" />
     <ClCompile Include="..\..\src\transactions\PathPaymentOpFrameBase.cpp" />
     <ClCompile Include="..\..\src\transactions\PathPaymentStrictReceiveOpFrame.cpp" />
@@ -322,6 +324,7 @@ exit /b 0
     <ClCompile Include="..\..\src\transactions\simulation\SimulationTransactionFrame.cpp" />
     <ClCompile Include="..\..\src\transactions\test\PathPaymentStrictSendTests.cpp" />
     <ClCompile Include="..\..\src\util\FileSystemException.cpp" />
+    <ClCompile Include="..\..\src\util\LocalStream.cpp" />
     <ClCompile Include="..\..\src\work\BatchWork.cpp" />
     <ClCompile Include="..\..\src\historywork\DownloadBucketsWork.cpp" />
     <ClCompile Include="..\..\src\historywork\FetchRecentQsetsWork.cpp" />
@@ -627,12 +630,15 @@ exit /b 0
     <ClInclude Include="..\..\src\historywork\BatchDownloadWork.h" />
     <ClInclude Include="..\..\src\herder\QuorumIntersectionChecker.h" />
     <ClInclude Include="..\..\src\herder\QuorumIntersectionCheckerImpl.h" />
+    <ClInclude Include="..\..\src\ledger\InMemoryLedgerTxnRoot.h" />
+    <ClInclude Include="..\..\src\ledger\LedgerCloseMetaStream.h" />
     <ClInclude Include="..\..\src\test\FuzzerImpl.h" />
     <ClInclude Include="..\..\src\transactions\PathPaymentOpFrameBase.h" />
     <ClInclude Include="..\..\src\transactions\PathPaymentStrictReceiveOpFrame.h" />
     <ClInclude Include="..\..\src\transactions\PathPaymentStrictSendOpFrame.h" />
     <ClInclude Include="..\..\src\transactions\simulation\SimulationMergeOpFrame.h" />
     <ClInclude Include="..\..\src\transactions\simulation\SimulationTransactionFrame.h" />
+    <ClInclude Include="..\..\src\util\LocalStream.h" />
     <ClInclude Include="..\..\src\work\BatchWork.h" />
     <ClInclude Include="..\..\src\historywork\DownloadBucketsWork.h" />
     <ClInclude Include="..\..\src\historywork\FetchRecentQsetsWork.h" />

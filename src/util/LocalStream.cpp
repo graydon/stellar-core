@@ -3,6 +3,9 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "util/LocalStream.h"
+#ifdef _WIN32
+#include <io.h>
+#endif
 
 namespace stellar
 {
@@ -15,11 +18,11 @@ openWriteHandleFromPathname(std::string const& pathName)
     static const std::string err("Failed to open local stream from path: ");
 #ifdef _WIN32
     HANDLE handle = ::CreateFile(pathName.c_str(), GENERIC_WRITE,
-                                 0,             // No sharing
-                                 NULL,          // Default security attributes
-                                 OPEN_EXISTING, // Existing pipe
-                                 0,             // Default attributes
-                                 NULL);         // No template file
+                                 0,                    // No sharing
+                                 NULL,                 // Default security attributes
+                                 OPEN_EXISTING,        // Existing pipe
+                                 FILE_FLAG_OVERLAPPED, // Allow ASIO/IOCP
+                                 NULL);                // No template file
     if (handle == INVALID_HANDLE_VALUE)
     {
         throw std::runtime_error(err + pathName);
