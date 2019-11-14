@@ -837,6 +837,7 @@ runReplayHistoryForMetadata(CommandLineArgs const& args)
     using namespace stellar::localstream;
     CommandLine::ConfigOption configOption;
     std::string catchupString;
+    std::string archive;
     int outputFileDescriptor = -1;
     std::string outputNamedPipe;
 
@@ -851,14 +852,30 @@ runReplayHistoryForMetadata(CommandLineArgs const& args)
             return std::string{e.what()};
         }
     };
+    auto validateCatchupArchive = [&] {
+        if (iequals(archive, "any") || archive.empty())
+        {
+            return std::string{};
+        }
+
+        auto config = configOption.getConfig();
+        if (config.HISTORY.find(archive) != config.HISTORY.end())
+        {
+            return std::string{};
+        }
+        return std::string{"Catchup error: bad archive name"};
+    };
 
     auto catchupStringParser = ParserWithValidation{
         clara::Arg(catchupString, "DESTINATION-LEDGER/LEDGER-COUNT").required(),
         validateCatchupString};
+    auto catchupArchiveParser = ParserWithValidation{
+        historyArchiveParser(archive), validateCatchupArchive};
 
     return runWithHelp(
         args,
         {configurationParser(configOption), catchupStringParser,
+		catchupArchiveParser,
          outputFileDescriptorParser(outputFileDescriptor),
          outputNamedPipeParser(outputNamedPipe)},
         [&] {
@@ -890,8 +907,16 @@ runReplayHistoryForMetadata(CommandLineArgs const& args)
                 auto handle = openWriteHandleFromPathname(outputNamedPipe);
                 app->getLedgerManager().setLedgerCloseMetaStream(handle);
             }
+
+            auto const& ham = app->getHistoryArchiveManager();
+            auto archivePtr = ham.getHistoryArchive(archive);
+            if (iequals(archive, "any"))
+            {
+                archivePtr = ham.selectRandomReadableHistoryArchive();
+            }
             Json::Value catchupInfo;
-            auto res = catchup(app, parseCatchup(catchupString), catchupInfo);
+            auto res = catchup(app, parseCatchup(catchupString), catchupInfo,
+				archivePtr);
             while (app->getLedgerManager().isStreamingMetadata())
             {
                 app->getClock().crank(true);
