@@ -28,8 +28,13 @@ void
 LedgerCloseMetaStream::writeHandler(asio::error_code const& error,
                                     std::size_t bytes_transferred)
 {
-    mBufferedBytes += bytes_transferred;
     assertThreadIsMain();
+    if (mBufferedBytes < bytes_transferred)
+    {
+        CLOG(WARNING, "Ledger") << "Metadata stream buffer-size underflow";
+        mBufferedBytes = bytes_transferred;
+    }
+    mBufferedBytes -= bytes_transferred;
     if (error)
     {
         throw std::runtime_error(std::string("error writing stream: ") +

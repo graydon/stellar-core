@@ -1015,6 +1015,12 @@ LedgerManagerImpl::isStreamingMetadata() const
     return mMetaStream && mMetaStream->isStreaming();
 }
 
+bool
+LedgerManagerImpl::metadataBufferLimitExceeded() const
+{
+    return mMetaStream && mMetaStream->bufferLimitExceeded();
+}
+
 void
 LedgerManagerImpl::advanceLedgerPointers(LedgerHeader const& header)
 {

@@ -151,5 +151,6 @@ class LedgerManagerImpl : public LedgerManager
 
     void setLedgerCloseMetaStream(localstream::HandleType handle) override;
     bool isStreamingMetadata() const override;
+    bool metadataBufferLimitExceeded() const override;
 };
 }

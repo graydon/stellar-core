@@ -171,6 +171,11 @@ class LedgerManager
     // time we should keep cranking the IO context.
     virtual bool isStreamingMetadata() const = 0;
 
+    // Return true iff the current metadata stream buffer exceeds its (soft)
+    // limit. Clients should call this if they wish to throttle their calls to
+    // `closeLedger`, each of which may buffer more metadata.
+    virtual bool metadataBufferLimitExceeded() const = 0;
+
     virtual ~LedgerManager()
     {
     }
