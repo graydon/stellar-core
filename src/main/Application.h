@@ -189,8 +189,8 @@ class Application
         RUN_LIVE_NODE,
 
         // Application will connect to networks but _not_ establish a database
-        // of any sort, nor participate in consensus, apply transactions or
-        // even verify them. Simply relays traffic between nodes.
+        // of any sort, nor apply transactions or even verify them. Simply
+        // relays traffic between nodes and drives the SCP state machine.
         RELAY_LIVE_TRAFFIC,
 
         // Application will not connect to networks nor establish a database
