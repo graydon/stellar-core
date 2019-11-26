@@ -5,6 +5,7 @@
 #include "main/Maintainer.h"
 #include "main/Config.h"
 #include "main/ExternalQueue.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 
 namespace stellar
@@ -12,6 +13,7 @@ namespace stellar
 
 Maintainer::Maintainer(Application& app) : mApp{app}, mTimer{mApp}
 {
+    releaseAssertOrThrow(Application::modeHasDatabase(mApp.getMode()));
 }
 
 void
@@ -28,10 +30,6 @@ Maintainer::start()
 void
 Maintainer::scheduleMaintenance()
 {
-    if (!Application::modeHasDatabase(mApp.getMode()))
-    {
-        return;
-    }
     mTimer.expires_from_now(mApp.getConfig().AUTOMATIC_MAINTENANCE_PERIOD);
     mTimer.async_wait([this]() { tick(); }, VirtualTimer::onFailureNoop);
 }
@@ -46,10 +44,6 @@ Maintainer::tick()
 void
 Maintainer::performMaintenance(uint32_t count)
 {
-    if (!Application::modeHasDatabase(mApp.getMode()))
-    {
-        return;
-    }
     LOG(INFO) << "Performing maintenance";
     ExternalQueue ps{mApp};
     ps.deleteOldEntries(count);

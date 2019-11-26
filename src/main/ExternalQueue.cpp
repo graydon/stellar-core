@@ -25,6 +25,7 @@ string ExternalQueue::kSQLCreateStatement =
 
 ExternalQueue::ExternalQueue(Application& app) : mApp(app)
 {
+    releaseAssertOrThrow(Application::modeHasDatabase(mApp.getMode()));
 }
 
 void
