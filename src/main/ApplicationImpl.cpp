@@ -389,7 +389,23 @@ ApplicationImpl::start()
         CLOG(INFO, "Ledger") << "Skipping application start up";
         return;
     }
-    CLOG(INFO, "Ledger") << "Starting up application";
+    switch (mAppMode)
+    {
+    case AppMode::RUN_LIVE_NODE:
+        // Default mode, don't mention modes; most users are not interested.
+        CLOG(INFO, "Ledger") << "Starting up application";
+        break;
+    case AppMode::RELAY_LIVE_TRAFFIC:
+        CLOG(INFO, "Ledger") << "Starting up application"
+                             << " in RELAY_LIVE_TRAFFIC mode";
+        break;
+    case AppMode::REPLAY_HISTORY_FOR_METADATA:
+        CLOG(INFO, "Ledger") << "Starting up application"
+                             << " in REPLAY_HISTORY_FOR_METADATA mode";
+        break;
+    default:
+        throw std::runtime_error("unhandled application mode");
+    }
     mStarted = true;
 
     if (mConfig.TESTING_UPGRADE_DATETIME.time_since_epoch().count() != 0)
