@@ -54,6 +54,8 @@ Application::modeHasOverlay(AppMode m)
         return true;
     case AppMode::REPLAY_HISTORY_FOR_METADATA:
         return false;
+    default:
+        throw std::runtime_error("unhandled application mode");
     }
 }
 
@@ -68,6 +70,8 @@ Application::modeHasDatabase(AppMode m)
         return false;
     case AppMode::REPLAY_HISTORY_FOR_METADATA:
         return false;
+    default:
+        throw std::runtime_error("unhandled application mode");
     }
 }
 
@@ -82,6 +86,8 @@ Application::modePublishesHistory(AppMode m)
         return false;
     case AppMode::REPLAY_HISTORY_FOR_METADATA:
         return false;
+    default:
+        throw std::runtime_error("unhandled application mode");
     }
 }
 }

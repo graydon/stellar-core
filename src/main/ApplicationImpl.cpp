@@ -160,6 +160,8 @@ ApplicationImpl::initialize(bool createNewDB)
         break;
     case AppMode::RELAY_LIVE_TRAFFIC:
         break;
+    default:
+        throw std::runtime_error("unhandled application mode");
     }
 
     BucketListIsConsistentWithDatabase::registerInvariant(*this);
@@ -902,6 +904,8 @@ ApplicationImpl::getLedgerTxnRoot()
     case AppMode::RELAY_LIVE_TRAFFIC:
         throw std::runtime_error(
             "accessing LedgerTxnRoot in RELAY_LIVE_TRAFFIC mode");
+    default:
+        throw std::runtime_error("unhandled application mode");
     }
 }
 }
