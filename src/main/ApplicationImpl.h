@@ -163,6 +163,11 @@ class ApplicationImpl : public Application
     // commits and answers null to all queries; then a "never-committing"
     // sub-LedgerTxn is constructed beneath it that serves as the "effective"
     // in-memory root transaction.
+    //
+    // Note that using this only works when the ledger can fit in RAM -- as it
+    // is held in the never-committing LedgerTxn in its entirety -- so if it
+    // ever grows beyond RAM-size you need to use a mode with some sort of
+    // database on secondary storage.
     std::unique_ptr<InMemoryLedgerTxnRoot> mInMemoryLedgerTxnRoot;
     std::unique_ptr<LedgerTxn> mNeverCommittingLedgerTxn;
 
