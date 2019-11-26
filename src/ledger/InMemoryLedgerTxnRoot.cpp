@@ -115,4 +115,16 @@ void
 InMemoryLedgerTxnRoot::dropTrustLines()
 {
 }
+
+double
+InMemoryLedgerTxnRoot::getPrefetchHitRate() const
+{
+    return 0.0;
+}
+
+uint32_t
+InMemoryLedgerTxnRoot::prefetch(std::unordered_set<LedgerKey> const& keys)
+{
+    return 0;
+}
 }
