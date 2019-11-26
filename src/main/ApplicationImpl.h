@@ -125,7 +125,7 @@ class ApplicationImpl : public Application
   private:
     VirtualClock& mVirtualClock;
     Config mConfig;
-    AppMode mAppMode;
+    AppMode const mAppMode;
 
     // NB: The io_context should come first, then the 'manager' sub-objects,
     // then the threads. Do not reorder these fields.
