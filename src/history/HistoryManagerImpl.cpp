@@ -193,6 +193,7 @@ HistoryManagerImpl::inferQuorum(uint32_t ledgerNum)
 uint32_t
 HistoryManagerImpl::getMinLedgerQueuedToPublish()
 {
+    releaseAssertOrThrow(Application::modePublishesHistory(mApp.getMode()));
     uint32_t seq;
     soci::indicator minIndicator;
     auto prep = mApp.getDatabase().getPreparedStatement(
@@ -211,6 +212,7 @@ HistoryManagerImpl::getMinLedgerQueuedToPublish()
 uint32_t
 HistoryManagerImpl::getMaxLedgerQueuedToPublish()
 {
+    releaseAssertOrThrow(Application::modePublishesHistory(mApp.getMode()));
     uint32_t seq;
     soci::indicator maxIndicator;
     auto prep = mApp.getDatabase().getPreparedStatement(
