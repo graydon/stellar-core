@@ -4,6 +4,7 @@
 
 #include "Application.h"
 #include "ApplicationImpl.h"
+#include "util/GlobalChecks.h"
 #include "util/format.h"
 
 namespace stellar
@@ -78,16 +79,23 @@ Application::modeHasDatabase(AppMode m)
 bool
 Application::modePublishesHistory(AppMode m)
 {
+    bool ret = false;
     switch (m)
     {
     case AppMode::RUN_LIVE_NODE:
-        return true;
+        ret = true;
     case AppMode::RELAY_LIVE_TRAFFIC:
-        return false;
     case AppMode::REPLAY_HISTORY_FOR_METADATA:
-        return false;
+        break;
     default:
         throw std::runtime_error("unhandled application mode");
     }
+    if (ret)
+    {
+        // This function should only return true for a mode that also returns
+        // true for modeHasDatabase(): history-publishing uses the database.
+        releaseAssertOrThrow(modeHasDatabase(m));
+    }
+    return ret;
 }
 }
