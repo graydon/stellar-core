@@ -156,19 +156,19 @@ class ApplicationImpl : public Application
     std::unique_ptr<PersistentState> mPersistentState;
     std::unique_ptr<BanManager> mBanManager;
     std::unique_ptr<StatusManager> mStatusManager;
-    std::unique_ptr<LedgerTxnRoot> mLedgerTxnRoot;
+    std::unique_ptr<AbstractLedgerTxnParent> mLedgerTxnRoot;
 
-    // These two exist for use in AppMode::REPLAY_HISTORY_FOR_METADATA only: the
-    // InMemoryLedgerTxnRoot is a stub AbstractLedgerTxnParent that refuses all
-    // commits and answers null to all queries; then a "never-committing"
-    // sub-LedgerTxn is constructed beneath it that serves as the "effective"
-    // in-memory root transaction.
+    // This exists for use in AppMode::REPLAY_HISTORY_FOR_METADATA only: the
+    // mLedgerTxnRoot will be an InMemoryLedgerTxnRoot which is a _stub_
+    // AbstractLedgerTxnParent that refuses all commits and answers null to all
+    // queries; then an inner "never-committing" sub-LedgerTxn is constructed
+    // beneath it that serves as the "effective" in-memory root transaction,
+    // is returned when a client requests the root.
     //
     // Note that using this only works when the ledger can fit in RAM -- as it
     // is held in the never-committing LedgerTxn in its entirety -- so if it
     // ever grows beyond RAM-size you need to use a mode with some sort of
     // database on secondary storage.
-    std::unique_ptr<InMemoryLedgerTxnRoot> mInMemoryLedgerTxnRoot;
     std::unique_ptr<LedgerTxn> mNeverCommittingLedgerTxn;
 
 #ifdef BUILD_TESTS

@@ -154,9 +154,9 @@ ApplicationImpl::initialize(bool createNewDB)
             mConfig.BEST_OFFERS_CACHE_SIZE, mConfig.PREFETCH_BATCH_SIZE);
         break;
     case AppMode::REPLAY_HISTORY_FOR_METADATA:
-        mInMemoryLedgerTxnRoot = std::make_unique<InMemoryLedgerTxnRoot>();
+        mLedgerTxnRoot = std::make_unique<InMemoryLedgerTxnRoot>();
         mNeverCommittingLedgerTxn =
-            std::make_unique<LedgerTxn>(*mInMemoryLedgerTxnRoot);
+            std::make_unique<LedgerTxn>(*mLedgerTxnRoot);
         break;
     case AppMode::RELAY_LIVE_TRAFFIC:
         break;
