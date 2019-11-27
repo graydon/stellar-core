@@ -870,6 +870,7 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
             LedgerTxn ltxUpgrade(ltx);
             Upgrades::applyTo(lupgrade, ltxUpgrade);
 
+            auto ledgerSeq = ltxUpgrade.loadHeader().current().ledgerSeq;
             LedgerEntryChanges changes = ltxUpgrade.getChanges();
             if (ledgerCloseMeta)
             {
@@ -883,7 +884,6 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
             // storeTransaction and storeTransactionFee.
             if (Application::modeHasDatabase(mApp.getMode()))
             {
-                auto ledgerSeq = ltxUpgrade.loadHeader().current().ledgerSeq;
                 Upgrades::storeUpgradeHistory(getDatabase(), ledgerSeq,
                                               lupgrade, changes,
                                               static_cast<int>(i + 1));
