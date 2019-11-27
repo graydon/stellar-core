@@ -513,8 +513,7 @@ TxSetFrame::getTotalFees(LedgerHeader const& lh) const
 void
 TxSetFrame::toXDR(TransactionSet& txSet)
 {
-    // Should only call toXDR when in sorted-for-hash state.
-    releaseAssertOrThrow(mHashIsValid);
+    sortForHash();
     txSet.txs.resize(xdr::size32(mTransactions.size()));
     for (unsigned int n = 0; n < mTransactions.size(); n++)
     {
