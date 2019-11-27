@@ -129,6 +129,7 @@ LedgerManagerImpl::LedgerManagerImpl(Application& app)
     , mState(LM_BOOTING_STATE)
 
 {
+    setupLedgerCloseMetaStream();
 }
 
 void
