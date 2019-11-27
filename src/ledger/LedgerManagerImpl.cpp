@@ -833,11 +833,11 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
     // first, prefetch source accounts fot txset, then charge fees
     prefetchTxSourceIds(txs);
     processFeesSeqNums(txs, ltx, txSet->getBaseFee(header.current()),
-                       ledgerCloseMeta.get());
+                       ledgerCloseMeta);
 
     TransactionResultSet txResultSet;
     txResultSet.results.reserve(txs.size());
-    applyTransactions(txs, ltx, txResultSet, ledgerCloseMeta.get());
+    applyTransactions(txs, ltx, txResultSet, ledgerCloseMeta);
 
     ltx.loadHeader().current().txSetResultHash =
         sha256(xdr::xdr_to_opaque(txResultSet));
@@ -1032,10 +1032,9 @@ LedgerManagerImpl::advanceLedgerPointers(LedgerHeader const& header)
 }
 
 void
-LedgerManagerImpl::processFeesSeqNums(std::vector<TransactionFramePtr>& txs,
-                                      AbstractLedgerTxn& ltxOuter,
-                                      int64_t baseFee,
-                                      LedgerCloseMeta* ledgerCloseMeta)
+LedgerManagerImpl::processFeesSeqNums(
+    std::vector<TransactionFramePtr>& txs, AbstractLedgerTxn& ltxOuter,
+    int64_t baseFee, std::unique_ptr<LedgerCloseMeta> const& ledgerCloseMeta)
 {
     CLOG(DEBUG, "Ledger")
         << "processing fees and sequence numbers with base fee " << baseFee;
@@ -1119,10 +1118,10 @@ LedgerManagerImpl::prefetchTransactionData(
 }
 
 void
-LedgerManagerImpl::applyTransactions(std::vector<TransactionFramePtr>& txs,
-                                     AbstractLedgerTxn& ltx,
-                                     TransactionResultSet& txResultSet,
-                                     LedgerCloseMeta* ledgerCloseMeta)
+LedgerManagerImpl::applyTransactions(
+    std::vector<TransactionFramePtr>& txs, AbstractLedgerTxn& ltx,
+    TransactionResultSet& txResultSet,
+    std::unique_ptr<LedgerCloseMeta> const& ledgerCloseMeta)
 {
     int index = 0;
 

@@ -70,14 +70,15 @@ class LedgerManagerImpl : public LedgerManager
                          LedgerHeaderHistoryEntry const& lastClosed,
                          CatchupConfiguration::Mode catchupMode);
 
-    void processFeesSeqNums(std::vector<TransactionFramePtr>& txs,
-                            AbstractLedgerTxn& ltxOuter, int64_t baseFee,
-                            LedgerCloseMeta* ledgerCloseMeta);
+    void
+    processFeesSeqNums(std::vector<TransactionFramePtr>& txs,
+                       AbstractLedgerTxn& ltxOuter, int64_t baseFee,
+                       std::unique_ptr<LedgerCloseMeta> const& ledgerCloseMeta);
 
-    void applyTransactions(std::vector<TransactionFramePtr>& txs,
-                           AbstractLedgerTxn& ltx,
-                           TransactionResultSet& txResultSet,
-                           LedgerCloseMeta* ledgerCloseMeta);
+    void
+    applyTransactions(std::vector<TransactionFramePtr>& txs,
+                      AbstractLedgerTxn& ltx, TransactionResultSet& txResultSet,
+                      std::unique_ptr<LedgerCloseMeta> const& ledgerCloseMeta);
 
     void ledgerClosed(AbstractLedgerTxn& ltx);
 
