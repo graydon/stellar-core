@@ -55,9 +55,11 @@ Peer::Peer(Application& app, PeerRole role)
     , mLastWrite(app.getClock().now())
     , mEnqueueTimeOfLastWrite(app.getClock().now())
     , mPeerMetrics(app.getClock().now())
+    , mAdvertTimer(app)
 {
     auto bytes = randomBytes(mSendNonce.size());
     std::copy(bytes.begin(), bytes.end(), mSendNonce.begin());
+    mPendingAdvertMsg.type(FLOOD_ADVERT);
 }
 
 void
@@ -361,6 +363,10 @@ Peer::msgSummary(StellarMessage const& msg)
     case SURVEY_REQUEST:
     case SURVEY_RESPONSE:
         return SurveyManager::getMsgSummary(msg);
+    case FLOOD_ADVERT:
+        return "FLOOD_ADVERT";
+    case FLOOD_DEMAND:
+        return "FLOOD_DEMAND";
     }
     return "UNKNOWN";
 }
@@ -423,6 +429,12 @@ Peer::sendMessage(StellarMessage const& msg)
     case SURVEY_RESPONSE:
         getOverlayMetrics().mSendSurveyResponseMeter.Mark();
         break;
+    case FLOOD_ADVERT:
+        getOverlayMetrics().mSendFloodAdvertMeter.Mark();
+        break;
+    case FLOOD_DEMAND:
+        getOverlayMetrics().mSendFloodDemandMeter.Mark();
+        break;
     };
 
     AuthenticatedMessage amsg;
@@ -436,6 +448,59 @@ Peer::sendMessage(StellarMessage const& msg)
     }
     xdr::msg_ptr xdrBytes(xdr::xdr_to_msg(amsg));
     this->sendMessage(std::move(xdrBytes));
+}
+
+uint32_t const Peer::MIN_OVERLAY_VERSION_FOR_FLOOD_ADVERT = 12;
+
+size_t const Peer::ADVERT_FLUSH_THRESHOLD = 1024;
+
+std::chrono::milliseconds const Peer::ADVERT_TIMER{100};
+
+bool
+Peer::supportsAdverts() const
+{
+    return ((mApp.getConfig().OVERLAY_PROTOCOL_VERSION >=
+             MIN_OVERLAY_VERSION_FOR_FLOOD_ADVERT) &&
+            (mRemoteOverlayVersion >= MIN_OVERLAY_VERSION_FOR_FLOOD_ADVERT));
+}
+
+void
+Peer::advertizeMessage(Hash const& hash)
+{
+    auto& hashes = mPendingAdvertMsg.floodAdvert().hashes;
+    hashes.emplace_back(hash);
+    if (hashes.size() >= ADVERT_FLUSH_THRESHOLD)
+    {
+        flushPendingAdvert();
+    }
+
+    // Typically we're going to flush adverts more often than this timeout -- we
+    // do so after every sync-read loop that is likely to introduce new
+    // broadcast traffic we want to forward -- but the timer here serves as a
+    // fallback for self-initiated broadcasts.
+    if (!mAdvertTimerActive)
+    {
+        mAdvertTimerActive = true;
+        auto self = shared_from_this();
+        mIdleTimer.expires_from_now(ADVERT_TIMER);
+        mIdleTimer.async_wait([self](asio::error_code const& error) {
+            self->flushPendingAdvert();
+            self->mAdvertTimerActive = false;
+        });
+    }
+}
+
+void
+Peer::flushPendingAdvert()
+{
+    auto& hashes = mPendingAdvertMsg.floodAdvert().hashes;
+    if (hashes.size() > 0)
+    {
+        CLOG(TRACE, "Overlay")
+            << "Peer::flushPendingAdvert -- flushing " << hashes.size();
+        sendMessage(mPendingAdvertMsg);
+        hashes.clear();
+    }
 }
 
 void
@@ -649,6 +714,19 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     {
         auto t = getOverlayMetrics().mRecvGetSCPStateTimer.TimeScope();
         recvGetSCPState(stellarMsg);
+    }
+    break;
+
+    case FLOOD_ADVERT:
+    {
+        auto t = getOverlayMetrics().mRecvFloodAdvertTimer.TimeScope();
+        recvFloodAdvert(stellarMsg);
+    }
+    break;
+    case FLOOD_DEMAND:
+    {
+        auto t = getOverlayMetrics().mRecvFloodDemandTimer.TimeScope();
+        recvFloodDemand(stellarMsg);
     }
     break;
     }
@@ -1092,6 +1170,20 @@ Peer::recvSurveyResponseMessage(StellarMessage const& msg)
 {
     mApp.getOverlayManager().getSurveyManager().relayOrProcessResponse(
         msg, shared_from_this());
+}
+
+void
+Peer::recvFloodAdvert(StellarMessage const& msg)
+{
+    mApp.getOverlayManager().demandMissing(msg.floodAdvert(),
+                                           shared_from_this());
+}
+
+void
+Peer::recvFloodDemand(StellarMessage const& msg)
+{
+    mApp.getOverlayManager().fulfillDemand(msg.floodDemand(),
+                                           shared_from_this());
 }
 
 Peer::PeerMetrics::PeerMetrics(VirtualClock::time_point connectedTime)

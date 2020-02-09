@@ -896,6 +896,20 @@ OverlayManagerImpl::broadcastMessage(StellarMessage const& msg, bool force,
 }
 
 void
+OverlayManagerImpl::demandMissing(FloodAdvert const& adv,
+                                  Peer::pointer fromPeer)
+{
+    mFloodGate.demandMissing(adv, fromPeer);
+}
+
+void
+OverlayManagerImpl::fulfillDemand(FloodDemand const& dmd,
+                                  Peer::pointer fromPeer)
+{
+    mFloodGate.fulfillDemand(dmd, fromPeer);
+}
+
+void
 OverlayManager::dropAll(Database& db)
 {
     PeerManager::dropAll(db);

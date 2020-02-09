@@ -6,7 +6,9 @@
 
 #include "overlay/Peer.h"
 #include "overlay/StellarXDR.h"
+#include <memory>
 #include <map>
+#include <set>
 
 /**
  * FloodGate keeps track of which peers have sent us which broadcast messages,
@@ -37,17 +39,23 @@ class Floodgate
         typedef std::shared_ptr<FloodRecord> pointer;
 
         uint32_t mLedgerSeq;
-        StellarMessage mMessage;
+        std::unique_ptr<StellarMessage> mMessage;
         std::set<std::string> mPeersTold;
 
         FloodRecord(StellarMessage const& msg, uint32_t ledger,
                     Peer::pointer peer);
+        FloodRecord(uint32_t ledger, Peer::pointer peer);
     };
 
     std::map<Hash, FloodRecord::pointer> mFloodMap;
+    std::set<Hash> mPendingDemanded;
     Application& mApp;
+    std::string mId;
     medida::Counter& mFloodMapSize;
     medida::Meter& mSendFromBroadcast;
+    medida::Meter& mMessagesAdvertized;
+    medida::Meter& mMessagesDemanded;
+    medida::Meter& mMessagesFulfilled;
     bool mShuttingDown;
 
   public:
@@ -62,6 +70,9 @@ class Floodgate
     // only flood messages to peers that are at least minOverlayVersion
     void broadcast(StellarMessage const& msg, bool force,
                    uint32_t minOverlayVersion);
+
+    void demandMissing(FloodAdvert const& adv, Peer::pointer fromPeer);
+    void fulfillDemand(FloodDemand const& dmd, Peer::pointer fromPeer);
 
     // returns the list of peers that sent us the item with hash `msgID`
     // NB: `msgID` is the hash of a `StellarMessage`

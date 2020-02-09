@@ -79,6 +79,9 @@ overlay.error.write                      | meter     | error while sending a mes
 overlay.fetch.txset                      | timer     | time to complete fetching of a txset
 overlay.fetch.qset                       | timer     | time to complete fetching of a qset
 overlay.flood.broadcast                  | meter     | message sent as broadcast per peer
+overlay.flood.advertized                 | meter     | message advertized to other peers
+overlay.flood.demanded                   | meter     | message demanded in response to advert from other peer
+overlay.flood.fulfilled                  | meter     | message message sent in response to demand from other peer
 overlay.flood.duplicate_recv             | meter     | number of bytes of flooded messages that have already been received
 overlay.flood.unique_recv                | meter     | number of bytes of flooded messages that have not yet been received
 overlay.inbound.attempt                  | meter     | inbound connection attempted (accepted on socket)
@@ -97,10 +100,6 @@ overlay.outbound.establish               | meter     | outbound connection estab
 overlay.recv.<X>                         | timer     | received message <X>
 overlay.send.<X>                         | meter     | sent message <X>
 overlay.timeout.idle                     | meter     | idle peer timeout
-overlay.recv.survey-request              | timer     | time spent in processing survey request
-overlay.recv.survey-response             | timer     | time spent in processing survey response
-overlay.send.survey-request              | meter     | sent survey request
-overlay.send.survey-response             | meter     | sent survey response
 scp.envelope.emit                        | meter     | SCP message sent
 scp.envelope.invalidsig                  | meter     | envelope failed signature verification
 scp.envelope.receive                     | meter     | SCP message received
