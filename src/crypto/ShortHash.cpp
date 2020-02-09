@@ -30,6 +30,10 @@ XDRShortHasher::XDRShortHasher() : state(sKey)
 {
 }
 
+XDRShortHasher::XDRShortHasher(ByteSlice key) : state(key.data())
+{
+}
+
 void
 XDRShortHasher::hashBytes(unsigned char const* bytes, size_t len)
 {
