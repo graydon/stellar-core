@@ -6,6 +6,7 @@
 #include "crypto/BLAKE2.h"
 #include "crypto/Hex.h"
 #include "herder/Herder.h"
+#include "ledger/LedgerManager.h"
 #include "main/Application.h"
 #include "medida/counter.h"
 #include "medida/metrics_registry.h"
@@ -19,23 +20,21 @@
 namespace stellar
 {
 Floodgate::FloodRecord::FloodRecord(StellarMessage const& msg, uint32_t ledger,
-                                    Peer::pointer peer)
-    : mLedgerSeq(ledger), mMessage(std::make_unique<StellarMessage>(msg))
+                                    uint64_t keyedShortHash,
+                                    uint64_t unkeyedShortHash)
+    : mLedgerSeq(ledger)
+    , mMessage(msg)
+    , mKeyedShortHash(keyedShortHash)
+    , mUnkeyedShortHash(unkeyedShortHash)
 {
-    if (peer)
-        mPeersTold.insert(peer->toString());
-}
-Floodgate::FloodRecord::FloodRecord(uint32_t ledger, Peer::pointer peer)
-    : mLedgerSeq(ledger), mMessage(nullptr)
-{
-    if (peer)
-        mPeersTold.insert(peer->toString());
 }
 
 Floodgate::Floodgate(Application& app)
     : mApp(app)
     , mFloodMapSize(
           app.getMetrics().NewCounter({"overlay", "memory", "flood-known"}))
+    , mPendingDemandsSize(
+          app.getMetrics().NewCounter({"overlay", "memory", "pending-demands"}))
     , mSendFromBroadcast(app.getMetrics().NewMeter(
           {"overlay", "flood", "broadcast"}, "message"))
     , mMessagesAdvertized(app.getMetrics().NewMeter(
@@ -58,7 +57,11 @@ Floodgate::clearBelow(uint32_t maxLedger)
     {
         if (it->second->mLedgerSeq < maxLedger)
         {
-            mPendingDemanded.erase(it->first);
+            auto record = it->second;
+            mPendingDemands.erase(record->mKeyedShortHash);
+            mPendingDemands.erase(record->mUnkeyedShortHash);
+            mShortHashFloodMap.erase(record->mKeyedShortHash);
+            mShortHashFloodMap.erase(record->mUnkeyedShortHash);
             it = mFloodMap.erase(it);
         }
         else
@@ -66,45 +69,87 @@ Floodgate::clearBelow(uint32_t maxLedger)
             ++it;
         }
     }
+
+    for (auto it = mPendingDemands.cbegin(); it != mPendingDemands.cend();)
+    {
+        // We clear a _pending_ demand entry after only _one_ ledger of leeway:
+        // any demand should be almost-immediately fulfilled and if it's not
+        // we're probably dealing with a flaky (or misbehaving) peer and we
+        // want to re-open ourselves after a ledger to getting the same message
+        // from someone else.
+        //
+        // FIXME: maxLedger here should be currentLedger-1 to correspond with
+        // the comment above, but the API to this function changed and we no
+        // longer have access to currentLedger. Is this a problem? Possibly?
+        if (it->second < maxLedger)
+        {
+            it = mPendingDemands.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
     mFloodMapSize.set_count(mFloodMap.size());
+    mPendingDemandsSize.set_count(mPendingDemands.size());
+}
+
+std::pair<std::map<Hash, Floodgate::FloodRecord::pointer>::iterator, bool>
+Floodgate::insert(StellarMessage const& msg, bool force)
+{
+    Hash index = xdrBlake2(msg);
+    auto seq = mApp.getHerder().getCurrentLedgerSeq();
+    auto iter = mFloodMap.find(index);
+    if (iter != mFloodMap.end())
+    {
+        if (force)
+        {
+            // "Force" means "clear the mPeersTold and reset seq" when there's
+            // an existing entry.
+            iter->second->mPeersTold.clear();
+            iter->second->mLedgerSeq = seq;
+        }
+        return std::make_pair(iter, false);
+    }
+
+    Hash LCLHash = mApp.getLedgerManager().getLastClosedLedgerHeader().hash;
+    Hash zeroHash;
+    uint64_t keyedShortHash =
+        shortHash::xdrComputeKeyedHash(msg, ByteSlice(LCLHash.data(), 16));
+    uint64_t unkeyedShortHash =
+        shortHash::xdrComputeKeyedHash(msg, ByteSlice(zeroHash.data(), 16));
+
+    mPendingDemands.erase(keyedShortHash);
+    mPendingDemands.erase(unkeyedShortHash);
+    mPendingDemandsSize.set_count(mPendingDemands.size());
+
+    FloodRecord::pointer rec = std::make_shared<FloodRecord>(
+        msg, seq, keyedShortHash, unkeyedShortHash);
+    mShortHashFloodMap.emplace(keyedShortHash, rec);
+    mShortHashFloodMap.emplace(unkeyedShortHash, rec);
+    auto ret = mFloodMap.emplace(index, rec);
+    assert(ret.second);
+    mFloodMapSize.set_count(mFloodMap.size());
+    return ret;
 }
 
 bool
 Floodgate::addRecord(StellarMessage const& msg, Peer::pointer peer, Hash& index)
 {
     ZoneScoped;
-    index = xdrBlake2(msg);
     if (mShuttingDown)
     {
+        index = xdrBlake2(msg);
         return false;
     }
-    mPendingDemanded.erase(index);
-    auto result = mFloodMap.find(index);
-    if (result == mFloodMap.end())
-    { // we have never seen this message
-        mFloodMap[index] = std::make_shared<FloodRecord>(
-            msg, mApp.getHerder().getCurrentLedgerSeq(), peer);
-        mFloodMapSize.set_count(mFloodMap.size());
-        TracyPlot("overlay.memory.flood-known",
-                  static_cast<int64_t>(mFloodMap.size()));
-        return true;
-    }
-    else
+    auto pair = insert(msg);
+    index = pair.first->first;
+    FloodRecord::pointer record = pair.first->second;
+    if (peer)
     {
-        if (!result->second->mMessage)
-        {
-            // We're receiving the actual message for one we only
-            // knew about, but didn't have yet.
-            CLOG_TRACE(Overlay,
-                       "{} upgrading {} from only-known to actually-have (in "
-                       "addRecord)",
-                       mId, hexAbbrev(index));
-            result->second->mMessage = std::make_unique<StellarMessage>(msg);
-            return true;
-        }
-        result->second->mPeersTold.insert(peer->toString());
-        return false;
+        record->mPeersTold.insert(peer->toString());
     }
+    return pair.second;
 }
 
 // send message to anyone you haven't gotten it from
@@ -116,37 +161,18 @@ Floodgate::broadcast(StellarMessage const& msg, bool force)
     {
         return false;
     }
-    Hash index = xdrBlake2(msg);
+    auto pair = insert(msg, force);
+    Hash const& index = pair.first->first;
+    FloodRecord::pointer record = pair.first->second;
 
-    // If we're sending something now, we certainly shouldn't
-    // demand it from anyone in the near future.
-    mPendingDemanded.erase(index);
+    CLOG_TRACE(Overlay, "broadcast {}", hexAbbrev(index));
 
-    FloodRecord::pointer fr;
-    auto result = mFloodMap.find(index);
-    if (result == mFloodMap.end() || force)
-    { // no one has sent us this message / start from scratch
-        fr = std::make_shared<FloodRecord>(
-            msg, mApp.getHerder().getCurrentLedgerSeq(), Peer::pointer());
-        mFloodMap[index] = fr;
-        mFloodMapSize.set_count(mFloodMap.size());
-    }
-    else
-    {
-        fr = result->second;
-        if (!fr->mMessage)
-        {
-            // We're sending the actual message for one we only
-            // knew about, but didn't have yet.
-            CLOG_TRACE(Overlay,
-                       "{} upgrading {} from only-known to actually-have (in "
-                       "broadcast)",
-                       mId, hexAbbrev(index));
-            fr->mMessage = std::make_unique<StellarMessage>(msg);
-        }
-    }
-    // send it to people that haven't sent it to us
-    auto& peersTold = fr->mPeersTold;
+    // Send (or at least advertize) it to people that haven't sent it to us
+    // and/or we haven't sent it to in full. We _might_ advertize the same
+    // message to the same peer twice if we somehow receive it twice and decide
+    // to call broadcast() twice before sending it to them; but we should only
+    // really be broadcast()'ing new messages anyway in our caller.
+    auto& peersTold = record->mPeersTold;
 
     // make a copy, in case peers gets modified
     auto peers = mApp.getOverlayManager().getAuthenticatedPeers();
@@ -154,7 +180,7 @@ Floodgate::broadcast(StellarMessage const& msg, bool force)
     bool broadcasted = false;
     std::shared_ptr<StellarMessage> smsg =
         std::make_shared<StellarMessage>(msg);
-    for (auto peer : peers)
+    for (auto& peer : peers)
     {
         assert(peer.second->isAuthenticated());
         if (peersTold.insert(peer.second->toString()).second)
@@ -163,16 +189,19 @@ Floodgate::broadcast(StellarMessage const& msg, bool force)
                 std::static_pointer_cast<Peer>(peer.second));
             if (peer.second->supportsAdverts())
             {
-                CLOG_TRACE(Overlay, "{} advertizing {} to {}", mId,
-                           hexAbbrev(index),
+                uint64_t shortHash =
+                    (mApp.getState() == Application::State::APP_SYNCED_STATE
+                         ? record->mKeyedShortHash
+                         : record->mUnkeyedShortHash);
+                CLOG_TRACE(Overlay, "{} advertizing {} to {}", mId, shortHash,
                            KeyUtils::toShortString(peer.second->getPeerID()));
                 mMessagesAdvertized.Mark();
                 mApp.postOnMainThread(
-                    [index, weak]() {
+                    [shortHash, weak]() {
                         auto strong = weak.lock();
                         if (strong)
                         {
-                            strong->advertizeMessage(index);
+                            strong->advertizeMessage(shortHash);
                         }
                     },
                     fmt::format("advertize to {}", peer.second->toString()));
@@ -204,59 +233,39 @@ Floodgate::demandMissing(FloodAdvert const& adv, Peer::pointer fromPeer)
     StellarMessage msg;
     msg.type(FLOOD_DEMAND);
     FloodDemand& demand = msg.floodDemand();
-    for (Hash const& h : adv.hashes)
+    for (uint64_t h : adv.hashes)
     {
-        auto i = mFloodMap.find(h);
-        bool haveMessage = false;
-        // Add to floodMap so it can be found by item-fetching.
-        if (i == mFloodMap.end())
+        auto i = mShortHashFloodMap.find(h);
+        if (i != mShortHashFloodMap.end())
         {
+            // We already got a full message for h; record that fromPeer also
+            // has the message, to inhibit advertizing or sending to fromPeer.
+            i->second->mPeersTold.insert(fromPeer->toString());
             CLOG_TRACE(Overlay,
-                       "{} marking message {} advertized by {} known (but "
-                       "don't have it)",
-                       mId, hexAbbrev(h),
-                       KeyUtils::toShortString(fromPeer->getPeerID()));
-            mFloodMap[h] = std::make_shared<FloodRecord>(
-                mApp.getHerder().getCurrentLedgerSeq(), fromPeer);
-            mFloodMapSize.set_count(mFloodMap.size());
+                       "{} already have full message for {} advertied by {}",
+                       mId, h, KeyUtils::toShortString(fromPeer->getPeerID()));
+        }
+        else if (mPendingDemands.find(h) != mPendingDemands.end())
+        {
+            // We don't have this message but we did already ask for it from
+            // someone else, so we'll avoid asking for it here.
+            //
+            // TODO: for security / poison-avoidance here, we might want to
+            // ask more than once or keep track of how long it's been since we
+            // asked.
+            CLOG_TRACE(Overlay, "{} already demanded {} advertized by {}", mId,
+                       h, KeyUtils::toShortString(fromPeer->getPeerID()));
         }
         else
         {
-            i->second->mPeersTold.insert(fromPeer->toString());
-            haveMessage = static_cast<bool>(i->second->mMessage);
-            if (haveMessage)
-            {
-                CLOG_TRACE(Overlay,
-                           "{} know of message {} advertized by {} and already "
-                           "have it",
-                           mId, hexAbbrev(h),
-                           KeyUtils::toShortString(fromPeer->getPeerID()));
-            }
-            else
-            {
-                CLOG_TRACE(
-                    Overlay,
-                    "{} know of message {} advertized by {} and don't have it",
-                    mId, hexAbbrev(h),
-                    KeyUtils::toShortString(fromPeer->getPeerID()));
-            }
-        }
-        if (mPendingDemanded.find(h) != mPendingDemanded.end())
-        {
-            CLOG_TRACE(Overlay, "{} already demanded {} advertized by {}", mId,
-                       hexAbbrev(h),
+            CLOG_TRACE(Overlay, "{} demanding {} from {}", mId, h,
                        KeyUtils::toShortString(fromPeer->getPeerID()));
-        }
-        if (!haveMessage && mPendingDemanded.find(h) == mPendingDemanded.end())
-        {
-            CLOG_TRACE(Overlay, "{} demanding {} from {}", mId, hexAbbrev(h),
-                       KeyUtils::toShortString(fromPeer->getPeerID()));
-            // We don't have this message in full and haven't
-            // demanded it yet from anyone who advertized it; ask
-            // now and leave a record that we've done so to avoid
-            // demanding it from others.
+            // We don't have this message in full and haven't demanded it yet
+            // from anyone who advertized it; ask now and leave a record that
+            // we've done so to avoid demanding it from others.
             mMessagesDemanded.Mark();
-            mPendingDemanded.insert(h);
+            mPendingDemands.emplace(h, mApp.getHerder().getCurrentLedgerSeq());
+            mPendingDemandsSize.set_count(mPendingDemands.size());
             demand.hashes.emplace_back(h);
         }
     }
@@ -266,36 +275,23 @@ Floodgate::demandMissing(FloodAdvert const& adv, Peer::pointer fromPeer)
 void
 Floodgate::fulfillDemand(FloodDemand const& dmd, Peer::pointer fromPeer)
 {
-    for (Hash const& h : dmd.hashes)
+    for (uint64_t h : dmd.hashes)
     {
-        auto i = mFloodMap.find(h);
-        if (i != mFloodMap.end())
-        {
-            if (i->second->mMessage)
-            {
-                CLOG_TRACE(Overlay,
-                           "{} fulfilling demand for {} demanded by {}", mId,
-                           hexAbbrev(h),
-                           KeyUtils::toShortString(fromPeer->getPeerID()));
-                mMessagesFulfilled.Mark();
-                fromPeer->sendMessage(*(i->second->mMessage));
-            }
-            else
-            {
-                CLOG_TRACE(Overlay,
-                           "{} can't fulfill demand for {} demanded by {} -- "
-                           "know of message but don't have it",
-                           mId, hexAbbrev(h),
-                           KeyUtils::toShortString(fromPeer->getPeerID()));
-            }
-        }
-        else
+        auto i = mShortHashFloodMap.find(h);
+        if (i == mShortHashFloodMap.end())
         {
             CLOG_TRACE(Overlay,
                        "can't fulfill demand for {} demanded by {} -- don't "
                        "know of message",
-                       mId, hexAbbrev(h),
-                       KeyUtils::toShortString(fromPeer->getPeerID()));
+                       mId, h, KeyUtils::toShortString(fromPeer->getPeerID()));
+        }
+        else
+        {
+            CLOG_TRACE(Overlay, "{} fulfilling demand for {} demanded by {}",
+                       mId, h, KeyUtils::toShortString(fromPeer->getPeerID()));
+            mMessagesFulfilled.Mark();
+            i->second->mPeersTold.insert(fromPeer->toString());
+            fromPeer->sendMessage(i->second->mMessage);
         }
     }
 }
@@ -325,14 +321,26 @@ Floodgate::shutdown()
 {
     mShuttingDown = true;
     mFloodMap.clear();
+    mShortHashFloodMap.clear();
+    mPendingDemands.clear();
 }
 
 void
 Floodgate::forgetRecord(Hash const& h)
 {
     CLOG_TRACE(Overlay, "{} forgetting {}", mId, hexAbbrev(h));
-    mFloodMap.erase(h);
-    mPendingDemanded.erase(h);
+    auto i = mFloodMap.find(h);
+    if (i != mFloodMap.end())
+    {
+        auto record = i->second;
+        mShortHashFloodMap.erase(record->mKeyedShortHash);
+        mShortHashFloodMap.erase(record->mUnkeyedShortHash);
+        mPendingDemands.erase(record->mKeyedShortHash);
+        mPendingDemands.erase(record->mUnkeyedShortHash);
+        mPendingDemandsSize.set_count(mPendingDemands.size());
+        mFloodMap.erase(i);
+        mFloodMapSize.set_count(mFloodMap.size());
+    }
 }
 
 void
@@ -347,7 +355,7 @@ Floodgate::updateRecord(StellarMessage const& oldMsg,
     if (oldIter != mFloodMap.end())
     {
         auto record = oldIter->second;
-        *record->mMessage = newMsg;
+        record->mMessage = newMsg;
 
         mFloodMap.erase(oldIter);
         mFloodMap.emplace(newHash, record);

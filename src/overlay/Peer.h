@@ -244,7 +244,7 @@ class Peer : public std::enable_shared_from_this<Peer>,
 
     bool supportsAdverts() const;
     void flushPendingAdvert();
-    void advertizeMessage(Hash const& hash);
+    void advertizeMessage(uint64_t shortHash);
 
     PeerRole
     getRole() const

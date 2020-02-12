@@ -507,10 +507,10 @@ Peer::supportsAdverts() const
 }
 
 void
-Peer::advertizeMessage(Hash const& hash)
+Peer::advertizeMessage(uint64_t shortHash)
 {
     auto& hashes = mPendingAdvertMsg.floodAdvert().hashes;
-    hashes.emplace_back(hash);
+    hashes.emplace_back(shortHash);
     if (hashes.size() >= ADVERT_FLUSH_THRESHOLD)
     {
         flushPendingAdvert();

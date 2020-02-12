@@ -96,6 +96,7 @@ overlay.inbound.establish                | meter     | inbound connection establ
 overlay.inbound.reject                   | meter     | inbound connection rejected
 overlay.item-fetcher.next-peer           | meter     | ask for item past the first one
 overlay.memory.flood-known               | counter   | number of known flooded entries
+overlay.memory.pending-demands           | counter   | number of flood demands in-flight
 overlay.message.broadcast                | meter     | message broadcasted
 overlay.message.read                     | meter     | message received
 overlay.message.write                    | meter     | message sent

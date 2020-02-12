@@ -181,12 +181,12 @@ case SURVEY_TOPOLOGY:
 
 struct FloodAdvert
 {
-    Hash hashes<>;
+    uint64 hashes<>;
 };
 
 struct FloodDemand
 {
-    Hash hashes<>;
+    uint64 hashes<>;
 };
 
 union StellarMessage switch (MessageType type)
