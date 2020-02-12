@@ -6,8 +6,8 @@
 
 #include "overlay/Peer.h"
 #include "overlay/StellarXDR.h"
-#include <memory>
 #include <map>
+#include <memory>
 #include <set>
 
 /**
@@ -39,19 +39,55 @@ class Floodgate
         typedef std::shared_ptr<FloodRecord> pointer;
 
         uint32_t mLedgerSeq;
-        std::unique_ptr<StellarMessage> mMessage;
+        StellarMessage mMessage;
         std::set<std::string> mPeersTold;
 
+        // mKeyedShortHash is SIPHash24 of mMessage keyed by the the low 128
+        // bits of the LCL hash at which it was received (or broadcast). The
+        // hash keying serves two goals:
+        //
+        //  - Preventing accidental collision masking a tx: on next ledger
+        //    close, HerderImpl::updateTransactionQueue will rebroadcast any
+        //    _unconsumed_ txs in the tx queue under new hashes, so they will
+        //    just be delayed / sent twice by such accidental poisoning.
+        //
+        //  - Narrow the attack window for any _intentional_ poisoning to a
+        //    short real-time window: attacker would have to find a SIPHash24
+        //    preimage in the window of time between the LCL hash being known
+        //    and the broadcast they want to poison being flooded ahead of their
+        //    poison.
+        //
+        // We also calculate an mUnkeyedShortHash (well, keyed by 128 zero bits)
+        // representing the short hash value to use in adverts (and that other
+        // nodes will avertize to us) when out of sync.
+        uint64_t mKeyedShortHash;
+        uint64_t mUnkeyedShortHash;
+
         FloodRecord(StellarMessage const& msg, uint32_t ledger,
-                    Peer::pointer peer);
-        FloodRecord(uint32_t ledger, Peer::pointer peer);
+                    uint64_t keyedShortHash, uint64_t unkeyedShortHash);
     };
 
+    std::pair<std::map<Hash, FloodRecord::pointer>::iterator, bool>
+    insert(StellarMessage const& msg, bool force = false);
+
+    // Messages in mFloodMap are those we have a full copy of, and are in the
+    // process of flooding to others.
     std::map<Hash, FloodRecord::pointer> mFloodMap;
-    std::set<Hash> mPendingDemanded;
+
+    // Pointers into the same map but indexed by short hash (both keyed and
+    // unkeyed).
+    std::map<uint64_t, FloodRecord::pointer> mShortHashFloodMap;
+
+    // The set of short hashes we've send demands for, so we only demand them
+    // from one party. The value stored in this map is the ledger in which we
+    // made the demand; we will forget pending demands (and re-demand,
+    // potentially from some new peer who advertizes) after each ledger.
+    std::map<uint64_t, uint32_t> mPendingDemands;
+
     Application& mApp;
     std::string mId;
     medida::Counter& mFloodMapSize;
+    medida::Counter& mPendingDemandsSize;
     medida::Meter& mSendFromBroadcast;
     medida::Meter& mMessagesAdvertized;
     medida::Meter& mMessagesDemanded;
