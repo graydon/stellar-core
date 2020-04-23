@@ -219,8 +219,7 @@ TCPPeer::shutdown()
                         << ec2.message();
                 }
             },
-            {VirtualClock::ExecutionCategory::Type::NORMAL_EVENT,
-             "TCPPeer: close"});
+            "TCPPeer: close");
     });
 }
 
@@ -510,10 +509,8 @@ TCPPeer::startRead()
         // we have enough data but need to bounce on the main thread as we've
         // done too much work already
         auto self = static_pointer_cast<TCPPeer>(shared_from_this());
-        self->getApp().postOnMainThread(
-            [self]() { self->startRead(); },
-            {VirtualClock::ExecutionCategory::Type::NORMAL_EVENT,
-             fmt::format("{} TCPPeer: startRead", toString())});
+        self->getApp().postOnMainThread([self]() { self->startRead(); },
+                                        "TCPPeer: startRead");
     }
 }
 

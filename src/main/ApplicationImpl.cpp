@@ -679,9 +679,9 @@ ApplicationImpl::syncOwnMetrics()
     mMetrics->NewCounter({"process", "memory", "handles"})
         .set_count(mProcessManager->getNumRunningProcesses());
 
-    // Update ioservice related metrics
-    mMetrics->NewCounter({"process", "ioservice", "queue"})
-        .set_count(static_cast<int64_t>(getClock().getExecutionQueueSize()));
+    // Update action-queue related metrics
+    mMetrics->NewCounter({"process", "action", "queue"})
+        .set_count(static_cast<int64_t>(getClock().getActionQueueSize()));
 }
 
 void
@@ -822,16 +822,16 @@ ApplicationImpl::getWorkerIOContext()
 }
 
 void
-ApplicationImpl::postOnMainThread(std::function<void()>&& f,
-                                  VirtualClock::ExecutionCategory&& id)
+ApplicationImpl::postOnMainThread(std::function<void()>&& f, std::string&& name,
+                                  Scheduler::RelativeDeadline deadline)
 {
-    LogSlowExecution isSlow{id.mName, LogSlowExecution::Mode::MANUAL,
+    LogSlowExecution isSlow{name, LogSlowExecution::Mode::MANUAL,
                             "executed after"};
-    mVirtualClock.postToExecutionQueue([ this, f = std::move(f), isSlow ]() {
+    mVirtualClock.postAction([ this, f = std::move(f), isSlow ]() {
         mPostOnMainThreadDelay.Update(isSlow.checkElapsedTime());
         f();
     },
-                                       std::move(id));
+                             std::move(name), deadline);
 }
 
 void

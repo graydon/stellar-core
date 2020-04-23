@@ -218,8 +218,9 @@ class Application
     // with caution.
     virtual asio::io_context& getWorkerIOContext() = 0;
 
-    virtual void postOnMainThread(std::function<void()>&& f,
-                                  VirtualClock::ExecutionCategory&& jobID) = 0;
+    virtual void postOnMainThread(
+        std::function<void()>&& f, std::string&& name,
+        Scheduler::RelativeDeadline deadline = Scheduler::NEVER_DROP) = 0;
     virtual void postOnBackgroundThread(std::function<void()>&& f,
                                         std::string jobName) = 0;
 

@@ -706,8 +706,7 @@ HerderImpl::ledgerClosed(bool synchronous)
     {
         mApp.postOnMainThread(
             [this]() { processSCPQueueAndTrigger(); },
-            {VirtualClock::ExecutionCategory::Type::NORMAL_EVENT,
-             "processSCPQueueAndTrigger"});
+            "processSCPQueueAndTrigger");
     }
 }
 
@@ -1239,8 +1238,7 @@ HerderImpl::checkAndMaybeReanalyzeQuorumMap()
                             hState.mLastGoodLedger = ledger;
                         }
                     },
-                    {VirtualClock::ExecutionCategory::Type::NORMAL_EVENT,
-                     "QuorumIntersectionChecker"});
+                    "QuorumIntersectionChecker finished");
             }
             catch (QuorumIntersectionChecker::InterruptedException&)
             {
@@ -1252,8 +1250,7 @@ HerderImpl::checkAndMaybeReanalyzeQuorumMap()
                         hState.mInterruptFlag = false;
                         hState.mCheckingQuorumMapHash = Hash{};
                     },
-                    {VirtualClock::ExecutionCategory::Type::NORMAL_EVENT,
-                     "QuorumIntersectionChecker interrupted"});
+                    "QuorumIntersectionChecker interrupted");
             }
         };
         mApp.postOnBackgroundThread(worker, "QuorumIntersectionChecker");
