@@ -440,9 +440,7 @@ TCPPeer::startRead()
     // We read large-ish (256KB) buffers of data from TCP which might have quite
     // a few messages in them. We want to digest as many of these
     // _synchronously_ as we can before we issue an async_read against ASIO.
-    YieldTimer yt(mApp.getClock(), mApp.getConfig().MAX_BATCH_READ_PERIOD_MS,
-                  mApp.getConfig().MAX_BATCH_READ_COUNT);
-    while (mSocket->in_avail() >= HDRSZ && yt.shouldKeepGoing())
+    while (mSocket->in_avail() >= HDRSZ)
     {
         asio::error_code ec_hdr, ec_body;
         size_t n = mSocket->read_some(asio::buffer(mIncomingHeader), ec_hdr);
@@ -478,6 +476,10 @@ TCPPeer::startRead()
                 }
                 noteFullyReadBody(length);
                 recvMessage();
+                if (mApp.getClock().shouldYield())
+                {
+                    break;
+                }
             }
         }
         else

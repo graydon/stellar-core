@@ -261,6 +261,21 @@ VirtualClock::sleep_for(std::chrono::microseconds us)
     }
 }
 
+bool
+VirtualClock::shouldYield() const
+{
+    if (mMode == VIRTUAL_TIME)
+    {
+        return true;
+    }
+    else
+    {
+        using namespace std::chrono;
+        auto dur = steady_clock::now() - mLastDispatchStart;
+        return duration_cast<microseconds>(dur) > CRANK_TIME_SLICE;
+    }
+}
+
 static size_t
 crankStep(std::function<size_t()> step)
 {
@@ -289,9 +304,9 @@ VirtualClock::crank(bool block)
     }
     size_t progressCount = 0;
     {
-        using tick = std::chrono::steady_clock;
         std::lock_guard<std::recursive_mutex> lock(mDispatchingMutex);
         mDispatching = true;
+        mLastDispatchStart = std::chrono::steady_clock::now();
         nRealTimerCancelEvents = 0;
         if (mMode == REAL_TIME)
         {

@@ -61,13 +61,11 @@ WorkScheduler::scheduleOne(std::weak_ptr<WorkScheduler> weak)
             try
             {
                 // loop as to perform some meaningful amount of work
-                YieldTimer yt(innerSelf->mApp.getClock(),
-                              std::chrono::milliseconds(1));
                 do
                 {
                     innerSelf->crankWork();
                 } while (innerSelf->getState() == State::WORK_RUNNING &&
-                         yt.shouldKeepGoing());
+                         !innerSelf->mApp.getClock().shouldYield());
             }
             catch (...)
             {
