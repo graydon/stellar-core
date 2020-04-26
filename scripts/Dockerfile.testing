@@ -1,0 +1,48 @@
+# This is a Dockerfile for one-off builds of stellar-core during development.
+#
+# It's intended to be run from the stellar-core source directory of a
+# developer's workstation to make a test buid that can be run in kubernetes
+# without passing through any of the normal CI process. As such it is as small
+# and quick as possible, using alpine linux and neither building nor installing
+# an intermediate debian package.
+#
+# This file does not even require the workspace to be pushed to github, much
+# less in an open PR, only committed to the local git repo so 'git clean' knows
+# which files to keep: it copies the contents of the directory it's invoked from
+# and then does 'git clean' and a rebuild in the container's build environment.
+# There's no audit trail in the resulting images and they should only ever go in
+# user repositories for testing purposes.
+#
+# To use this file, run something like the following:
+#
+#  $ export TAG=${USER}/stellar-core:$(git describe --always --tags --long)
+#  $ docker build -f scripts/Dockerfile.testing . -t $TAG
+#  $ docker push $TAG
+#
+
+# Build stage, includes everything needed to build.
+FROM alpine:latest as buildstage
+RUN apk add --no-cache git clang autoconf automake libtool flex bison postgresql-dev openssh-client tar binutils build-base linux-headers
+
+COPY . stellar-core/
+WORKDIR stellar-core
+RUN git clean -dxf
+RUN git submodule foreach --recursive git clean -dxf
+
+# Alpine is a bit religious about position-independent executables.
+ARG CFLAGS='-O2 -fno-omit-frame-pointer -fPIC -fPIE'
+ARG CXXFLAGS='-O2 -fno-omit-frame-pointer -fPIC -fPIE'
+ARG LDFLAGS='-fPIE'
+
+RUN ./autogen.sh
+RUN ./configure CFLAGS="${CFLAGS}" CXXFLAGS="${CXXFLAGS}" LDFLAGS="${LDFLAGS}"
+RUN sh -c 'make -j $(nproc)'
+RUN make install
+
+# Deploy stage, only includes stuff needed to run.
+FROM alpine:latest
+RUN apk --no-cache add libgcc libstdc++ postgresql-dev curl sqlite iproute2 bash
+COPY --from=buildstage /usr/local/bin/stellar-core /usr/local/bin/stellar-core
+EXPOSE 11625
+EXPOSE 11626
+CMD stellar-core
