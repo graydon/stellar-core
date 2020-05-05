@@ -35,10 +35,10 @@ class RandomEvictionCache : public NonMovableOrCopyable
 
     // Entries are stored in a wrapper that includes time-of-last-access via a
     // simple generation counter that's incremented on each cache mutation.
-    uint64_t mGeneration{0};
+    mutable uint64_t mGeneration{0};
     struct CacheValue
     {
-        uint64_t mLastAccess;
+        mutable uint64_t mLastAccess;
         V mValue;
     };
 
@@ -54,7 +54,7 @@ class RandomEvictionCache : public NonMovableOrCopyable
     std::vector<MapValueType*> mValuePtrs;
 
     // Each cache keeps some counters just to monitor its performance.
-    Counters mCounters;
+    mutable Counters mCounters;
 
     // Randomly pick two elements and evict the less-recently-used one.
     void
@@ -135,15 +135,12 @@ class RandomEvictionCache : public NonMovableOrCopyable
 
     // `exists` offers strong exception safety guarantee.
     bool
-    exists(K const& k, bool countMisses = true)
+    exists(K const& k, bool countMisses = true) const
     {
         bool miss = (mValueMap.find(k) == mValueMap.end());
         // We do not count hits here; but we usually count misses, as exists()
         // is typically used as a guard followed by a get(). If you're using it
         // _not_ that way, pass `false` for countMisses.
-        //
-        // Or use the maybeGet interface, which will save you a second hash
-        // lookup and provides a less-cumbersome interface.
         if (miss && countMisses)
         {
             ++mCounters.mMisses;
@@ -182,13 +179,13 @@ class RandomEvictionCache : public NonMovableOrCopyable
     }
 
     // `get` offers strong exception safety guarantee.
-    V&
-    get(K const& k)
+    V const&
+    get(K const& k) const
     {
         auto it = mValueMap.find(k);
         if (it != mValueMap.end())
         {
-            auto& cacheVal = it->second;
+            auto const& cacheVal = it->second;
             ++mCounters.mHits;
             cacheVal.mLastAccess = ++mGeneration;
             return cacheVal.mValue;
