@@ -157,6 +157,7 @@ Config::Config() : NODE_SEED(SecretKey::random())
 
     MAX_BATCH_WRITE_COUNT = 1024;
     MAX_BATCH_WRITE_BYTES = 1 * 1024 * 1024;
+    FLOOD_MESSAGE_DEADLINE_MS = 5000;
     PREFERRED_PEERS_ONLY = false;
 
     MINIMUM_IDLE_PERCENT = 0;
@@ -852,6 +853,10 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             else if (item.first == "MAX_BATCH_WRITE_BYTES")
             {
                 MAX_BATCH_WRITE_BYTES = readInt<int>(item, 1);
+            }
+            else if (item.first == "FLOOD_MESSAGE_DEADLINE_MS")
+            {
+                FLOOD_MESSAGE_DEADLINE_MS = readInt<int>(item, 1);
             }
             else if (item.first == "PREFERRED_PEERS")
             {

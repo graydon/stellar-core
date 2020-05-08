@@ -302,6 +302,7 @@ class Config : public std::enable_shared_from_this<Config>
     int MAX_BATCH_READ_COUNT;
     int MAX_BATCH_WRITE_COUNT;
     int MAX_BATCH_WRITE_BYTES;
+    int FLOOD_MESSAGE_DEADLINE_MS;
     static constexpr auto const POSSIBLY_PREFERRED_EXTRA = 2;
     static constexpr auto const REALLY_DEAD_NUM_FAILURES_CUTOFF = 120;
 

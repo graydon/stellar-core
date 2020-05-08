@@ -565,7 +565,8 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     // high volume flooding
     case TRANSACTION:
         cat = "TX";
-        deadline = std::chrono::seconds(5);
+        deadline = std::chrono::milliseconds(
+            mApp.getConfig().FLOOD_MESSAGE_DEADLINE_MS);
         break;
 
     // consensus, inbound
@@ -573,7 +574,8 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     case GET_SCP_QUORUMSET:
     case GET_SCP_STATE:
         cat = "SCPQ";
-        deadline = std::chrono::seconds(5);
+        deadline = std::chrono::milliseconds(
+            mApp.getConfig().FLOOD_MESSAGE_DEADLINE_MS);
         break;
 
     // consensus, self
