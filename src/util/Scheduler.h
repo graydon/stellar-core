@@ -77,7 +77,7 @@
 //     async IOs or writing to in-memory buffers) may run them _all_ before
 //     anyone else gets to go, but that's ok precisely because they're very
 //     small actions. The scheduler will shift to other queues exactly when a
-//     queue uses up a _noticable amount of time_ relative to others.
+//     queue uses up a _noticeable amount of time_ relative to others.
 //
 // This is an old algorithm that was not used for a long time out of fear that
 // it would starve long-duration actions; but it's received renewed study in
