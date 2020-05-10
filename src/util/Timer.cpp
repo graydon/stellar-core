@@ -317,10 +317,12 @@ VirtualClock::crank(bool block)
         }
 
         // Dispatch some IO event completions.
+        mLastDispatchStart = std::chrono::steady_clock::now();
         progressCount +=
             crankStep([this] { return this->mIOContext.poll_one(); });
 
         // Dispatch some scheduled actions.
+        mLastDispatchStart = std::chrono::steady_clock::now();
         progressCount +=
             crankStep([this] { return this->mActionScheduler->runOne(); });
 
