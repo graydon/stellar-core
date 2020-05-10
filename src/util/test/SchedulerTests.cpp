@@ -29,7 +29,7 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
 
     CHECK(sched.size() == 1);
     CHECK(sched.nextQueueToRun() == A);
-    CHECK(sched.serviceTime(A).count() == 0);
+    CHECK(sched.totalService(A).count() == 0);
     CHECK(sched.queueLength(A) == 1);
     CHECK(sched.stats().mActionsEnqueued == 1);
     CHECK(sched.stats().mActionsDequeued == 0);
@@ -41,7 +41,7 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
 
     CHECK(sched.runOne() == 1); // run A
     CHECK(nEvents == 1);
-    CHECK(sched.serviceTime(A).count() != 0);
+    CHECK(sched.totalService(A).count() != 0);
     CHECK(sched.stats().mActionsDequeued == 1);
     CHECK(sched.stats().mQueuesSuspended == 1);
 
@@ -51,9 +51,9 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
 
     CHECK(sched.size() == 3);
     CHECK(sched.nextQueueToRun() != A);
-    CHECK(sched.serviceTime(A).count() != 0);
-    CHECK(sched.serviceTime(B).count() == 0);
-    CHECK(sched.serviceTime(C).count() == 0);
+    CHECK(sched.totalService(A).count() != 0);
+    CHECK(sched.totalService(B).count() == 0);
+    CHECK(sched.totalService(C).count() == 0);
     CHECK(sched.queueLength(A) == 1);
     CHECK(sched.queueLength(B) == 1);
     CHECK(sched.queueLength(C) == 1);
@@ -63,13 +63,13 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     CHECK(sched.stats().mQueuesActivatedFromFresh == 3);
     CHECK(sched.stats().mQueuesActivatedFromCache == 1);
 
-    auto aruntime = sched.serviceTime(A).count();
+    auto aruntime = sched.totalService(A).count();
     CHECK(sched.runOne() == 1); // run B or C
     CHECK(sched.runOne() == 1); // run B or C
     CHECK(nEvents == 3);
-    CHECK(sched.serviceTime(A).count() == aruntime);
-    CHECK(sched.serviceTime(B).count() != 0);
-    CHECK(sched.serviceTime(C).count() != 0);
+    CHECK(sched.totalService(A).count() == aruntime);
+    CHECK(sched.totalService(B).count() != 0);
+    CHECK(sched.totalService(C).count() != 0);
     CHECK(sched.queueLength(A) == 1);
     CHECK(sched.queueLength(B) == 0);
     CHECK(sched.queueLength(C) == 0);

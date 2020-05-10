@@ -144,16 +144,18 @@ class Scheduler
     // This is a per-queue limit.
     size_t const mLoadLimit;
 
-    // The serviceTime of any queue will always be advanced to at least this
-    // duration behind mMaxServiceTime, to limit the amount of "suplus" service
-    // time any given queue can acucmulate if it happens to go idle a long time.
-    std::chrono::nanoseconds const mServiceTimeWindow;
+    // The totalService of any queue will always be advanced to at least this
+    // duration behind mMaxTotalService, to limit the amount of "surplus"
+    // service time any given queue can accumulate if it happens to go idle a
+    // long time.
+    std::chrono::nanoseconds const mTotalServiceWindow;
 
     // Largest serviceTime seen in any queue. This number will continuously
+    // Largest totalService seen in any queue. This number will continuously
     // advance as queues are serviced; it exists to serve as the upper limit
-    // of the window, from which mServiceTimeWindow is subtracted to derive
+    // of the window, from which mTotalServiceWindow is subtracted to derive
     // the lower limit.
-    std::chrono::nanoseconds mMaxServiceTime{0};
+    std::chrono::nanoseconds mMaxTotalService{0};
 
     // Sum of sizes of all the active queues. Maintained as items are enqueued
     // or run.
@@ -182,9 +184,9 @@ class Scheduler
     }
 
     std::chrono::nanoseconds
-    maxServiceTime() const
+    maxTotalService() const
     {
-        return mMaxServiceTime;
+        return mMaxTotalService;
     }
 
     Stats const&
@@ -197,7 +199,7 @@ class Scheduler
     // Testing interface
     Qptr getExistingQueue(std::string const& name) const;
     std::string const& nextQueueToRun() const;
-    std::chrono::nanoseconds serviceTime(std::string const& q) const;
+    std::chrono::nanoseconds totalService(std::string const& q) const;
     size_t queueLength(std::string const& q) const;
 #endif
 };

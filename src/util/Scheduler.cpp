@@ -56,7 +56,7 @@ class Scheduler::Queue
     };
 
     std::string mName;
-    nsecs mServiceTime{0};
+    nsecs mTotalService{0};
     std::deque<Element> mActions;
 
   public:
@@ -71,9 +71,10 @@ class Scheduler::Queue
     }
 
     nsecs
-    serviceTime() const
+    totalService() const
     {
-        return mServiceTime;
+        return mTotalService;
+    }
     }
 
     size_t
@@ -117,7 +118,7 @@ class Scheduler::Queue
     }
 
     void
-    runNext(nsecs minServiceTime)
+    runNext(nsecs minTotalService)
     {
         auto before = std::chrono::steady_clock::now();
         Action action = std::move(mActions.front().mAction);
@@ -125,18 +126,17 @@ class Scheduler::Queue
         action();
         auto after = std::chrono::steady_clock::now();
         nsecs duration = std::chrono::duration_cast<nsecs>(after - before);
-        mServiceTime = std::max(mServiceTime + duration, minServiceTime);
+        mTotalService = std::max(mTotalService + duration, minTotalService);
     }
 };
 
 Scheduler::Scheduler(size_t loadLimit,
-                     std::chrono::nanoseconds serviceTimeWindow)
-    : mQueueQueue(
-          [](std::shared_ptr<Queue> a, std::shared_ptr<Queue> b) -> bool {
-              return a->serviceTime() > b->serviceTime();
-          })
+                     std::chrono::nanoseconds totalServiceWindow)
+    : mRunnableActionQueues([](Qptr a, Qptr b) -> bool {
+        return a->totalService() > b->totalService();
+    })
     , mLoadLimit(loadLimit)
-    , mServiceTimeWindow(serviceTimeWindow)
+    , mTotalServiceWindow(totalServiceWindow)
 {
 }
 
@@ -198,9 +198,9 @@ Scheduler::runOne()
         {
             // We pass along a "minimum service time" floor that the service
             // time of the queue will be incremented to, at minimum.
-            auto minServiceTime = mMaxServiceTime - mServiceTimeWindow;
-            q->runNext(minServiceTime);
-            mMaxServiceTime = std::max(q->serviceTime(), mMaxServiceTime);
+            auto minTotalService = mMaxTotalService - mTotalServiceWindow;
+            q->runNext(minTotalService);
+            mMaxTotalService = std::max(q->totalService(), mMaxTotalService);
             mSize -= 1;
             mStats.mActionsDequeued++;
             trim(q);
@@ -248,11 +248,11 @@ Scheduler::nextQueueToRun() const
     return mQueueQueue.top()->name();
 }
 std::chrono::nanoseconds
-Scheduler::serviceTime(std::string const& q) const
+Scheduler::totalService(std::string const& q) const
 {
     auto eq = getExistingQueue(q);
     assert(eq);
-    return eq->serviceTime();
+    return eq->totalService();
 }
 
 size_t
