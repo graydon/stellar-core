@@ -352,7 +352,7 @@ VirtualClock::postAction(std::function<void()>&& f, std::string&& name,
     if (!mDispatching)
     {
         // Either we are waiting on io_context().run_one, or by some chance
-        // run_one was woken up by network activity and postToExecutionQueue was
+        // run_one was woken up by network activity and postAction was
         // called from a background thread.
 
         // In any case, all we need to do is ensure that we wake up `crank`, we
