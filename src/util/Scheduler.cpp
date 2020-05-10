@@ -23,12 +23,19 @@ class Scheduler::ActionQueue
         Scheduler::AbsoluteDeadline mDeadline;
         Element(Action&& action, Scheduler::RelativeDeadline rel)
             : mAction(std::move(action))
-            , mDeadline(rel == Scheduler::NEVER_DROP
-                            ? Scheduler::ABS_NEVER_DROP
-                            : (rel == Scheduler::DROP_ONLY_UNDER_LOAD
-                                   ? Scheduler::ABS_DROP_ONLY_UNDER_LOAD
-                                   : std::chrono::steady_clock::now() + rel))
         {
+            if (rel == Scheduler::NEVER_DROP)
+            {
+                mDeadline = Scheduler::ABS_NEVER_DROP;
+            }
+            else if (rel == Scheduler::DROP_ONLY_UNDER_LOAD)
+            {
+                mDeadline = Scheduler::ABS_DROP_ONLY_UNDER_LOAD;
+            }
+            else
+            {
+                mDeadline = std::chrono::steady_clock::now() + rel;
+            }
         }
         bool
         shouldDrop(bool overloaded, Scheduler::AbsoluteDeadline now,
