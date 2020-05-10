@@ -4,10 +4,9 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
-#include "util/RandomEvictionCache.h"
-
 #include <chrono>
 #include <functional>
+#include <list>
 #include <map>
 #include <memory>
 #include <queue>
@@ -117,7 +116,7 @@ class Scheduler
         size_t mActionsDroppedDueToOverload{0};
         size_t mActionsDroppedDueToDeadline{0};
         size_t mQueuesActivatedFromFresh{0};
-        size_t mQueuesActivatedFromCache{0};
+        size_t mQueuesActivatedFromIdle{0};
         size_t mQueuesSuspended{0};
     };
 
@@ -131,12 +130,19 @@ class Scheduler
         AbsoluteDeadline::max();
 
   private:
-    class Queue;
-    using Qptr = std::shared_ptr<Queue>;
-    std::map<std::string, Qptr> mQueues;
+    class ActionQueue;
+    using Qptr = std::shared_ptr<ActionQueue>;
+
+    // Stores all ActionQueues by name, either runnable or idle.
+    std::map<std::string, Qptr> mAllActionQueues;
+
+    // Stores the Runnable ActionQueues, with top() being the ActionQueue with
+    // the least total service time. An ActionQueue is "runnable" if it is
+    // nonempty; empty ActionQueues are considered "idle" and are tracked
+    // in the mIdleActionQueues member below.
     std::priority_queue<Qptr, std::vector<Qptr>,
                         std::function<bool(Qptr, Qptr)>>
-        mQueueQueue;
+        mRunnableActionQueues;
 
     Stats mStats;
 
@@ -150,7 +156,9 @@ class Scheduler
     // long time.
     std::chrono::nanoseconds const mTotalServiceWindow;
 
-    // Largest serviceTime seen in any queue. This number will continuously
+    // If any queue is idle for longer than this time, it will be dropped.
+    std::chrono::nanoseconds const mMaxIdleTime;
+
     // Largest totalService seen in any queue. This number will continuously
     // advance as queues are serviced; it exists to serve as the upper limit
     // of the window, from which mTotalServiceWindow is subtracted to derive
@@ -161,14 +169,19 @@ class Scheduler
     // or run.
     size_t mSize{0};
 
-    // We cache recent queues for a while after we empty them, so that we can
-    // maintain a service-level estimate spanning their repeated activations.
-    RandomEvictionCache<std::string, Qptr> mQueueCache{1024};
+    void trimSingleActionQueue(Qptr q);
+    void trimIdleActionQueues();
 
-    void trim(Qptr q);
+    // List of ActionQueues that are currently idle. Idle ActionQueues maintain
+    // a list<Qptr>::iterator pointing to their own position in this list, which
+    // can be used to make them runnable at any time. Idled ActionQueues are
+    // placed at the front of this list and expired (if they are too old) from
+    // the back of the list, where they've been idle the longest.
+    std::list<Qptr> mIdleActionQueues;
 
   public:
-    Scheduler(size_t loadLimit, std::chrono::nanoseconds serviceTimeWindow);
+    Scheduler(size_t loadLimit, std::chrono::nanoseconds totalServiceWindow,
+              std::chrono::nanoseconds maxIdleTime);
 
     // Adds an action to the named queue with a given type and deadline.
     void enqueue(std::string&& name, Action&& action,

@@ -13,8 +13,9 @@ using namespace stellar;
 TEST_CASE("scheduler basic functionality", "[scheduler]")
 {
     std::chrono::seconds window(10);
+    std::chrono::seconds maxidle(10);
     size_t overload = 100;
-    Scheduler sched(overload, window);
+    Scheduler sched(overload, window, maxidle);
 
     std::string A("a"), B("b"), C("c");
 
@@ -36,7 +37,7 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     CHECK(sched.stats().mActionsDroppedDueToOverload == 0);
     CHECK(sched.stats().mActionsDroppedDueToDeadline == 0);
     CHECK(sched.stats().mQueuesActivatedFromFresh == 1);
-    CHECK(sched.stats().mQueuesActivatedFromCache == 0);
+    CHECK(sched.stats().mQueuesActivatedFromIdle == 0);
     CHECK(sched.stats().mQueuesSuspended == 0);
 
     CHECK(sched.runOne() == 1); // run A
@@ -61,7 +62,7 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     CHECK(sched.stats().mActionsDroppedDueToOverload == 0);
     CHECK(sched.stats().mActionsDroppedDueToDeadline == 0);
     CHECK(sched.stats().mQueuesActivatedFromFresh == 3);
-    CHECK(sched.stats().mQueuesActivatedFromCache == 1);
+    CHECK(sched.stats().mQueuesActivatedFromIdle == 1);
 
     auto aruntime = sched.totalService(A).count();
     CHECK(sched.runOne() == 1); // run B or C
@@ -90,8 +91,9 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
 TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
 {
     std::chrono::seconds window(10);
+    std::chrono::seconds maxidle(10);
     size_t overload = 100;
-    Scheduler sched(overload, window);
+    Scheduler sched(overload, window, maxidle);
 
     std::string A("a"), B("b"), C("c");
 
@@ -136,8 +138,9 @@ TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
 TEST_CASE("scheduler load shedding -- deadlines", "[scheduler]")
 {
     std::chrono::seconds window(10);
+    std::chrono::seconds maxidle(10);
     size_t overload = 100;
-    Scheduler sched(overload, window);
+    Scheduler sched(overload, window, maxidle);
 
     std::string A("a"), B("b"), C("c");
 

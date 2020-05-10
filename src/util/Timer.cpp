@@ -21,11 +21,13 @@ static const std::chrono::milliseconds CRANK_TIME_SLICE(500);
 static const size_t CRANK_EVENT_SLICE = 100;
 static const size_t SCHEDULER_DROP_LIMIT = 10000;
 static const std::chrono::seconds SCHEDULER_SERVICE_TIME_WINDOW(10);
+static const std::chrono::seconds SCHEDULER_MAX_IDLE_TIME(10);
 
 VirtualClock::VirtualClock(Mode mode)
     : mMode(mode)
     , mActionScheduler(std::make_unique<Scheduler>(
-          SCHEDULER_DROP_LIMIT, SCHEDULER_SERVICE_TIME_WINDOW))
+          SCHEDULER_DROP_LIMIT, SCHEDULER_SERVICE_TIME_WINDOW,
+          SCHEDULER_MAX_IDLE_TIME))
     , mRealTimer(mIOContext)
 {
     resetIdleCrankPercent();

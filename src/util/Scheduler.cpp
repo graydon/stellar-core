@@ -14,7 +14,8 @@ const Scheduler::RelativeDeadline Scheduler::DROP_ONLY_UNDER_LOAD;
 const Scheduler::AbsoluteDeadline Scheduler::ABS_NEVER_DROP;
 const Scheduler::AbsoluteDeadline Scheduler::ABS_DROP_ONLY_UNDER_LOAD;
 
-class Scheduler::Queue
+class Scheduler::ActionQueue
+    : public std::enable_shared_from_this<Scheduler::ActionQueue>
 {
     struct Element
     {
@@ -57,11 +58,45 @@ class Scheduler::Queue
 
     std::string mName;
     nsecs mTotalService{0};
+    std::chrono::steady_clock::time_point mLastService;
     std::deque<Element> mActions;
 
+    // mIdleList is a reference to the mIdleList member of the Scheduler that
+    // owns this ActionQueue. mIdlePosition is an iterator to the position in
+    // that list that this ActionQueue occupies, or mIdleList.end() if it's
+    // not in mIdleList.
+    std::list<Qptr>& mIdleList;
+    std::list<Qptr>::iterator mIdlePosition;
+
   public:
-    Queue(std::string const& name) : mName(name)
+    ActionQueue(std::string const& name, std::list<Qptr>& idleList)
+        : mName(name)
+        , mLastService(std::chrono::steady_clock::time_point::max())
+        , mIdleList(idleList)
+        , mIdlePosition(mIdleList.end())
     {
+    }
+
+    bool
+    isInIdleList() const
+    {
+        return mIdlePosition != mIdleList.end();
+    }
+
+    void
+    addToIdleList()
+    {
+        assert(!isInIdleList());
+        mIdleList.push_front(shared_from_this());
+        mIdlePosition = mIdleList.begin();
+    }
+
+    void
+    removeFromIdleList()
+    {
+        assert(isInIdleList());
+        mIdleList.erase(mIdlePosition);
+        mIdlePosition = mIdleList.end();
     }
 
     std::string const&
@@ -75,6 +110,11 @@ class Scheduler::Queue
     {
         return mTotalService;
     }
+
+    std::chrono::steady_clock::time_point
+    lastService() const
+    {
+        return mLastService;
     }
 
     size_t
@@ -127,21 +167,24 @@ class Scheduler::Queue
         auto after = std::chrono::steady_clock::now();
         nsecs duration = std::chrono::duration_cast<nsecs>(after - before);
         mTotalService = std::max(mTotalService + duration, minTotalService);
+        mLastService = after;
     }
 };
 
 Scheduler::Scheduler(size_t loadLimit,
-                     std::chrono::nanoseconds totalServiceWindow)
+                     std::chrono::nanoseconds totalServiceWindow,
+                     std::chrono::nanoseconds maxIdleTime)
     : mRunnableActionQueues([](Qptr a, Qptr b) -> bool {
         return a->totalService() > b->totalService();
     })
     , mLoadLimit(loadLimit)
     , mTotalServiceWindow(totalServiceWindow)
+    , mMaxIdleTime(maxIdleTime)
 {
 }
 
 void
-Scheduler::trim(std::shared_ptr<Queue> q)
+Scheduler::trimSingleActionQueue(Qptr q)
 {
     Scheduler::AbsoluteDeadline now = std::chrono::steady_clock::now();
     while (true)
@@ -156,44 +199,60 @@ Scheduler::trim(std::shared_ptr<Queue> q)
 }
 
 void
+Scheduler::trimIdleActionQueues()
+{
+    if (mIdleActionQueues.empty())
+    {
+        return;
+    }
+    Qptr old = mIdleActionQueues.back();
+    if (old->lastService() + mMaxIdleTime < std::chrono::steady_clock::now())
+    {
+        mAllActionQueues.erase(old->name());
+        old->removeFromIdleList();
+    }
+}
+
+void
 Scheduler::enqueue(std::string&& name, Action&& action,
                    Scheduler::RelativeDeadline deadline)
 {
-    auto qi = mQueues.find(name);
-    if (qi == mQueues.end())
+    auto qi = mAllActionQueues.find(name);
+    if (qi == mAllActionQueues.end())
     {
-        if (mQueueCache.exists(name))
+        mStats.mQueuesActivatedFromFresh++;
+        auto q = std::make_shared<ActionQueue>(name, mIdleActionQueues);
+        qi = mAllActionQueues.emplace(name, q).first;
+        mRunnableActionQueues.push(qi->second);
+    }
+    else
+    {
+        if (qi->second->isInIdleList())
         {
-            mStats.mQueuesActivatedFromCache++;
-            qi = mQueues.emplace(name, mQueueCache.get(name)).first;
+            assert(qi->second->isEmpty());
+            mStats.mQueuesActivatedFromIdle++;
+            qi->second->removeFromIdleList();
+            mRunnableActionQueues.push(qi->second);
         }
-        else
-        {
-            mStats.mQueuesActivatedFromFresh++;
-            auto q = std::make_shared<Queue>(name);
-            mQueueCache.put(name, q);
-            qi = mQueues.emplace(name, q).first;
-        }
-        mQueueQueue.push(qi->second);
     }
     mStats.mActionsEnqueued++;
     qi->second->enqueue(std::move(action), deadline);
     mSize += 1;
-    trim(qi->second);
 }
 
 size_t
 Scheduler::runOne()
 {
-    if (mQueueQueue.empty())
+    trimIdleActionQueues();
+    if (mRunnableActionQueues.empty())
     {
         return 0;
     }
     else
     {
-        auto q = mQueueQueue.top();
-        mQueueQueue.pop();
-        trim(q);
+        auto q = mRunnableActionQueues.top();
+        mRunnableActionQueues.pop();
+        trimSingleActionQueue(q);
         if (!q->isEmpty())
         {
             // We pass along a "minimum service time" floor that the service
@@ -203,36 +262,28 @@ Scheduler::runOne()
             mMaxTotalService = std::max(q->totalService(), mMaxTotalService);
             mSize -= 1;
             mStats.mActionsDequeued++;
-            trim(q);
         }
         if (q->isEmpty())
         {
             mStats.mQueuesSuspended++;
-            mQueues.erase(q->name());
+            q->addToIdleList();
         }
         else
         {
-            mQueueQueue.push(q);
+            mRunnableActionQueues.push(q);
         }
         return 1;
     }
 }
 
 #ifdef BUILD_TESTS
-std::shared_ptr<Scheduler::Queue>
+std::shared_ptr<Scheduler::ActionQueue>
 Scheduler::getExistingQueue(std::string const& name) const
 {
-    auto qi = mQueues.find(name);
-    if (qi == mQueues.end())
+    auto qi = mAllActionQueues.find(name);
+    if (qi == mAllActionQueues.end())
     {
-        if (mQueueCache.exists(name))
-        {
-            return mQueueCache.get(name);
-        }
-        else
-        {
-            return nullptr;
-        }
+        return nullptr;
     }
     return qi->second;
 }
@@ -241,11 +292,11 @@ std::string const&
 Scheduler::nextQueueToRun() const
 {
     static std::string empty;
-    if (mQueueQueue.empty())
+    if (mRunnableActionQueues.empty())
     {
         return empty;
     }
-    return mQueueQueue.top()->name();
+    return mRunnableActionQueues.top()->name();
 }
 std::chrono::nanoseconds
 Scheduler::totalService(std::string const& q) const
