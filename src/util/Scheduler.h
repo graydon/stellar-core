@@ -104,6 +104,7 @@
 namespace stellar
 {
 
+class VirtualClock;
 using Action = std::function<void()>;
 
 class Scheduler
@@ -121,13 +122,9 @@ class Scheduler
     };
 
     using RelativeDeadline = std::chrono::nanoseconds;
-    using AbsoluteDeadline = std::chrono::steady_clock::time_point;
     static constexpr RelativeDeadline NEVER_DROP = RelativeDeadline::min();
     static constexpr RelativeDeadline DROP_ONLY_UNDER_LOAD =
         RelativeDeadline::max();
-    static constexpr AbsoluteDeadline ABS_NEVER_DROP = AbsoluteDeadline::min();
-    static constexpr AbsoluteDeadline ABS_DROP_ONLY_UNDER_LOAD =
-        AbsoluteDeadline::max();
 
   private:
     class ActionQueue;
@@ -145,6 +142,9 @@ class Scheduler
         mRunnableActionQueues;
 
     Stats mStats;
+
+    // Clock we get time from.
+    VirtualClock& mClock;
 
     // A queue is considered "overloaded" if its size is above the load limit.
     // This is a per-queue limit.
@@ -180,7 +180,8 @@ class Scheduler
     std::list<Qptr> mIdleActionQueues;
 
   public:
-    Scheduler(size_t loadLimit, std::chrono::nanoseconds totalServiceWindow,
+    Scheduler(VirtualClock& clock, size_t loadLimit,
+              std::chrono::nanoseconds totalServiceWindow,
               std::chrono::nanoseconds maxIdleTime);
 
     // Adds an action to the named queue with a given type and deadline.

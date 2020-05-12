@@ -26,7 +26,7 @@ static const std::chrono::seconds SCHEDULER_MAX_IDLE_TIME(10);
 VirtualClock::VirtualClock(Mode mode)
     : mMode(mode)
     , mActionScheduler(std::make_unique<Scheduler>(
-          SCHEDULER_DROP_LIMIT, SCHEDULER_SERVICE_TIME_WINDOW,
+          *this, SCHEDULER_DROP_LIMIT, SCHEDULER_SERVICE_TIME_WINDOW,
           SCHEDULER_MAX_IDLE_TIME))
     , mRealTimer(mIOContext)
 {

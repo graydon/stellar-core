@@ -6,6 +6,7 @@
 
 #include "lib/catch.hpp"
 #include "util/Logging.h"
+#include "util/Timer.h"
 #include <chrono>
 
 using namespace stellar;
@@ -15,14 +16,15 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     std::chrono::seconds window(10);
     std::chrono::seconds maxidle(10);
     size_t overload = 100;
-    Scheduler sched(overload, window, maxidle);
+    VirtualClock clock;
+    Scheduler sched(clock, overload, window, maxidle);
 
     std::string A("a"), B("b"), C("c");
 
     size_t nEvents{0};
     auto step = std::chrono::microseconds(1);
     auto microsleep = [&] {
-        std::this_thread::sleep_for(step);
+        clock.sleep_for(step);
         ++nEvents;
     };
 
@@ -93,18 +95,19 @@ TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
     std::chrono::seconds window(10);
     std::chrono::seconds maxidle(10);
     size_t overload = 100;
-    Scheduler sched(overload, window, maxidle);
+    VirtualClock clock;
+    Scheduler sched(clock, overload, window, maxidle);
 
     std::string A("a"), B("b"), C("c");
 
     size_t nEvents{0};
     auto step = std::chrono::microseconds(1);
     auto microsleep = [&] {
-        std::this_thread::sleep_for(step);
+        clock.sleep_for(step);
         ++nEvents;
     };
 
-    for (size_t i = 0; i < 10000; ++i)
+    for (size_t i = 0; i < 1000; ++i)
     {
         sched.enqueue(std::string(A), microsleep,
                       Scheduler::DROP_ONLY_UNDER_LOAD);
@@ -122,14 +125,8 @@ TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
     {
         sched.runOne();
     }
-    // This test is a little bit nondeterministic since the queue's decisions
-    // are ultimately based on real-time and the sleeps above. If it fails,
-    // check that the numbers are at least nearly right and crank up the margin
-    // of error a bit here. I've run it for several hours without problems
-    // but machines can vary.
-    double dropRatio = (((double)sched.stats().mActionsDroppedDueToOverload) /
-                        ((double)sched.stats().mActionsDequeued));
-    CHECK(dropRatio < 0.75);
+    CHECK(sched.stats().mActionsDroppedDueToOverload == 702);
+    CHECK(sched.stats().mActionsDequeued == 2298);
     auto tot = sched.stats().mActionsDequeued +
                sched.stats().mActionsDroppedDueToOverload;
     CHECK(sched.stats().mActionsEnqueued == tot);
@@ -140,18 +137,19 @@ TEST_CASE("scheduler load shedding -- deadlines", "[scheduler]")
     std::chrono::seconds window(10);
     std::chrono::seconds maxidle(10);
     size_t overload = 100;
-    Scheduler sched(overload, window, maxidle);
+    VirtualClock clock;
+    Scheduler sched(clock, overload, window, maxidle);
 
     std::string A("a"), B("b"), C("c");
 
     size_t nEvents{0};
     auto step = std::chrono::microseconds(1);
     auto microsleep = [&] {
-        std::this_thread::sleep_for(step);
+        clock.sleep_for(step);
         ++nEvents;
     };
 
-    for (size_t i = 0; i < 10000; ++i)
+    for (size_t i = 0; i < 1000; ++i)
     {
         sched.enqueue(std::string(A), microsleep,
                       std::chrono::microseconds(10));
@@ -169,15 +167,8 @@ TEST_CASE("scheduler load shedding -- deadlines", "[scheduler]")
     {
         sched.runOne();
     }
-    // This test is a little bit nondeterministic since the queue's decisions
-    // are ultimately based on real-time and the sleeps above. If it fails,
-    // check that the numbers are at least nearly right and crank up the margin
-    // of error a bit here. I've run it for several hours without problems
-    // but machines can vary.
-    double dropRatio = (((double)sched.stats().mActionsDroppedDueToDeadline) /
-                        ((double)sched.stats().mActionsDequeued));
-    CHECK(dropRatio > 1.0);
-    CHECK(dropRatio < 3.0);
+    CHECK(sched.stats().mActionsDroppedDueToDeadline == 991);
+    CHECK(sched.stats().mActionsDequeued == 2009);
     auto tot = sched.stats().mActionsDequeued +
                sched.stats().mActionsDroppedDueToDeadline;
     CHECK(sched.stats().mActionsEnqueued == tot);

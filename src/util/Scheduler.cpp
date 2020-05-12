@@ -3,6 +3,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "util/Scheduler.h"
+#include "util/Timer.h"
 #include <cassert>
 
 namespace stellar
@@ -11,8 +12,10 @@ using nsecs = std::chrono::nanoseconds;
 
 const Scheduler::RelativeDeadline Scheduler::NEVER_DROP;
 const Scheduler::RelativeDeadline Scheduler::DROP_ONLY_UNDER_LOAD;
-const Scheduler::AbsoluteDeadline Scheduler::ABS_NEVER_DROP;
-const Scheduler::AbsoluteDeadline Scheduler::ABS_DROP_ONLY_UNDER_LOAD;
+
+using AbsoluteDeadline = VirtualClock::time_point;
+const AbsoluteDeadline ABS_NEVER_DROP = AbsoluteDeadline::min();
+const AbsoluteDeadline ABS_DROP_ONLY_UNDER_LOAD = AbsoluteDeadline::max();
 
 class Scheduler::ActionQueue
     : public std::enable_shared_from_this<Scheduler::ActionQueue>
@@ -20,30 +23,31 @@ class Scheduler::ActionQueue
     struct Element
     {
         Action mAction;
-        Scheduler::AbsoluteDeadline mDeadline;
-        Element(Action&& action, Scheduler::RelativeDeadline rel)
+        AbsoluteDeadline mDeadline;
+        Element(VirtualClock& clock, Action&& action,
+                Scheduler::RelativeDeadline rel)
             : mAction(std::move(action))
         {
             if (rel == Scheduler::NEVER_DROP)
             {
-                mDeadline = Scheduler::ABS_NEVER_DROP;
+                mDeadline = ABS_NEVER_DROP;
             }
             else if (rel == Scheduler::DROP_ONLY_UNDER_LOAD)
             {
-                mDeadline = Scheduler::ABS_DROP_ONLY_UNDER_LOAD;
+                mDeadline = ABS_DROP_ONLY_UNDER_LOAD;
             }
             else
             {
-                mDeadline = std::chrono::steady_clock::now() + rel;
+                mDeadline = clock.now() + rel;
             }
         }
         bool
-        shouldDrop(bool overloaded, Scheduler::AbsoluteDeadline now,
+        shouldDrop(bool overloaded, VirtualClock::time_point now,
                    Scheduler::Stats& stats) const
         {
             if (overloaded)
             {
-                if (mDeadline != Scheduler::ABS_NEVER_DROP)
+                if (mDeadline != ABS_NEVER_DROP)
                 {
                     stats.mActionsDroppedDueToOverload++;
                     return true;
@@ -51,9 +55,8 @@ class Scheduler::ActionQueue
             }
             else
             {
-                if (mDeadline != Scheduler::ABS_NEVER_DROP &&
-                    mDeadline != Scheduler::ABS_DROP_ONLY_UNDER_LOAD &&
-                    now > mDeadline)
+                if (mDeadline != ABS_NEVER_DROP &&
+                    mDeadline != ABS_DROP_ONLY_UNDER_LOAD && now > mDeadline)
                 {
                     stats.mActionsDroppedDueToDeadline++;
                     return true;
@@ -137,7 +140,7 @@ class Scheduler::ActionQueue
     }
 
     size_t
-    tryTrim(size_t loadLimit, Scheduler::AbsoluteDeadline now,
+    tryTrim(size_t loadLimit, VirtualClock::time_point now,
             Scheduler::Stats& stats)
     {
         if (!mActions.empty())
@@ -158,32 +161,34 @@ class Scheduler::ActionQueue
     }
 
     void
-    enqueue(Action&& action, Scheduler::RelativeDeadline deadline)
+    enqueue(VirtualClock& clock, Action&& action,
+            Scheduler::RelativeDeadline deadline)
     {
-        auto elt = Element(std::move(action), deadline);
+        auto elt = Element(clock, std::move(action), deadline);
         mActions.emplace_back(std::move(elt));
     }
 
     void
-    runNext(nsecs minTotalService)
+    runNext(VirtualClock& clock, nsecs minTotalService)
     {
-        auto before = std::chrono::steady_clock::now();
+        auto before = clock.now();
         Action action = std::move(mActions.front().mAction);
         mActions.pop_front();
         action();
-        auto after = std::chrono::steady_clock::now();
+        auto after = clock.now();
         nsecs duration = std::chrono::duration_cast<nsecs>(after - before);
         mTotalService = std::max(mTotalService + duration, minTotalService);
         mLastService = after;
     }
 };
 
-Scheduler::Scheduler(size_t loadLimit,
+Scheduler::Scheduler(VirtualClock& clock, size_t loadLimit,
                      std::chrono::nanoseconds totalServiceWindow,
                      std::chrono::nanoseconds maxIdleTime)
     : mRunnableActionQueues([](Qptr a, Qptr b) -> bool {
         return a->totalService() > b->totalService();
     })
+    , mClock(clock)
     , mLoadLimit(loadLimit)
     , mTotalServiceWindow(totalServiceWindow)
     , mMaxIdleTime(maxIdleTime)
@@ -193,7 +198,7 @@ Scheduler::Scheduler(size_t loadLimit,
 void
 Scheduler::trimSingleActionQueue(Qptr q)
 {
-    Scheduler::AbsoluteDeadline now = std::chrono::steady_clock::now();
+    VirtualClock::time_point now = mClock.now();
     while (true)
     {
         size_t trimmed = q->tryTrim(mLoadLimit, now, mStats);
@@ -213,7 +218,7 @@ Scheduler::trimIdleActionQueues()
         return;
     }
     Qptr old = mIdleActionQueues.back();
-    if (old->lastService() + mMaxIdleTime < std::chrono::steady_clock::now())
+    if (old->lastService() + mMaxIdleTime < mClock.now())
     {
         mAllActionQueues.erase(old->name());
         old->removeFromIdleList();
@@ -243,7 +248,7 @@ Scheduler::enqueue(std::string&& name, Action&& action,
         }
     }
     mStats.mActionsEnqueued++;
-    qi->second->enqueue(std::move(action), deadline);
+    qi->second->enqueue(mClock, std::move(action), deadline);
     mSize += 1;
 }
 
@@ -265,7 +270,7 @@ Scheduler::runOne()
             // We pass along a "minimum service time" floor that the service
             // time of the queue will be incremented to, at minimum.
             auto minTotalService = mMaxTotalService - mTotalServiceWindow;
-            q->runNext(minTotalService);
+            q->runNext(mClock, minTotalService);
             mMaxTotalService = std::max(q->totalService(), mMaxTotalService);
             mSize -= 1;
             mStats.mActionsDequeued++;
