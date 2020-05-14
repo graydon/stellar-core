@@ -3,6 +3,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "util/Scheduler.h"
+#include "lib/util/finally.h"
 #include "util/Timer.h"
 #include <cassert>
 
@@ -97,6 +98,7 @@ class Scheduler::ActionQueue
     addToIdleList()
     {
         assert(!isInIdleList());
+        assert(isEmpty());
         mIdleList.push_front(shared_from_this());
         mIdlePosition = mIdleList.begin();
     }
@@ -105,6 +107,7 @@ class Scheduler::ActionQueue
     removeFromIdleList()
     {
         assert(isInIdleList());
+        assert(isEmpty());
         mIdleList.erase(mIdlePosition);
         mIdlePosition = mIdleList.end();
     }
@@ -174,11 +177,15 @@ class Scheduler::ActionQueue
         auto before = clock.now();
         Action action = std::move(mActions.front().mAction);
         mActions.pop_front();
+
+        auto fini = gsl::finally([&]() {
+            auto after = clock.now();
+            nsecs duration = std::chrono::duration_cast<nsecs>(after - before);
+            mTotalService = std::max(mTotalService + duration, minTotalService);
+            mLastService = after;
+        });
+
         action();
-        auto after = clock.now();
-        nsecs duration = std::chrono::duration_cast<nsecs>(after - before);
-        mTotalService = std::max(mTotalService + duration, minTotalService);
-        mLastService = after;
     }
 };
 
@@ -220,6 +227,7 @@ Scheduler::trimIdleActionQueues()
     Qptr old = mIdleActionQueues.back();
     if (old->lastService() + mMaxIdleTime < mClock.now())
     {
+        assert(old->isEmpty());
         mAllActionQueues.erase(old->name());
         old->removeFromIdleList();
     }
@@ -258,6 +266,7 @@ Scheduler::runOne()
     trimIdleActionQueues();
     if (mRunnableActionQueues.empty())
     {
+        assert(mSize == 0);
         return 0;
     }
     else
@@ -265,24 +274,31 @@ Scheduler::runOne()
         auto q = mRunnableActionQueues.top();
         mRunnableActionQueues.pop();
         trimSingleActionQueue(q);
+
+        auto putQueueBackInIdleOrActive = gsl::finally([&]() {
+            if (q->isEmpty())
+            {
+                mStats.mQueuesSuspended++;
+                q->addToIdleList();
+            }
+            else
+            {
+                mRunnableActionQueues.push(q);
+            }
+        });
+
         if (!q->isEmpty())
         {
             // We pass along a "minimum service time" floor that the service
             // time of the queue will be incremented to, at minimum.
             auto minTotalService = mMaxTotalService - mTotalServiceWindow;
-            q->runNext(mClock, minTotalService);
-            mMaxTotalService = std::max(q->totalService(), mMaxTotalService);
             mSize -= 1;
             mStats.mActionsDequeued++;
-        }
-        if (q->isEmpty())
-        {
-            mStats.mQueuesSuspended++;
-            q->addToIdleList();
-        }
-        else
-        {
-            mRunnableActionQueues.push(q);
+            auto updateMaxTotalService = gsl::finally([&]() {
+                mMaxTotalService =
+                    std::max(q->totalService(), mMaxTotalService);
+            });
+            q->runNext(mClock, minTotalService);
         }
         return 1;
     }
