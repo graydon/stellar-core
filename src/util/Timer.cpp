@@ -296,19 +296,18 @@ VirtualClock::shouldYield() const
     else
     {
         using namespace std::chrono;
-        auto dur = steady_clock::now() - mLastDispatchStart;
-        return duration_cast<microseconds>(dur) > CRANK_TIME_SLICE;
+        auto dur = now() - mLastDispatchStart;
+        return duration_cast<milliseconds>(dur) > CRANK_TIME_SLICE;
     }
 }
 
 static size_t
-crankStep(std::function<size_t()> step)
+crankStep(VirtualClock& clock, std::function<size_t()> step)
 {
-    using tick = std::chrono::steady_clock;
     size_t eCount = 0;
-    auto tLimit = tick::now() + CRANK_TIME_SLICE;
+    auto tLimit = clock.now() + CRANK_TIME_SLICE;
     size_t totalProgress = 0;
-    while (tick::now() < tLimit && ++eCount < CRANK_EVENT_SLICE)
+    while (clock.now() < tLimit && ++eCount < CRANK_EVENT_SLICE)
     {
         size_t stepProgress = step();
         totalProgress += stepProgress;
@@ -331,7 +330,7 @@ VirtualClock::crank(bool block)
     {
         std::lock_guard<std::recursive_mutex> lock(mDispatchingMutex);
         mDispatching = true;
-        mLastDispatchStart = std::chrono::steady_clock::now();
+        mLastDispatchStart = now();
         nRealTimerCancelEvents = 0;
         if (mMode == REAL_TIME)
         {
@@ -340,14 +339,14 @@ VirtualClock::crank(bool block)
         }
 
         // Dispatch some IO event completions.
-        mLastDispatchStart = std::chrono::steady_clock::now();
+        mLastDispatchStart = now();
         progressCount +=
-            crankStep([this] { return this->mIOContext.poll_one(); });
+            crankStep(*this, [this] { return this->mIOContext.poll_one(); });
 
         // Dispatch some scheduled actions.
-        mLastDispatchStart = std::chrono::steady_clock::now();
-        progressCount +=
-            crankStep([this] { return this->mActionScheduler->runOne(); });
+        mLastDispatchStart = now();
+        progressCount += crankStep(
+            *this, [this] { return this->mActionScheduler->runOne(); });
 
         // Subtract out any timer cancellations from the above two steps.
         progressCount -= nRealTimerCancelEvents;
