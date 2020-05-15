@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <queue>
+#include <set>
 
 // This class implements a multi-queue scheduler for "actions" (deferred-work
 // callbacks that some subsystem wants to run "soon" on the main thread),
@@ -166,8 +167,8 @@ class Scheduler
     // or run.
     size_t mSize{0};
 
-    // Count of ActionQueues that were overloaded when we last ran them.
-    size_t mOverloadedActionQueues{0};
+    // Set of ActionQueues that were overloaded when we last ran them.
+    std::set<Qptr> mOverloadedActionQueues;
 
     void trimSingleActionQueue(Qptr q,
                                std::chrono::steady_clock::time_point now);
@@ -193,7 +194,7 @@ class Scheduler
     bool
     isOverloaded() const
     {
-        return mOverloadedActionQueues != 0;
+        return !mOverloadedActionQueues.empty();
     }
 
     size_t

@@ -90,7 +90,7 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
 
 TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
 {
-    std::chrono::seconds window(10);
+    std::chrono::microseconds window(100);
     VirtualClock clock;
     Scheduler sched(clock, window);
 
@@ -115,8 +115,8 @@ TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
     {
         sched.runOne();
     }
-    CHECK(sched.stats().mActionsDroppedDueToOverload == 702);
-    CHECK(sched.stats().mActionsDequeued == 2298);
+    CHECK(sched.stats().mActionsDroppedDueToOverload == 901);
+    CHECK(sched.stats().mActionsDequeued == 2099);
     auto tot = sched.stats().mActionsDequeued +
                sched.stats().mActionsDroppedDueToOverload;
     CHECK(sched.stats().mActionsEnqueued == tot);

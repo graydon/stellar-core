@@ -187,6 +187,7 @@ Scheduler::trimIdleActionQueues(VirtualClock::time_point now)
     {
         assert(old->isEmpty());
         mAllActionQueues.erase(std::make_pair(old->name(), old->type()));
+        mOverloadedActionQueues.erase(old);
         old->removeFromIdleList();
     }
 }
@@ -226,27 +227,22 @@ Scheduler::runOne()
     if (mRunnableActionQueues.empty())
     {
         assert(mSize == 0);
-        assert(mOverloadedActionQueues == 0);
         return 0;
     }
     else
     {
         auto q = mRunnableActionQueues.top();
-        bool wasOverloaded = q->isOverloaded(mTotalServiceWindow, start);
         mRunnableActionQueues.pop();
         trimSingleActionQueue(q, start);
 
         auto putQueueBackInIdleOrActive = gsl::finally([&]() {
-            auto end = mClock.now();
-            bool isOverloaded = q->isOverloaded(mTotalServiceWindow, end);
-            if (!wasOverloaded && isOverloaded)
+            if (q->isOverloaded(mTotalServiceWindow, mClock.now()))
             {
-                mOverloadedActionQueues++;
+                mOverloadedActionQueues.insert(q);
             }
-            else if (wasOverloaded && !isOverloaded)
+            else
             {
-                assert(mOverloadedActionQueues != 0);
-                mOverloadedActionQueues--;
+                mOverloadedActionQueues.erase(q);
             }
             if (q->isEmpty())
             {
