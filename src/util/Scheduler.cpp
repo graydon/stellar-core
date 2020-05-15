@@ -168,23 +168,22 @@ Scheduler::Scheduler(VirtualClock& clock,
 }
 
 void
-Scheduler::trimSingleActionQueue(Qptr q)
+Scheduler::trimSingleActionQueue(Qptr q, VirtualClock::time_point now)
 {
-    VirtualClock::time_point now = mClock.now();
     size_t trimmed = q->tryTrim(mTotalServiceWindow, now);
     mStats.mActionsDroppedDueToOverload += trimmed;
     mSize -= trimmed;
 }
 
 void
-Scheduler::trimIdleActionQueues()
+Scheduler::trimIdleActionQueues(VirtualClock::time_point now)
 {
     if (mIdleActionQueues.empty())
     {
         return;
     }
     Qptr old = mIdleActionQueues.back();
-    if (old->lastService() + mTotalServiceWindow < mClock.now())
+    if (old->lastService() + mTotalServiceWindow < now)
     {
         assert(old->isEmpty());
         mAllActionQueues.erase(std::make_pair(old->name(), old->type()));
@@ -222,19 +221,33 @@ Scheduler::enqueue(std::string&& name, Action&& action, ActionType type)
 size_t
 Scheduler::runOne()
 {
-    trimIdleActionQueues();
+    auto start = mClock.now();
+    trimIdleActionQueues(start);
     if (mRunnableActionQueues.empty())
     {
         assert(mSize == 0);
+        assert(mOverloadedActionQueues == 0);
         return 0;
     }
     else
     {
         auto q = mRunnableActionQueues.top();
+        bool wasOverloaded = q->isOverloaded(mTotalServiceWindow, start);
         mRunnableActionQueues.pop();
-        trimSingleActionQueue(q);
+        trimSingleActionQueue(q, start);
 
         auto putQueueBackInIdleOrActive = gsl::finally([&]() {
+            auto end = mClock.now();
+            bool isOverloaded = q->isOverloaded(mTotalServiceWindow, end);
+            if (!wasOverloaded && isOverloaded)
+            {
+                mOverloadedActionQueues++;
+            }
+            else if (wasOverloaded && !isOverloaded)
+            {
+                assert(mOverloadedActionQueues != 0);
+                mOverloadedActionQueues--;
+            }
             if (q->isEmpty())
             {
                 mStats.mQueuesSuspended++;

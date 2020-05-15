@@ -166,8 +166,12 @@ class Scheduler
     // or run.
     size_t mSize{0};
 
-    void trimSingleActionQueue(Qptr q);
-    void trimIdleActionQueues();
+    // Count of ActionQueues that were overloaded when we last ran them.
+    size_t mOverloadedActionQueues{0};
+
+    void trimSingleActionQueue(Qptr q,
+                               std::chrono::steady_clock::time_point now);
+    void trimIdleActionQueues(std::chrono::steady_clock::time_point now);
 
     // List of ActionQueues that are currently idle. Idle ActionQueues maintain
     // a list<Qptr>::iterator pointing to their own position in this list, which
@@ -179,11 +183,18 @@ class Scheduler
   public:
     Scheduler(VirtualClock& clock, std::chrono::nanoseconds totalServiceWindow);
 
-    // Adds an action to the named queue with a given type.
+    // Adds an action to the named ActionQueue with a given type.
     void enqueue(std::string&& name, Action&& action, ActionType type);
 
-    // Runs 0 or 1 action from the next Queue in the queue-of-queues.
+    // Runs 0 or 1 action from the next ActionQueue in the queue-of-queues.
     size_t runOne();
+
+    // Return true iff any of the ActionQueues are overloaded.
+    bool
+    isOverloaded() const
+    {
+        return mOverloadedActionQueues != 0;
+    }
 
     size_t
     size() const

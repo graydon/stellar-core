@@ -299,12 +299,12 @@ VirtualClock::shouldYield() const
 }
 
 static size_t
-crankStep(VirtualClock& clock, std::function<size_t()> step)
+crankStep(VirtualClock& clock, std::function<size_t()> step, size_t divisor = 1)
 {
     size_t eCount = 0;
-    auto tLimit = clock.now() + CRANK_TIME_SLICE;
+    auto tLimit = clock.now() + (CRANK_TIME_SLICE / divisor);
     size_t totalProgress = 0;
-    while (clock.now() < tLimit && ++eCount < CRANK_EVENT_SLICE)
+    while (clock.now() < tLimit && ++eCount < (CRANK_EVENT_SLICE / divisor))
     {
         size_t stepProgress = step();
         totalProgress += stepProgress;
@@ -337,8 +337,9 @@ VirtualClock::crank(bool block)
 
         // Dispatch some IO event completions.
         mLastDispatchStart = now();
-        progressCount +=
-            crankStep(*this, [this] { return this->mIOContext.poll_one(); });
+        size_t ioDivisor = mActionScheduler->isOverloaded() ? 2 : 1;
+        progressCount += crankStep(
+            *this, [this] { return this->mIOContext.poll_one(); }, ioDivisor);
 
         // Dispatch some scheduled actions.
         mLastDispatchStart = now();
