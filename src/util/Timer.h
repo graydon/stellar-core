@@ -193,7 +193,7 @@ class VirtualClock
     time_point next() const;
 
     void postAction(std::function<void()>&& f, std::string&& name,
-                    Scheduler::RelativeDeadline deadline);
+                    ActionType type);
 
     size_t getActionQueueSize() const;
 };

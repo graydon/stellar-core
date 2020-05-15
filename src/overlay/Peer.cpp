@@ -546,7 +546,7 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     }
 
     std::string cat;
-    Scheduler::RelativeDeadline deadline = Scheduler::NEVER_DROP;
+    ActionType type = ActionType::NORMAL_ACTION;
     switch (stellarMsg.type())
     {
     // group messages used during handshake, process those synchronously
@@ -565,8 +565,7 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     // high volume flooding
     case TRANSACTION:
         cat = "TX";
-        deadline = std::chrono::milliseconds(
-            mApp.getConfig().FLOOD_MESSAGE_DEADLINE_MS);
+        type = ActionType::DROPPABLE_ACTION;
         break;
 
     // consensus, inbound
@@ -574,8 +573,7 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     case GET_SCP_QUORUMSET:
     case GET_SCP_STATE:
         cat = "SCPQ";
-        deadline = std::chrono::milliseconds(
-            mApp.getConfig().FLOOD_MESSAGE_DEADLINE_MS);
+        type = ActionType::DROPPABLE_ACTION;
         break;
 
     // consensus, self
@@ -618,7 +616,7 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
                 CLOG(TRACE, "Overlay") << err;
             }
         },
-        fmt::format("{} recvMessage", cat), deadline);
+        fmt::format("{} recvMessage", cat), type);
 }
 
 void

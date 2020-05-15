@@ -29,10 +29,12 @@
 //
 //   3. Fairness: time given to each queue should be roughly equal, over time.
 //
-//   4. Deadlines and load-shedding: some actions are best-effort and should be
-//      dropped when the system is under load, and others have deadlines after
-//      which there's no point running them, they're just a waste. We want to
-//      be able to drop either so they don't interfere with necessary actions.
+//   4. Load-shedding and back-pressure: we want to be able to define a load
+//      limit (in terms of worst-case time actions are delayed in the queue)
+//      beyond which we consider the system to be "overloaded" and both shed
+//      load where we can (dropping non-essential actions) and exert
+//      backpressure on our called (eg. by having them throttle IO that
+//      ultimately drives queue growth).
 //
 //   5. Simplicity: clients of the scheduler shouldn't need to adjust a lot of
 //      knobs, and the implementation should be as simple as possible and
@@ -93,19 +95,19 @@
 //     to be suddenly full of ready actions, or continuously-reschedule itself,
 //     so we make sure no queue can have less than some (steadily rising) floor.
 //
-//   - We encode deadlines in actions: those with a positive deadline are always
-//     dropped -- unconditionally -- if they are ready to run after their
-//     deadline, and may also be dropped conditionally if the system is under
-//     load / the queue is too long. The sentinel "minimum deadline" value is
-//     reserved to indicate a never-droppable action. To encode a "best effort"
-//     action with no particular deadline that will be dropped only under load,
-//     we set the deadline to the the maximal duration value.
+//   - We record the enqueue time and "droppability" of an action, to allow us
+//     to measure load level and perform load shedding.
 
 namespace stellar
 {
 
 class VirtualClock;
 using Action = std::function<void()>;
+enum class ActionType
+{
+    NORMAL_ACTION,
+    DROPPABLE_ACTION
+};
 
 class Scheduler
 {
@@ -121,17 +123,12 @@ class Scheduler
         size_t mQueuesSuspended{0};
     };
 
-    using RelativeDeadline = std::chrono::nanoseconds;
-    static constexpr RelativeDeadline NEVER_DROP = RelativeDeadline::min();
-    static constexpr RelativeDeadline DROP_ONLY_UNDER_LOAD =
-        RelativeDeadline::max();
-
   private:
     class ActionQueue;
     using Qptr = std::shared_ptr<ActionQueue>;
 
-    // Stores all ActionQueues by name, either runnable or idle.
-    std::map<std::string, Qptr> mAllActionQueues;
+    // Stores all ActionQueues by name+type, either runnable or idle.
+    std::map<std::pair<std::string, ActionType>, Qptr> mAllActionQueues;
 
     // Stores the Runnable ActionQueues, with top() being the ActionQueue with
     // the least total service time. An ActionQueue is "runnable" if it is
@@ -146,18 +143,18 @@ class Scheduler
     // Clock we get time from.
     VirtualClock& mClock;
 
-    // A queue is considered "overloaded" if its size is above the load limit.
-    // This is a per-queue limit.
-    size_t const mLoadLimit;
-
     // The totalService of any queue will always be advanced to at least this
     // duration behind mMaxTotalService, to limit the amount of "surplus"
     // service time any given queue can accumulate if it happens to go idle a
     // long time.
+    //
+    // This value is _also_ used for overload-detection and load-shedding: any
+    // queue that has a runnable action at its head that's been waiting longer
+    // than this duration is considered overloaded.
+    //
+    // This value is _also_ used as the amount of time a queue can be idle
+    // before it is forgotten about.
     std::chrono::nanoseconds const mTotalServiceWindow;
-
-    // If any queue is idle for longer than this time, it will be dropped.
-    std::chrono::nanoseconds const mMaxIdleTime;
 
     // Largest totalService seen in any queue. This number will continuously
     // advance as queues are serviced; it exists to serve as the upper limit
@@ -180,13 +177,10 @@ class Scheduler
     std::list<Qptr> mIdleActionQueues;
 
   public:
-    Scheduler(VirtualClock& clock, size_t loadLimit,
-              std::chrono::nanoseconds totalServiceWindow,
-              std::chrono::nanoseconds maxIdleTime);
+    Scheduler(VirtualClock& clock, std::chrono::nanoseconds totalServiceWindow);
 
-    // Adds an action to the named queue with a given type and deadline.
-    void enqueue(std::string&& name, Action&& action,
-                 RelativeDeadline deadline);
+    // Adds an action to the named queue with a given type.
+    void enqueue(std::string&& name, Action&& action, ActionType type);
 
     // Runs 0 or 1 action from the next Queue in the queue-of-queues.
     size_t runOne();
@@ -211,10 +205,13 @@ class Scheduler
 
 #ifdef BUILD_TESTS
     // Testing interface
-    Qptr getExistingQueue(std::string const& name) const;
+    Qptr getExistingQueue(std::string const& name, ActionType type) const;
     std::string const& nextQueueToRun() const;
-    std::chrono::nanoseconds totalService(std::string const& q) const;
-    size_t queueLength(std::string const& q) const;
+    std::chrono::nanoseconds
+    totalService(std::string const& q,
+                 ActionType type = ActionType::NORMAL_ACTION) const;
+    size_t queueLength(std::string const& q,
+                       ActionType type = ActionType::NORMAL_ACTION) const;
 #endif
 };
 }

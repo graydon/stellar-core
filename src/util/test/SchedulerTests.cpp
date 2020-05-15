@@ -14,10 +14,8 @@ using namespace stellar;
 TEST_CASE("scheduler basic functionality", "[scheduler]")
 {
     std::chrono::seconds window(10);
-    std::chrono::seconds maxidle(10);
-    size_t overload = 100;
     VirtualClock clock;
-    Scheduler sched(clock, overload, window, maxidle);
+    Scheduler sched(clock, window);
 
     std::string A("a"), B("b"), C("c");
 
@@ -28,7 +26,7 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
         ++nEvents;
     };
 
-    sched.enqueue(std::string(A), microsleep, Scheduler::NEVER_DROP);
+    sched.enqueue(std::string(A), microsleep, ActionType::NORMAL_ACTION);
 
     CHECK(sched.size() == 1);
     CHECK(sched.nextQueueToRun() == A);
@@ -48,9 +46,9 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     CHECK(sched.stats().mActionsDequeued == 1);
     CHECK(sched.stats().mQueuesSuspended == 1);
 
-    sched.enqueue(std::string(A), microsleep, Scheduler::NEVER_DROP);
-    sched.enqueue(std::string(B), microsleep, Scheduler::NEVER_DROP);
-    sched.enqueue(std::string(C), microsleep, Scheduler::NEVER_DROP);
+    sched.enqueue(std::string(A), microsleep, ActionType::NORMAL_ACTION);
+    sched.enqueue(std::string(B), microsleep, ActionType::NORMAL_ACTION);
+    sched.enqueue(std::string(C), microsleep, ActionType::NORMAL_ACTION);
 
     CHECK(sched.size() == 3);
     CHECK(sched.nextQueueToRun() != A);
@@ -93,10 +91,8 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
 TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
 {
     std::chrono::seconds window(10);
-    std::chrono::seconds maxidle(10);
-    size_t overload = 100;
     VirtualClock clock;
-    Scheduler sched(clock, overload, window, maxidle);
+    Scheduler sched(clock, window);
 
     std::string A("a"), B("b"), C("c");
 
@@ -109,17 +105,11 @@ TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
 
     for (size_t i = 0; i < 1000; ++i)
     {
-        sched.enqueue(std::string(A), microsleep,
-                      Scheduler::DROP_ONLY_UNDER_LOAD);
-        sched.enqueue(std::string(B), microsleep,
-                      Scheduler::DROP_ONLY_UNDER_LOAD);
-        sched.enqueue(std::string(C), microsleep,
-                      Scheduler::DROP_ONLY_UNDER_LOAD);
+        sched.enqueue(std::string(A), microsleep, ActionType::DROPPABLE_ACTION);
+        sched.enqueue(std::string(B), microsleep, ActionType::DROPPABLE_ACTION);
+        sched.enqueue(std::string(C), microsleep, ActionType::DROPPABLE_ACTION);
         sched.runOne();
         sched.runOne();
-        CHECK(sched.queueLength(A) <= overload);
-        CHECK(sched.queueLength(B) <= overload);
-        CHECK(sched.queueLength(C) <= overload);
     }
     while (sched.size() != 0)
     {
@@ -129,47 +119,5 @@ TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
     CHECK(sched.stats().mActionsDequeued == 2298);
     auto tot = sched.stats().mActionsDequeued +
                sched.stats().mActionsDroppedDueToOverload;
-    CHECK(sched.stats().mActionsEnqueued == tot);
-}
-
-TEST_CASE("scheduler load shedding -- deadlines", "[scheduler]")
-{
-    std::chrono::seconds window(10);
-    std::chrono::seconds maxidle(10);
-    size_t overload = 100;
-    VirtualClock clock;
-    Scheduler sched(clock, overload, window, maxidle);
-
-    std::string A("a"), B("b"), C("c");
-
-    size_t nEvents{0};
-    auto step = std::chrono::microseconds(1);
-    auto microsleep = [&] {
-        clock.sleep_for(step);
-        ++nEvents;
-    };
-
-    for (size_t i = 0; i < 1000; ++i)
-    {
-        sched.enqueue(std::string(A), microsleep,
-                      std::chrono::microseconds(10));
-        sched.enqueue(std::string(B), microsleep,
-                      std::chrono::microseconds(10));
-        sched.enqueue(std::string(C), microsleep,
-                      std::chrono::microseconds(10));
-        sched.runOne();
-        sched.runOne();
-        CHECK(sched.queueLength(A) <= overload);
-        CHECK(sched.queueLength(B) <= overload);
-        CHECK(sched.queueLength(C) <= overload);
-    }
-    while (sched.size() != 0)
-    {
-        sched.runOne();
-    }
-    CHECK(sched.stats().mActionsDroppedDueToDeadline == 991);
-    CHECK(sched.stats().mActionsDequeued == 2009);
-    auto tot = sched.stats().mActionsDequeued +
-               sched.stats().mActionsDroppedDueToDeadline;
     CHECK(sched.stats().mActionsEnqueued == tot);
 }

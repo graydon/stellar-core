@@ -823,7 +823,7 @@ ApplicationImpl::getWorkerIOContext()
 
 void
 ApplicationImpl::postOnMainThread(std::function<void()>&& f, std::string&& name,
-                                  Scheduler::RelativeDeadline deadline)
+                                  ActionType type)
 {
     LogSlowExecution isSlow{name, LogSlowExecution::Mode::MANUAL,
                             "executed after"};
@@ -831,7 +831,7 @@ ApplicationImpl::postOnMainThread(std::function<void()>&& f, std::string&& name,
         mPostOnMainThreadDelay.Update(isSlow.checkElapsedTime());
         f();
     },
-                             std::move(name), deadline);
+                             std::move(name), type);
 }
 
 void
