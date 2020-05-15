@@ -144,18 +144,33 @@ class Scheduler
     // Clock we get time from.
     VirtualClock& mClock;
 
-    // The totalService of any queue will always be advanced to at least this
-    // duration behind mMaxTotalService, to limit the amount of "surplus"
-    // service time any given queue can accumulate if it happens to go idle a
-    // long time.
+    // This "latency window" serves 3 distinct purposes simultaneously.
     //
-    // This value is _also_ used for overload-detection and load-shedding: any
-    // queue that has a runnable action at its head that's been waiting longer
-    // than this duration is considered overloaded.
+    // Theoretically they could be 3 separate knobs but in practice they
+    // all seem both related to one another and roughly the same order
+    // of magnitude so we use a single number for all 3 presently:
     //
-    // This value is _also_ used as the amount of time a queue can be idle
-    // before it is forgotten about.
-    std::chrono::nanoseconds const mTotalServiceWindow;
+    //  1. The time-delta subtracted from the observed maximum totalService of
+    //     any queue in order to calculate a minimum totalSerice "floor", that
+    //     we always advance queues' totalService values to when we run
+    //     them. One way to think of this is as a latency cap -- the longest we
+    //     want to let one queue that's built up a bunch of "credit" by being
+    //     lightly-loaded monopolize scheduling if it's suddenly full of work.
+    //
+    //  2. The maximum duration between an action's enqueue and dequeue times
+    //     beyond which we consider the queue "overloaded" and begin providing
+    //     backpressure / load-shedding. One way to think of this is "the
+    //     longest tolerable response-delay", which if you squint is similar
+    //     to the way of thinking about purpose #1 above: a latency cap.
+    //
+    //  3. The maximum duration a queue can be idle before we forget about it,
+    //     reclaiming its memory. This is even more-obviously related to purpose
+    //     #1 above: if an idle queue were made runnable after a time greater
+    //     than this duration, it'd have its totalService value set to the
+    //     totalService floor, just as it would if it were forgotten entirely
+    //     and remade anew.
+
+    std::chrono::nanoseconds const mLatencyWindow;
 
     // Largest totalService seen in any queue. This number will continuously
     // advance as queues are serviced; it exists to serve as the upper limit
@@ -182,7 +197,7 @@ class Scheduler
     std::list<Qptr> mIdleActionQueues;
 
   public:
-    Scheduler(VirtualClock& clock, std::chrono::nanoseconds totalServiceWindow);
+    Scheduler(VirtualClock& clock, std::chrono::nanoseconds latencyWindow);
 
     // Adds an action to the named ActionQueue with a given type.
     void enqueue(std::string&& name, Action&& action, ActionType type);

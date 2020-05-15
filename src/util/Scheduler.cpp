@@ -109,22 +109,22 @@ class Scheduler::ActionQueue
     }
 
     bool
-    isOverloaded(nsecs limit, VirtualClock::time_point now) const
+    isOverloaded(nsecs latencyWindow, VirtualClock::time_point now) const
     {
         if (!mActions.empty())
         {
             auto timeInQueue = now - mActions.front().mEnqueueTime;
-            return timeInQueue > limit;
+            return timeInQueue > latencyWindow;
         }
         return false;
     }
 
     size_t
-    tryTrim(nsecs limit, VirtualClock::time_point now)
+    tryTrim(nsecs latencyWindow, VirtualClock::time_point now)
     {
         size_t n = 0;
         while (mType == ActionType::DROPPABLE_ACTION && !mActions.empty() &&
-               isOverloaded(limit, now))
+               isOverloaded(latencyWindow, now))
         {
             mActions.pop_front();
             n++;
@@ -158,19 +158,19 @@ class Scheduler::ActionQueue
 };
 
 Scheduler::Scheduler(VirtualClock& clock,
-                     std::chrono::nanoseconds totalServiceWindow)
+                     std::chrono::nanoseconds latencyWindow)
     : mRunnableActionQueues([](Qptr a, Qptr b) -> bool {
         return a->totalService() > b->totalService();
     })
     , mClock(clock)
-    , mTotalServiceWindow(totalServiceWindow)
+    , mLatencyWindow(latencyWindow)
 {
 }
 
 void
 Scheduler::trimSingleActionQueue(Qptr q, VirtualClock::time_point now)
 {
-    size_t trimmed = q->tryTrim(mTotalServiceWindow, now);
+    size_t trimmed = q->tryTrim(mLatencyWindow, now);
     mStats.mActionsDroppedDueToOverload += trimmed;
     mSize -= trimmed;
 }
@@ -183,7 +183,7 @@ Scheduler::trimIdleActionQueues(VirtualClock::time_point now)
         return;
     }
     Qptr old = mIdleActionQueues.back();
-    if (old->lastService() + mTotalServiceWindow < now)
+    if (old->lastService() + mLatencyWindow < now)
     {
         assert(old->isEmpty());
         mAllActionQueues.erase(std::make_pair(old->name(), old->type()));
@@ -236,7 +236,7 @@ Scheduler::runOne()
         trimSingleActionQueue(q, start);
 
         auto putQueueBackInIdleOrActive = gsl::finally([&]() {
-            if (q->isOverloaded(mTotalServiceWindow, mClock.now()))
+            if (q->isOverloaded(mLatencyWindow, mClock.now()))
             {
                 mOverloadedActionQueues.insert(q);
             }
@@ -259,7 +259,7 @@ Scheduler::runOne()
         {
             // We pass along a "minimum service time" floor that the service
             // time of the queue will be incremented to, at minimum.
-            auto minTotalService = mMaxTotalService - mTotalServiceWindow;
+            auto minTotalService = mMaxTotalService - mLatencyWindow;
             mSize -= 1;
             mStats.mActionsDequeued++;
             auto updateMaxTotalService = gsl::finally([&]() {
