@@ -183,9 +183,6 @@ class Scheduler
     // or run.
     size_t mSize{0};
 
-    // Set of ActionQueues that were overloaded when we last ran them.
-    std::set<Qptr> mOverloadedActionQueues;
-
     void trimSingleActionQueue(Qptr q,
                                std::chrono::steady_clock::time_point now);
     void trimIdleActionQueues(std::chrono::steady_clock::time_point now);
@@ -197,6 +194,13 @@ class Scheduler
     // the back of the list, where they've been idle the longest.
     std::list<Qptr> mIdleActionQueues;
 
+    // transitions overloaded state
+    void setOverloaded(bool overloaded);
+
+    // records the time the scheduler transitioned to the overloaded or max if
+    // not
+    std::chrono::steady_clock::time_point mOverloadedStart;
+
   public:
     Scheduler(VirtualClock& clock, std::chrono::nanoseconds latencyWindow);
 
@@ -206,12 +210,9 @@ class Scheduler
     // Runs 0 or 1 action from the next ActionQueue in the queue-of-queues.
     size_t runOne();
 
-    // Return true iff any of the ActionQueues are overloaded.
-    bool
-    isOverloaded() const
-    {
-        return !mOverloadedActionQueues.empty();
-    }
+    // Returns how long ActionQueues have been overloaded (0 means not
+    // overloaded)
+    std::chrono::seconds getOverloadedDuration() const;
 
     size_t
     size() const

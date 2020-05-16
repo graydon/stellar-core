@@ -53,7 +53,9 @@ VirtualClock::system_now() const noexcept
     else
     {
         auto offset = mVirtualNow.time_since_epoch();
-        return std::chrono::system_clock::time_point(offset);
+        return std::chrono::system_clock::time_point(
+            std::chrono::duration_cast<
+                std::chrono::system_clock::time_point::duration>(offset));
     }
 }
 
@@ -337,7 +339,15 @@ VirtualClock::crank(bool block)
 
         // Dispatch some IO event completions.
         mLastDispatchStart = now();
-        size_t ioDivisor = mActionScheduler->isOverloaded() ? 2 : 1;
+        // bias towards the execution queue exponentially based on how long the
+        // scheduler has been overloaded
+        auto overloadedDuration =
+            mActionScheduler->getOverloadedDuration().count();
+        if (overloadedDuration > 30)
+        {
+            overloadedDuration = 30;
+        }
+        size_t ioDivisor = 1ULL << overloadedDuration;
         progressCount += crankStep(
             *this, [this] { return this->mIOContext.poll_one(); }, ioDivisor);
 

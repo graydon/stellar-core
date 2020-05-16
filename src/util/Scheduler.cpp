@@ -165,6 +165,7 @@ Scheduler::Scheduler(VirtualClock& clock,
     , mClock(clock)
     , mLatencyWindow(latencyWindow)
 {
+    setOverloaded(false);
 }
 
 void
@@ -187,8 +188,20 @@ Scheduler::trimIdleActionQueues(VirtualClock::time_point now)
     {
         assert(old->isEmpty());
         mAllActionQueues.erase(std::make_pair(old->name(), old->type()));
-        mOverloadedActionQueues.erase(old);
         old->removeFromIdleList();
+    }
+}
+
+void
+Scheduler::setOverloaded(bool overloaded)
+{
+    if (overloaded)
+    {
+        mOverloadedStart = mClock.now();
+    }
+    else
+    {
+        mOverloadedStart = std::chrono::steady_clock::time_point::max();
     }
 }
 
@@ -236,13 +249,29 @@ Scheduler::runOne()
         trimSingleActionQueue(q, start);
 
         auto putQueueBackInIdleOrActive = gsl::finally([&]() {
-            if (q->isOverloaded(mLatencyWindow, mClock.now()))
+            auto now = mClock.now();
+            if (q->isOverloaded(mLatencyWindow, now))
             {
-                mOverloadedActionQueues.insert(q);
+                if (mOverloadedStart ==
+                    std::chrono::steady_clock::time_point::max())
+                {
+                    setOverloaded(true);
+                }
             }
-            else
+            else if (mOverloadedStart <
+                     std::chrono::steady_clock::time_point::max())
             {
-                mOverloadedActionQueues.erase(q);
+                // see if we're not overloaded anymore
+                bool overloaded = std::any_of(
+                    mAllActionQueues.begin(), mAllActionQueues.end(),
+                    [&](std::pair<std::pair<std::string, ActionType>,
+                                  Qptr> const& qp) {
+                        return qp.second->isOverloaded(mLatencyWindow, now);
+                    });
+                if (!overloaded)
+                {
+                    setOverloaded(false);
+                }
             }
             if (q->isEmpty())
             {
@@ -270,6 +299,25 @@ Scheduler::runOne()
         }
         return 1;
     }
+}
+
+std::chrono::seconds
+Scheduler::getOverloadedDuration() const
+{
+    auto now = mClock.now();
+    std::chrono::seconds res;
+    if (now > mOverloadedStart)
+    {
+        // round up
+        res = std::chrono::duration_cast<std::chrono::seconds>(
+                  now - mOverloadedStart) +
+              std::chrono::seconds{1};
+    }
+    else
+    {
+        res = std::chrono::seconds{0};
+    }
+    return res;
 }
 
 #ifdef BUILD_TESTS
