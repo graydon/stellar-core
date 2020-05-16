@@ -11,6 +11,7 @@
 #include <memory>
 #include <queue>
 #include <set>
+#include <string>
 
 // This class implements a multi-queue scheduler for "actions" (deferred-work
 // callbacks that some subsystem wants to run "soon" on the main thread),
