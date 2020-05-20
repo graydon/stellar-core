@@ -339,14 +339,11 @@ VirtualClock::crank(bool block)
 
         // Dispatch some IO event completions.
         mLastDispatchStart = now();
-        // bias towards the execution queue exponentially based on how long the
-        // scheduler has been overloaded
+        // Bias towards the execution queue exponentially based on how long the
+        // scheduler has been overloaded.
         auto overloadedDuration =
-            mActionScheduler->getOverloadedDuration().count();
-        if (overloadedDuration > 30)
-        {
-            overloadedDuration = 30;
-        }
+            std::min(static_cast<std::chrono::seconds::rep>(30),
+                     mActionScheduler->getOverloadedDuration().count());
         size_t ioDivisor = 1ULL << overloadedDuration;
         progressCount += crankStep(
             *this, [this] { return this->mIOContext.poll_one(); }, ioDivisor);
