@@ -823,7 +823,7 @@ ApplicationImpl::getWorkerIOContext()
 
 void
 ApplicationImpl::postOnMainThread(std::function<void()>&& f, std::string&& name,
-                                  ActionType type)
+                                  Scheduler::ActionType type)
 {
     LogSlowExecution isSlow{name, LogSlowExecution::Mode::MANUAL,
                             "executed after"};

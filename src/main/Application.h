@@ -220,7 +220,7 @@ class Application
 
     virtual void
     postOnMainThread(std::function<void()>&& f, std::string&& name,
-                     ActionType type = ActionType::NORMAL_ACTION) = 0;
+                     Scheduler::ActionType type = Scheduler::ActionType::NORMAL_ACTION) = 0;
     virtual void postOnBackgroundThread(std::function<void()>&& f,
                                         std::string jobName) = 0;
 

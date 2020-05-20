@@ -104,16 +104,17 @@ namespace stellar
 {
 
 class VirtualClock;
-using Action = std::function<void()>;
-enum class ActionType
-{
-    NORMAL_ACTION,
-    DROPPABLE_ACTION
-};
 
 class Scheduler
 {
   public:
+    using Action = std::function<void()>;
+    enum class ActionType
+    {
+        NORMAL_ACTION,
+        DROPPABLE_ACTION
+    };
+
     struct Stats
     {
         size_t mActionsEnqueued{0};

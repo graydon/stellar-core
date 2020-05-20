@@ -378,7 +378,7 @@ VirtualClock::crank(bool block)
 
 void
 VirtualClock::postAction(std::function<void()>&& f, std::string&& name,
-                         ActionType type)
+                         Scheduler::ActionType type)
 {
     std::lock_guard<std::recursive_mutex> lock(mDispatchingMutex);
     if (!mDispatching)

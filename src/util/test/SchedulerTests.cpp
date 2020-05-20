@@ -26,7 +26,8 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
         ++nEvents;
     };
 
-    sched.enqueue(std::string(A), microsleep, ActionType::NORMAL_ACTION);
+    sched.enqueue(std::string(A), microsleep,
+                  Scheduler::ActionType::NORMAL_ACTION);
 
     CHECK(sched.size() == 1);
     CHECK(sched.nextQueueToRun() == A);
@@ -46,9 +47,12 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     CHECK(sched.stats().mActionsDequeued == 1);
     CHECK(sched.stats().mQueuesSuspended == 1);
 
-    sched.enqueue(std::string(A), microsleep, ActionType::NORMAL_ACTION);
-    sched.enqueue(std::string(B), microsleep, ActionType::NORMAL_ACTION);
-    sched.enqueue(std::string(C), microsleep, ActionType::NORMAL_ACTION);
+    sched.enqueue(std::string(A), microsleep,
+                  Scheduler::ActionType::NORMAL_ACTION);
+    sched.enqueue(std::string(B), microsleep,
+                  Scheduler::ActionType::NORMAL_ACTION);
+    sched.enqueue(std::string(C), microsleep,
+                  Scheduler::ActionType::NORMAL_ACTION);
 
     CHECK(sched.size() == 3);
     CHECK(sched.nextQueueToRun() != A);
@@ -105,9 +109,12 @@ TEST_CASE("scheduler load shedding -- overload", "[scheduler]")
 
     for (size_t i = 0; i < 1000; ++i)
     {
-        sched.enqueue(std::string(A), microsleep, ActionType::DROPPABLE_ACTION);
-        sched.enqueue(std::string(B), microsleep, ActionType::DROPPABLE_ACTION);
-        sched.enqueue(std::string(C), microsleep, ActionType::DROPPABLE_ACTION);
+        sched.enqueue(std::string(A), microsleep,
+                      Scheduler::ActionType::DROPPABLE_ACTION);
+        sched.enqueue(std::string(B), microsleep,
+                      Scheduler::ActionType::DROPPABLE_ACTION);
+        sched.enqueue(std::string(C), microsleep,
+                      Scheduler::ActionType::DROPPABLE_ACTION);
         sched.runOne();
         sched.runOne();
     }

@@ -546,7 +546,7 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     }
 
     std::string cat;
-    ActionType type = ActionType::NORMAL_ACTION;
+    Scheduler::ActionType type = Scheduler::ActionType::NORMAL_ACTION;
     switch (stellarMsg.type())
     {
     // group messages used during handshake, process those synchronously
@@ -565,7 +565,7 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     // high volume flooding
     case TRANSACTION:
         cat = "TX";
-        type = ActionType::DROPPABLE_ACTION;
+        type = Scheduler::ActionType::DROPPABLE_ACTION;
         break;
 
     // consensus, inbound
@@ -573,7 +573,7 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
     case GET_SCP_QUORUMSET:
     case GET_SCP_STATE:
         cat = "SCPQ";
-        type = ActionType::DROPPABLE_ACTION;
+        type = Scheduler::ActionType::DROPPABLE_ACTION;
         break;
 
     // consensus, self
