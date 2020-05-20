@@ -3,6 +3,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "work/WorkScheduler.h"
+#include "lib/util/finally.h"
 #include "util/Logging.h"
 
 namespace stellar
@@ -57,21 +58,13 @@ WorkScheduler::scheduleOne(std::weak_ptr<WorkScheduler> weak)
             {
                 return;
             }
-
-            try
+            auto fini = gsl::finally([&]() { innerSelf->mScheduled = true; });
+            // loop as to perform some meaningful amount of work
+            do
             {
-                // loop as to perform some meaningful amount of work
-                do
-                {
-                    innerSelf->crankWork();
-                } while (innerSelf->getState() == State::WORK_RUNNING &&
-                         !innerSelf->mApp.getClock().shouldYield());
-            }
-            catch (...)
-            {
-                innerSelf->mScheduled = false;
-                throw;
-            }
+                innerSelf->crankWork();
+            } while (innerSelf->getState() == State::WORK_RUNNING &&
+                     !innerSelf->mApp.getClock().shouldYield());
             innerSelf->mScheduled = false;
 
             if (innerSelf->getState() == State::WORK_RUNNING)
