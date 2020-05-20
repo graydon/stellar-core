@@ -682,6 +682,8 @@ ApplicationImpl::syncOwnMetrics()
     // Update action-queue related metrics
     mMetrics->NewCounter({"process", "action", "queue"})
         .set_count(static_cast<int64_t>(getClock().getActionQueueSize()));
+    mMetrics->NewCounter({"process", "action", "overloaded"})
+        .set_count(static_cast<int64_t>(getClock().actionQueueIsOverloaded()));
 }
 
 void

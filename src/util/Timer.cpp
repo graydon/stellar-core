@@ -401,6 +401,12 @@ VirtualClock::getActionQueueSize() const
     return mActionScheduler->size();
 }
 
+bool
+VirtualClock::actionQueueIsOverloaded() const
+{
+    return mActionScheduler->getOverloadedDuration().count() != 0;
+}
+
 void
 VirtualClock::noteCrankOccurred(bool hadIdle)
 {

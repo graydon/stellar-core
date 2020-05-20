@@ -196,6 +196,7 @@ class VirtualClock
                     Scheduler::ActionType type);
 
     size_t getActionQueueSize() const;
+    bool actionQueueIsOverloaded() const;
 };
 
 class VirtualClockEvent : public NonMovableOrCopyable
