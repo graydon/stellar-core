@@ -36,7 +36,6 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     CHECK(sched.stats().mActionsEnqueued == 1);
     CHECK(sched.stats().mActionsDequeued == 0);
     CHECK(sched.stats().mActionsDroppedDueToOverload == 0);
-    CHECK(sched.stats().mActionsDroppedDueToDeadline == 0);
     CHECK(sched.stats().mQueuesActivatedFromFresh == 1);
     CHECK(sched.stats().mQueuesActivatedFromIdle == 0);
     CHECK(sched.stats().mQueuesSuspended == 0);
@@ -64,7 +63,6 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     CHECK(sched.queueLength(C) == 1);
     CHECK(sched.stats().mActionsEnqueued == 4);
     CHECK(sched.stats().mActionsDroppedDueToOverload == 0);
-    CHECK(sched.stats().mActionsDroppedDueToDeadline == 0);
     CHECK(sched.stats().mQueuesActivatedFromFresh == 3);
     CHECK(sched.stats().mQueuesActivatedFromIdle == 1);
 
@@ -80,7 +78,6 @@ TEST_CASE("scheduler basic functionality", "[scheduler]")
     CHECK(sched.queueLength(C) == 0);
     CHECK(sched.stats().mActionsDequeued == 3);
     CHECK(sched.stats().mActionsDroppedDueToOverload == 0);
-    CHECK(sched.stats().mActionsDroppedDueToDeadline == 0);
     CHECK(sched.stats().mQueuesSuspended == 3);
 
     CHECK(sched.runOne() == 1); // run A

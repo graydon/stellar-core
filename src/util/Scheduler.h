@@ -120,7 +120,6 @@ class Scheduler
         size_t mActionsEnqueued{0};
         size_t mActionsDequeued{0};
         size_t mActionsDroppedDueToOverload{0};
-        size_t mActionsDroppedDueToDeadline{0};
         size_t mQueuesActivatedFromFresh{0};
         size_t mQueuesActivatedFromIdle{0};
         size_t mQueuesSuspended{0};
