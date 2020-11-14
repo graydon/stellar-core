@@ -680,10 +680,11 @@ ProcessManagerImpl::cleanShutdown(ProcessExitEvent& pe)
 {
     ZoneScoped;
     const int pid = pe.mImpl->getProcessId();
-    if (kill(pid, SIGINT) != 0)
+    if (kill(pid, SIGTERM) != 0)
     {
-        CLOG_WARNING(Process, "kill (SIGINT) failed for pid {}, errno {}", pid,
-                     errno);
+        CLOG_WARNING(Process,
+                     "kill (SIGTERM) failed for pid {}, errno {} = '{}'", pid,
+                     errno, strerror(errno));
         return false;
     }
     return true;
@@ -696,8 +697,9 @@ ProcessManagerImpl::forceShutdown(ProcessExitEvent& pe)
     const int pid = pe.mImpl->getProcessId();
     if (kill(pid, SIGKILL) != 0)
     {
-        CLOG_WARNING(Process, "kill (SIGKILL) failed for pid {}, errno {}", pid,
-                     errno);
+        CLOG_WARNING(Process,
+                     "kill (SIGKILL) failed for pid {}, errno {} = '{}'", pid,
+                     errno, strerror(errno));
         return false;
     }
     return true;
