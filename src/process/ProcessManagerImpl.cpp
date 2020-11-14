@@ -144,6 +144,10 @@ ProcessManagerImpl::~ProcessManagerImpl()
     }
     // Use SIGKILL on any processes we haven't politely asked to exit yet
     for (auto& pair : mProcesses)
+#ifndef _WIN32
+    auto ec = ABORT_ERROR_CODE;
+    mSigChild.cancel(ec);
+#endif
     {
         killProcess(*pair.second);
     }
@@ -182,9 +186,6 @@ ProcessManagerImpl::shutdown()
         }
         mProcesses.clear();
         gNumProcessesActive = 0;
-#ifndef _WIN32
-        mSigChild.cancel(ec);
-#endif
     }
 }
 
