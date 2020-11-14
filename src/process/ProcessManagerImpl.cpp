@@ -131,26 +131,39 @@ ProcessManagerImpl::getNumRunningProcesses()
 
 ProcessManagerImpl::~ProcessManagerImpl()
 {
-    const auto killProcess = [&](ProcessExitEvent& pe) {
-        pe.mImpl->cancel(ABORT_ERROR_CODE);
-        forceShutdown(pe);
-    };
-    // Use SIGKILL on any processes we already used SIGINT on
-    while (!mKillable.empty())
-    {
-        auto impl = std::move(mKillable.front());
-        mKillable.pop_front();
-        killProcess(*impl);
-    }
-    // Use SIGKILL on any processes we haven't politely asked to exit yet
-    for (auto& pair : mProcesses)
+// First unregister our SIGCHLD handler; it has a raw pointer to us and
+// anyways we won't be able to bounce off ASIO for the work we're about
+// to do below.
 #ifndef _WIN32
     auto ec = ABORT_ERROR_CODE;
     mSigChild.cancel(ec);
 #endif
+
+    // Then trigger shutdown, if we haven't yet (it's idempotent). This will ask
+    // every running process to shut down politely and cancel all events,
+    // pending and running.
+    shutdown();
+
+    // At this point we're purely racing against process exits; we don't want to
+    // block or spin in a dtor by trying to trap SIGCHLD (and we might have
+    // dropped a SIGCHLD after cancelling the handler above anyways) but we can
+    // at least try to lose the race by sleeping briefly before calling waitpid
+    // below with WNOHANG in the reapChildren() call.
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    // Reap anything that politely shut down in response.
+    reapChildren();
+
+    // Then trigger forceful shutdown of everything that survived.
+    for (auto k : mKillable)
     {
-        killProcess(*pair.second);
+        forceShutdown(*k);
     }
+
+    // And reap all the processes that died after that, too, again trying to
+    // lose the race against such exits if we can.
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    reapChildren();
 }
 
 bool
