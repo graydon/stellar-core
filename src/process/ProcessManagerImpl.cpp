@@ -275,6 +275,13 @@ ProcessManagerImpl::handleSignalWait()
 {
     // No-op on windows, uses waitable object handles
 }
+
+void
+ProcessManagerImpl::reapChildren()
+{
+    // No-op on windows, uses waitable object handles
+}
+
 namespace
 {
 struct InfoHelper
@@ -539,6 +546,13 @@ ProcessManagerImpl::handleSignalWait()
     {
         return;
     }
+    reapChildren();
+    startSignalWait();
+}
+
+void
+ProcessManagerImpl::reapChildren()
+{
     // Store tuples (pid, status)
     std::vector<std::tuple<int, int>> signaledChildren;
     std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
@@ -566,7 +580,6 @@ ProcessManagerImpl::handleSignalWait()
             handleProcessTermination(pid, status);
         }
     }
-    startSignalWait();
 }
 
 asio::error_code
