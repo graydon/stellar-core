@@ -55,8 +55,17 @@ class ProcessManager : public std::enable_shared_from_this<ProcessManager>,
     virtual bool isShutdown() const = 0;
     virtual void shutdown() = 0;
 
-    // Depending on the state of the process, either kill the process nicely
-    // or force shutdown it
+    // Synchronously cancels the provided ProcessExitEvent (firing its event
+    // handler with ABORT_ERROR_CODE) and attempts to terminate the associated
+    // process if it is running. Returns true if the attempt was successful --
+    // in the sense of succesfully sending a SIGTERM for example -- though this
+    // does not guarantee that the process _has exited_ yet.
+    //
+    // Since the event is cancelled, there is no further way for clients to be
+    // certain the process has exited using this interface. If a process that
+    // has been sent a termination signal does _not_ exit, however, it will
+    // remain tracked by the ProcessManager, and be forcibly killed when
+    // the ProcessManager is destructed.
     virtual bool tryProcessShutdown(std::shared_ptr<ProcessExitEvent> pe) = 0;
     virtual ~ProcessManager()
     {
