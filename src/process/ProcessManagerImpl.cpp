@@ -177,11 +177,11 @@ ProcessManagerImpl::shutdown()
 {
     if (!mIsShutdown)
     {
+        std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
         mIsShutdown = true;
         auto ec = ABORT_ERROR_CODE;
 
         // Cancel all pending.
-        std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
         for (auto& pending : mPending)
         {
             pending->mImpl->cancel(ec);
