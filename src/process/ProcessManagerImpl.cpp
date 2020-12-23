@@ -448,7 +448,11 @@ ProcessExitEvent::Impl::run()
 
         if (ec)
         {
-            *(sf->mOuterEc) = ec;
+            // We can only transmit one ec to the callback, so if we
+            // already have a nonzero (failure) ec from the waitable
+            // process handle, don't overwrite it with a new one from
+            // handleProcessTermination.
+            manager->handleProcessTermination(sf->mProcessId, 1);
         }
         else
         {
@@ -459,24 +463,34 @@ ProcessExitEvent::Impl::run()
             {
                 exitCode = 1;
             }
-            ec = asio::error_code(exitCode, asio::system_category());
+            ec = manager->handleProcessTermination(sf->mProcessId,
+                                                   static_cast<int>(exitCode));
         }
-        ec = manager->handleProcessTermination(sf->mProcessId, ec.value());
         sf->cancel(ec);
     });
     mRunning = true;
 }
 
 asio::error_code
-ProcessManagerImpl::handleProcessTermination(int pid, int /*status*/)
+ProcessManagerImpl::handleProcessTermination(int pid, int status)
 {
     ZoneScoped;
     std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
-    auto ec = asio::error_code();
+    auto ec = asio::error_code(status, asio::system_category());
     auto process = mProcesses.find(pid);
-    if (process != mProcesses.end() && !process->second->mImpl->finish())
+    if (process != mProcesses.end())
     {
-        ec = asio::error_code(asio::error::try_again, asio::system_category());
+        if (!process->second->mImpl->finish())
+        {
+            // We can only transmit one ec to the callback, so if
+            // we already have a nonzero (failure) ec, don't overwrite
+            // it.
+            if (!ec)
+            {
+                ec = asio::error_code(asio::error::try_again,
+                                      asio::system_category());
+            }
+        }
         mHavePolitelyShutdown.erase(process->second);
         mHaveForciblyShutdown.erase(process->second);
     }
