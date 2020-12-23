@@ -126,7 +126,8 @@ class ProcessExitEvent::Impl
 size_t
 ProcessManagerImpl::getNumRunningProcesses()
 {
-    return gNumProcessesActive;
+    return gNumProcessesActive -
+           std::max(mHavePolitelyShutdown.size(), mHaveForciblyShutdown.size());
 }
 
 ProcessManagerImpl::~ProcessManagerImpl()

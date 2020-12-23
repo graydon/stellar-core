@@ -51,7 +51,13 @@ class ProcessManager : public std::enable_shared_from_this<ProcessManager>,
     static std::shared_ptr<ProcessManager> create(Application& app);
     virtual std::weak_ptr<ProcessExitEvent>
     runProcess(std::string const& cmdLine, std::string outputFile) = 0;
+
+    // Return the number of processes we started and have not yet seen exits
+    // for, _minus_ the number we have attempted to shut down / are shortly
+    // expecting to see an exit for (which are likely already dead, just not yet
+    // reaped).
     virtual size_t getNumRunningProcesses() = 0;
+
     virtual bool isShutdown() const = 0;
     virtual void shutdown() = 0;
 
