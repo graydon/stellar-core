@@ -34,15 +34,16 @@ class ProcessManagerImpl : public ProcessManager
     uint64_t mTempFileCount{0};
 
     std::deque<std::shared_ptr<ProcessExitEvent>> mPending;
-    std::deque<std::shared_ptr<ProcessExitEvent>> mKillable;
+    std::set<std::shared_ptr<ProcessExitEvent>> mHavePolitelyShutdown;
+    std::set<std::shared_ptr<ProcessExitEvent>> mHaveForciblyShutdown;
     void maybeRunPendingProcesses();
 
     void startWaitingForSignalChild();
     void handleSignalChild();
     void reapChildren();
     asio::error_code handleProcessTermination(int pid, int status);
-    bool cleanShutdown(ProcessExitEvent& pe);
-    bool forceShutdown(ProcessExitEvent& pe);
+    bool politelyShutdown(std::shared_ptr<ProcessExitEvent> pe);
+    bool forciblyShutdown(std::shared_ptr<ProcessExitEvent> pe);
 
     friend class ProcessExitEvent::Impl;
 

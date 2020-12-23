@@ -154,10 +154,10 @@ ProcessManagerImpl::~ProcessManagerImpl()
     // Reap anything that politely shut down in response.
     reapChildren();
 
-    // Then trigger forceful shutdown of everything that survived.
-    for (auto k : mKillable)
+    // Then trigger forcible shutdown of everything that survived.
+    for (auto const& k : mHavePolitelyShutdown)
     {
-        forceShutdown(*k);
+        forciblyShutdown(k);
     }
 
     // And reap all the processes that died after that, too, again trying to
@@ -191,9 +191,7 @@ ProcessManagerImpl::shutdown()
         // Cancel all running.
         for (auto& pair : mProcesses)
         {
-            // Mark it as "ready to be killed"
-            mKillable.push_back(pair.second);
-            // Cancel any pending events and shut down the process cleanly
+            politelyShutdown(pair.second);
         }
     }
 }
@@ -214,12 +212,12 @@ ProcessManagerImpl::tryProcessShutdown(std::shared_ptr<ProcessExitEvent> pe)
     auto ec = ABORT_ERROR_CODE;
     auto impl = pe->mImpl;
 
-    // If we already tried nice kill, force shutdown and return success.
-    auto killableIt = find(mKillable.begin(), mKillable.end(), pe);
-    if (killableIt != mKillable.end())
+    // If we already tried a polite shutdown, try forcible shutdown and
+    // return success.
+    if (mHavePolitelyShutdown.find(pe) != mHavePolitelyShutdown.end())
     {
-        CLOG_DEBUG(Process, "Shutting down (forced): {}", impl->mCmdLine);
-        forceShutdown(*pe);
+        CLOG_DEBUG(Process, "Shutting down (forcibly): {}", impl->mCmdLine);
+        forciblyShutdown(pe);
         return true;
     }
 
@@ -228,7 +226,7 @@ ProcessManagerImpl::tryProcessShutdown(std::shared_ptr<ProcessExitEvent> pe)
     // 2. Process is currently running, in which case we try to kill it nicely
     // 3. Process didn't get killed correctly, so we issue a force kill
 
-    CLOG_DEBUG(Process, "Shutting down (nicely): {}", impl->mCmdLine);
+    CLOG_DEBUG(Process, "Shutting down (politely): {}", impl->mCmdLine);
     auto pendingIt = find(mPending.begin(), mPending.end(), pe);
     if (pendingIt != mPending.end())
     {
@@ -243,10 +241,7 @@ ProcessManagerImpl::tryProcessShutdown(std::shared_ptr<ProcessExitEvent> pe)
         auto runningIt = mProcesses.find(pid);
         if (runningIt != mProcesses.end())
         {
-            // Mark it as "ready to be killed"
-            mKillable.push_back(runningIt->second);
-            auto res = cleanShutdown(*runningIt->second);
-            return res;
+            return politelyShutdown(runningIt->second);
         }
         else
         {
@@ -481,6 +476,8 @@ ProcessManagerImpl::handleProcessTermination(int pid, int /*status*/)
     if (process != mProcesses.end() && !process->second->mImpl->finish())
     {
         ec = asio::error_code(asio::error::try_again, asio::system_category());
+        mHavePolitelyShutdown.erase(process->second);
+        mHaveForciblyShutdown.erase(process->second);
     }
     --ProcessManagerImpl::gNumProcessesActive;
     mProcesses.erase(pid);
@@ -488,37 +485,47 @@ ProcessManagerImpl::handleProcessTermination(int pid, int /*status*/)
 }
 
 bool
-ProcessManagerImpl::cleanShutdown(ProcessExitEvent& pe)
+ProcessManagerImpl::politelyShutdown(std::shared_ptr<ProcessExitEvent> pe)
 {
     ZoneScoped;
-    if (!GenerateConsoleCtrlEvent(CTRL_C_EVENT, pe.mImpl->getProcessId()))
+    if (mHavePolitelyShutdown.find(pe) != mHavePolitelyShutdown.end())
+    {
+        return true;
+    }
     auto ec = ABORT_ERROR_CODE;
     pe->mImpl->cancel(ec);
+    if (!GenerateConsoleCtrlEvent(CTRL_C_EVENT, pe->mImpl->getProcessId()))
     {
         CLOG_WARNING(
             Process,
-            "failed to cleanly shutdown process with pid {}, error code {}",
-            pe.mImpl->getProcessId(), GetLastError());
+            "failed to politely shutdown process with pid {}, error code {}",
+            pe->mImpl->getProcessId(), GetLastError());
         return false;
     }
+    mHavePolitelyShutdown.insert(pe);
     return true;
 }
 
 bool
-ProcessManagerImpl::forceShutdown(ProcessExitEvent& pe)
+ProcessManagerImpl::forciblyShutdown(std::shared_ptr<ProcessExitEvent> pe)
 {
     ZoneScoped;
-    if (!TerminateProcess(pe.mImpl->mProcessHandle.native_handle(), 1))
+    if (mHaveForciblyShutdown.find(pe) != mHaveForciblyShutdown.end())
+    {
+        return true;
+    }
+    if (!TerminateProcess(pe->mImpl->mProcessHandle.native_handle(), 1))
     {
         CLOG_WARNING(
             Process,
-            "failed to force shutdown of process with pid {}, error code {}",
-            pe.mImpl->getProcessId(), GetLastError());
+            "failed to forcibly shutdown process with pid {}, error code {}",
+            pe->mImpl->getProcessId(), GetLastError());
         return false;
     }
     // Cancel any pending events on the handle. Ignore error code
     asio::error_code dummy;
-    pe.mImpl->mProcessHandle.cancel(dummy);
+    pe->mImpl->mProcessHandle.cancel(dummy);
+    mHaveForciblyShutdown.insert(pe);
     return true;
 }
 
@@ -659,6 +666,8 @@ ProcessManagerImpl::handleProcessTermination(int pid, int status)
     }
 
     --gNumProcessesActive;
+    mHavePolitelyShutdown.erase(pair->second);
+    mHaveForciblyShutdown.erase(pair->second);
     mProcesses.erase(pair);
 
     // Fire off any new processes we've made room for before we
@@ -670,12 +679,16 @@ ProcessManagerImpl::handleProcessTermination(int pid, int status)
 }
 
 bool
-ProcessManagerImpl::cleanShutdown(ProcessExitEvent& pe)
+ProcessManagerImpl::politelyShutdown(std::shared_ptr<ProcessExitEvent> pe)
 {
     ZoneScoped;
-    const int pid = pe.mImpl->getProcessId();
+    if (mHavePolitelyShutdown.find(pe) != mHavePolitelyShutdown.end())
+    {
+        return true;
+    }
     auto ec = ABORT_ERROR_CODE;
     pe->mImpl->cancel(ec);
+    const int pid = pe->mImpl->getProcessId();
     if (kill(pid, SIGTERM) != 0)
     {
         CLOG_WARNING(Process,
@@ -683,14 +696,19 @@ ProcessManagerImpl::cleanShutdown(ProcessExitEvent& pe)
                      errno, strerror(errno));
         return false;
     }
+    mHavePolitelyShutdown.insert(pe);
     return true;
 }
 
 bool
-ProcessManagerImpl::forceShutdown(ProcessExitEvent& pe)
+ProcessManagerImpl::forciblyShutdown(std::shared_ptr<ProcessExitEvent> pe)
 {
     ZoneScoped;
-    const int pid = pe.mImpl->getProcessId();
+    if (mHaveForciblyShutdown.find(pe) != mHaveForciblyShutdown.end())
+    {
+        return true;
+    }
+    const int pid = pe->mImpl->getProcessId();
     if (kill(pid, SIGKILL) != 0)
     {
         CLOG_WARNING(Process,
@@ -698,6 +716,7 @@ ProcessManagerImpl::forceShutdown(ProcessExitEvent& pe)
                      errno, strerror(errno));
         return false;
     }
+    mHaveForciblyShutdown.insert(pe);
     return true;
 }
 
