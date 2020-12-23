@@ -194,8 +194,6 @@ ProcessManagerImpl::shutdown()
             // Mark it as "ready to be killed"
             mKillable.push_back(pair.second);
             // Cancel any pending events and shut down the process cleanly
-            pair.second->mImpl->cancel(ec);
-            cleanShutdown(*pair.second);
         }
         mProcesses.clear();
         gNumProcessesActive = 0;
@@ -249,7 +247,6 @@ ProcessManagerImpl::tryProcessShutdown(std::shared_ptr<ProcessExitEvent> pe)
         {
             // Mark it as "ready to be killed"
             mKillable.push_back(runningIt->second);
-            impl->cancel(ec);
             auto res = cleanShutdown(*runningIt->second);
             mProcesses.erase(pid);
             gNumProcessesActive--;
@@ -500,6 +497,8 @@ ProcessManagerImpl::cleanShutdown(ProcessExitEvent& pe)
 {
     ZoneScoped;
     if (!GenerateConsoleCtrlEvent(CTRL_C_EVENT, pe.mImpl->getProcessId()))
+    auto ec = ABORT_ERROR_CODE;
+    pe->mImpl->cancel(ec);
     {
         CLOG_WARNING(
             Process,
@@ -680,6 +679,8 @@ ProcessManagerImpl::cleanShutdown(ProcessExitEvent& pe)
 {
     ZoneScoped;
     const int pid = pe.mImpl->getProcessId();
+    auto ec = ABORT_ERROR_CODE;
+    pe->mImpl->cancel(ec);
     if (kill(pid, SIGTERM) != 0)
     {
         CLOG_WARNING(Process,
