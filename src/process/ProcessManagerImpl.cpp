@@ -195,8 +195,6 @@ ProcessManagerImpl::shutdown()
             mKillable.push_back(pair.second);
             // Cancel any pending events and shut down the process cleanly
         }
-        mProcesses.clear();
-        gNumProcessesActive = 0;
     }
 }
 
@@ -248,8 +246,6 @@ ProcessManagerImpl::tryProcessShutdown(std::shared_ptr<ProcessExitEvent> pe)
             // Mark it as "ready to be killed"
             mKillable.push_back(runningIt->second);
             auto res = cleanShutdown(*runningIt->second);
-            mProcesses.erase(pid);
-            gNumProcessesActive--;
             return res;
         }
         else
@@ -450,8 +446,6 @@ ProcessExitEvent::Impl::run()
             return;
         }
 
-        --ProcessManagerImpl::gNumProcessesActive;
-
         // Fire off any new processes we've made room for before we
         // trigger the callback.
         manager->maybeRunPendingProcesses();
@@ -488,6 +482,7 @@ ProcessManagerImpl::handleProcessTermination(int pid, int /*status*/)
     {
         ec = asio::error_code(asio::error::try_again, asio::system_category());
     }
+    --ProcessManagerImpl::gNumProcessesActive;
     mProcesses.erase(pid);
     return ec;
 }
