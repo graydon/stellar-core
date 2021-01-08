@@ -15,6 +15,7 @@
 #include "process/ProcessManager.h"
 #include "process/ProcessManagerImpl.h"
 #include "util/Fs.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/Timer.h"
 #include <Tracy.hpp>
@@ -40,19 +41,87 @@
 extern char** environ;
 #endif
 
+namespace
+{
+enum ProcessLifecycle {
+    PENDING = 0,
+    RUNNING = 1,
+    TRIED_POLITE_SHUTDOWN = 2,
+    TRIED_FORCED_SHUTDOWN = 3,
+    TERMINATED = 5
+};
+}
+
 namespace stellar
 {
 
 static const asio::error_code ABORT_ERROR_CODE(asio::error::operation_aborted,
                                                asio::system_category());
 
+static asio::error_code
+mapExitStatusToErrorCode(std::string const& cmdLine, int pid, int status)
+{
+    // On windows, an exit status is just an exit status. On unix it's
+    // got some flags incorporated into it.
+#ifdef _WIN32
+    return asio::error_code(status, asio::system_category());
+#else
+    if (WIFEXITED(status))
+    {
+        if (WEXITSTATUS(status) == 0)
+        {
+            CLOG_DEBUG(Process, "process {} exited {}: {}", pid,
+                       WEXITSTATUS(status), cmdLine);
+        }
+        else
+        {
+            CLOG_WARNING(Process, "process {} exited {}: {}", pid,
+                         WEXITSTATUS(status), cmdLine);
+        }
+#ifdef __linux__
+        // Linux posix_spawnp does not fault on file-not-found in the
+        // parent process at the point of invocation, as BSD does; so
+        // rather than a fatal error / throw we get an ambiguous and
+        // easily-overlooked shell-like 'exit 127' on waitpid.
+        if (WEXITSTATUS(status) == 127)
+        {
+            CLOG_WARNING(Process, "");
+            CLOG_WARNING(Process, "************");
+            CLOG_WARNING(Process, "");
+            CLOG_WARNING(Process, "  likely 'missing command':");
+            CLOG_WARNING(Process, "");
+            CLOG_WARNING(Process, "    {}", cmdLine);
+            CLOG_WARNING(Process, "");
+            CLOG_WARNING(Process, "************");
+            CLOG_WARNING(Process, "");
+        }
+#endif
+        // FIXME: this doesn't _quite_ do the right thing; it conveys
+        // the exit status back to the caller but it puts it in "system
+        // category" which on POSIX means if you call .message() on it
+        // you'll get perror(value()), which is not correct. Errno has
+        // nothing to do with process exit values. We could make a new
+        // error_category to tighten this up, but it's a bunch of work
+        // just to convey the meaningless string "exited" to the user.
+        return asio::error_code(WEXITSTATUS(status), asio::system_category());
+    }
+    else
+    {
+        // FIXME: for now we also collapse all non-WIFEXITED exits on
+        // posix into a single "exit 1" error_code. This is enough
+        // for most callers; we can enrich it if anyone really wants
+        // to differentiate various signals that might have killed
+        // the child.
+        return asio::error_code(1, asio::system_category());
+    }
+#endif
+}
+
 std::shared_ptr<ProcessManager>
 ProcessManager::create(Application& app)
 {
     return std::make_shared<ProcessManagerImpl>(app);
 }
-
-std::atomic<size_t> ProcessManagerImpl::gNumProcessesActive{0};
 
 class ProcessExitEvent::Impl
     : public std::enable_shared_from_this<ProcessExitEvent::Impl>
@@ -63,7 +132,7 @@ class ProcessExitEvent::Impl
     std::string const mCmdLine;
     std::string const mOutFile;
     std::string const mTempFile;
-    bool mRunning{false};
+    ProcessLifecycle mLifecycle{ProcessLifecycle::PENDING};
 #ifdef _WIN32
     asio::windows::object_handle mProcessHandle;
 #endif
@@ -90,6 +159,7 @@ class ProcessExitEvent::Impl
     finish()
     {
         ZoneScoped;
+        releaseAssertOrThrow(mLifecycle == ProcessLifecycle::TERMINATED);
         if (!mOutFile.empty())
         {
             if (fs::exists(mOutFile))
@@ -97,8 +167,7 @@ class ProcessExitEvent::Impl
                 CLOG_WARNING(Process, "Outfile already exists: {}", mOutFile);
                 return false;
             }
-            else if (mRunning &&
-                     std::rename(mTempFile.c_str(), mOutFile.c_str()))
+            else if (std::rename(mTempFile.c_str(), mOutFile.c_str()))
             {
                 CLOG_ERROR(Process, "{} -> {} rename failed, error: {}",
                            mTempFile, mOutFile, errno);
@@ -126,8 +195,23 @@ class ProcessExitEvent::Impl
 size_t
 ProcessManagerImpl::getNumRunningProcesses()
 {
-    return gNumProcessesActive -
-           std::max(mHavePolitelyShutdown.size(), mHaveForciblyShutdown.size());
+    std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
+    size_t n = 0;
+    for (auto const& pe : mProcesses)
+    {
+        if (n->mImpl->mLifecycle == ProcessLifecycle::RUNNING)
+        {
+            ++n;
+        }
+    }
+    return n;
+}
+
+size_t
+ProcessManagerImpl::getNumRunningOrShuttingDownProcesses()
+{
+    std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
+    return mProcesses.size();
 }
 
 ProcessManagerImpl::~ProcessManagerImpl()
@@ -145,26 +229,25 @@ ProcessManagerImpl::~ProcessManagerImpl()
     // pending and running.
     shutdown();
 
-    // At this point we're purely racing against process exits; we don't want to
-    // block or spin in a dtor by trying to trap SIGCHLD (and we might have
-    // dropped a SIGCHLD after cancelling the handler above anyways) but we can
-    // at least try to lose the race by sleeping briefly before calling waitpid
-    // below with WNOHANG in the reapChildren() call.
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-    // Reap anything that politely shut down in response.
-    reapChildren();
-
-    // Then trigger forcible shutdown of everything that survived.
-    for (auto const& k : mHavePolitelyShutdown)
+    for(int i=0; i < 3 && !mProcesses.empty(); i++)
     {
-        forciblyShutdown(k);
-    }
+        // At this point we're purely racing against process exits; we don't want to
+        // block or spin in a dtor by trying to trap SIGCHLD (and we might have
+        // dropped a SIGCHLD after cancelling the handler above anyways) but we can
+        // at least try to lose the race by sleeping briefly before calling waitpid
+        // below with WNOHANG in the reapChildren() call.
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    // And reap all the processes that died after that, too, again trying to
-    // lose the race against such exits if we can.
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    reapChildren();
+        // Reap anything that politely shut down in response to last iteration.
+        reapChildren();
+
+        // Stop early if we're done.
+        if (mProcesses.empty())
+            break;
+
+        // Re-trigger progressively-more-forcible shutdown of everything surviving.
+        tryProcessShutdownAll();
+    }
 }
 
 bool
@@ -176,24 +259,30 @@ ProcessManagerImpl::isShutdown() const
 void
 ProcessManagerImpl::shutdown()
 {
+    std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
     if (!mIsShutdown)
     {
-        std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
         mIsShutdown = true;
-        auto ec = ABORT_ERROR_CODE;
 
         // Cancel all pending.
         for (auto& pending : mPending)
         {
-            pending->mImpl->cancel(ec);
+            pending->mImpl->cancel(ABORT_ERROR_CODE);
         }
         mPending.clear();
 
-        // Cancel all running.
-        for (auto& pair : mProcesses)
-        {
-            politelyShutdown(pair.second);
-        }
+        tryProcessShutdownAll();
+    }
+}
+
+void
+ProcessManagerImpl::tryProcessShutdownAll()
+{
+    std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
+    checkInvariants();
+    for (auto const& pe : mProcesses)
+    {
+        tryProcessShutdown(pe);
     }
 }
 
@@ -210,47 +299,99 @@ ProcessManagerImpl::tryProcessShutdown(std::shared_ptr<ProcessExitEvent> pe)
     }
 
     std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
-    auto ec = ABORT_ERROR_CODE;
     auto impl = pe->mImpl;
-
-    // If we already tried a polite shutdown, try forcible shutdown and
-    // return success.
-    if (mHavePolitelyShutdown.find(pe) != mHavePolitelyShutdown.end())
+    switch (impl->mLifecycle)
     {
-        CLOG_DEBUG(Process, "Shutting down (forcibly): {}", impl->mCmdLine);
-        forciblyShutdown(pe);
-        return true;
-    }
-
-    // Otherwise, there are three possible scenarios for process shutdown:
-    // 1. Process is in pending queue, and hasn't run yet
-    // 2. Process is currently running, in which case we try to kill it nicely
-    // 3. Process didn't get killed correctly, so we issue a force kill
-
-    CLOG_DEBUG(Process, "Shutting down (politely): {}", impl->mCmdLine);
-    auto pendingIt = find(mPending.begin(), mPending.end(), pe);
-    if (pendingIt != mPending.end())
+    case ProcessLifecycle::PENDING:
     {
-        (*pendingIt)->mImpl->cancel(ec);
-        mPending.erase(pendingIt);
-    }
-    else
-    {
-        // Process is running, so issue a `kill` command
-        // and remove from the list of running processes
-        auto pid = impl->getProcessId();
-        auto runningIt = mProcesses.find(pid);
-        if (runningIt != mProcesses.end())
+        releaseAssertOrThrow(mProcesses.find(pe) == mProcesses.end());
+        auto pendingIt = find(mPending.begin(), mPending.end(), pe);
+        if (pendingIt == mPending.end())
         {
-            return politelyShutdown(runningIt->second);
+            CLOG_WARNING(Process, "Pending process not found in queue: {}", impl->mCmdLine);
+            return false;
         }
         else
         {
-            CLOG_DEBUG(Process, "failed to find pending or running process");
+            releaseAssertOrThrow(*pendingIt == pe);
+            CLOG_DEBUG(Process, "Cancelling pending: {}", impl->mCmdLine);
+            impl->cancel(ABORT_ERROR_CODE);
+            mPending.erase(pendingIt);
+        }
+        break;
+    }
+
+    case ProcessLifecycle::TRIED_FORCED_SHUTDOWN:
+    case ProcessLifecycle::TERMINATED:
+        // Either we've already tried forcefully to shut it down, or else it
+        // fully terminated and we're in the process of cleaning up; either way
+        // there's nothing more to try to do here.
+        break;
+
+    default:
+    {
+        auto pid = impl->getProcessId();
+        auto i = mProcesses.find(pid);
+        if (i == mProcesses.end())
+        {
+            CLOG_WARNING(Process, "Attempt to shut down unknown process: {}", impl->mCmdLine);
             return false;
         }
+        releaseAssertOrThrow(i.second == pe);
+        if (impl->mLifecycle == ProcessLifecycle::TRIED_POLITE_SHUTDOWN)
+        {
+            CLOG_DEBUG(Process, "Shutting down (forced): {}", impl->mCmdLine);
+            return forcedShutdown(pe);
+        } else {
+            CLOG_DEBUG(Process, "Shutting down (polite): {}", impl->mCmdLine);
+            return politeShutdown(pe);
+        }
+        break;
     }
+    }
+
     return true;
+}
+
+
+asio::error_code
+ProcessManagerImpl::handleProcessTermination(int pid, int status)
+{
+    ZoneScoped;
+    std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
+
+    auto pair = mProcesses.find(pid);
+    if (pair == mProcesses.end())
+    {
+        CLOG_DEBUG(Process, "failed to find process with pid {}", pid);
+        return mapExitStatusToErrorCode("", pid, status);
+    }
+    auto impl = pair->second->mImpl;
+    releaseAssertOrThrow(impl->mLifecycle != ProcessLifecycle::TERMINATED);
+    impl->mLifecycle = ProcessLifecycle::TERMINATED;
+
+    auto ec = mapExitStatusToErrorCode(impl->mCmdLine, pid, status);
+
+    if (!impl->finish())
+    {
+        // We can only transmit one ec to the callback, so if
+        // we already have a nonzero (failure) ec, don't overwrite
+        // it.
+        if (!ec)
+        {
+            ec = asio::error_code(asio::error::try_again,
+                                  asio::system_category());
+        }
+    }
+
+    mProcesses.erase(pair);
+
+    // Fire off any new processes we've made room for before we
+    // trigger the callback.
+    maybeRunPendingProcesses();
+
+    impl->cancel(ec);
+    return ec;
 }
 
 #ifdef _WIN32
@@ -345,12 +486,8 @@ ProcessExitEvent::Impl::run()
 {
     ZoneScoped;
     auto manager = mProcManagerImpl.lock();
-    assert(manager && !manager->isShutdown());
-    if (mRunning)
-    {
-        CLOG_ERROR(Process, "ProcessExitEvent::Impl already running");
-        throw std::runtime_error("ProcessExitEvent::Impl already running");
-    }
+    releaseAssertOrThrow(manager && !manager->isShutdown());
+    releaseAssertOrThrow(mLifecycle == ProcessLifecycle::PENDING);
 
     PROCESS_INFORMATION pi;
     ZeroMemory(&pi, sizeof(pi));
@@ -442,10 +579,6 @@ ProcessExitEvent::Impl::run()
             return;
         }
 
-        // Fire off any new processes we've made room for before we
-        // trigger the callback.
-        manager->maybeRunPendingProcesses();
-
         if (ec)
         {
             // We can only transmit one ec to the callback, so if we
@@ -466,49 +599,21 @@ ProcessExitEvent::Impl::run()
             ec = manager->handleProcessTermination(sf->mProcessId,
                                                    static_cast<int>(exitCode));
         }
-        sf->cancel(ec);
     });
-    mRunning = true;
-}
-
-asio::error_code
-ProcessManagerImpl::handleProcessTermination(int pid, int status)
-{
-    ZoneScoped;
-    std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
-    auto ec = asio::error_code(status, asio::system_category());
-    auto process = mProcesses.find(pid);
-    if (process != mProcesses.end())
-    {
-        if (!process->second->mImpl->finish())
-        {
-            // We can only transmit one ec to the callback, so if
-            // we already have a nonzero (failure) ec, don't overwrite
-            // it.
-            if (!ec)
-            {
-                ec = asio::error_code(asio::error::try_again,
-                                      asio::system_category());
-            }
-        }
-        mHavePolitelyShutdown.erase(process->second);
-        mHaveForciblyShutdown.erase(process->second);
-    }
-    --ProcessManagerImpl::gNumProcessesActive;
-    mProcesses.erase(pid);
-    return ec;
+    mLifecycle = ProcessLifecycle::RUNNING;
 }
 
 bool
-ProcessManagerImpl::politelyShutdown(std::shared_ptr<ProcessExitEvent> pe)
+ProcessManagerImpl::politeShutdown(std::shared_ptr<ProcessExitEvent> pe)
 {
     ZoneScoped;
-    if (mHavePolitelyShutdown.find(pe) != mHavePolitelyShutdown.end())
+     checkInvariants();
+   if (pe->mImpl->mLifecycle >= ProcessLifecycle::TRIED_POLITE_SHUTDOWN)
     {
         return true;
     }
-    auto ec = ABORT_ERROR_CODE;
-    pe->mImpl->cancel(ec);
+    pe->mImpl->mLifecycle = ProcessLifecycle::TRIED_POLITE_SHUTDOWN;
+    pe->mImpl->cancel(ABORT_ERROR_CODE);
     if (!GenerateConsoleCtrlEvent(CTRL_C_EVENT, pe->mImpl->getProcessId()))
     {
         CLOG_WARNING(
@@ -517,18 +622,19 @@ ProcessManagerImpl::politelyShutdown(std::shared_ptr<ProcessExitEvent> pe)
             pe->mImpl->getProcessId(), GetLastError());
         return false;
     }
-    mHavePolitelyShutdown.insert(pe);
     return true;
 }
 
 bool
-ProcessManagerImpl::forciblyShutdown(std::shared_ptr<ProcessExitEvent> pe)
+ProcessManagerImpl::forcedShutdown(std::shared_ptr<ProcessExitEvent> pe)
 {
     ZoneScoped;
-    if (mHaveForciblyShutdown.find(pe) != mHaveForciblyShutdown.end())
+    checkInvariants();
+    if (pe->mImpl->mLifecycle >= ProcessLifecycle::TRIED_FORCED_SHUTDOWN)
     {
         return true;
     }
+    pe->mImpl->mLifecycle = ProcessLifecycle::TRIED_FORCED_SHUTDOWN;
     if (!TerminateProcess(pe->mImpl->mProcessHandle.native_handle(), 1))
     {
         CLOG_WARNING(
@@ -540,7 +646,6 @@ ProcessManagerImpl::forciblyShutdown(std::shared_ptr<ProcessExitEvent> pe)
     // Cancel any pending events on the handle. Ignore error code
     asio::error_code dummy;
     pe->mImpl->mProcessHandle.cancel(dummy);
-    mHaveForciblyShutdown.insert(pe);
     return true;
 }
 
@@ -611,98 +716,17 @@ ProcessManagerImpl::reapChildren()
     }
 }
 
-asio::error_code
-ProcessManagerImpl::handleProcessTermination(int pid, int status)
-{
-    ZoneScoped;
-    std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
-    auto ec = asio::error_code();
-
-    auto pair = mProcesses.find(pid);
-    if (pair == mProcesses.end())
-    {
-        CLOG_DEBUG(Process, "failed to find process with pid {}", pid);
-        return ec;
-    }
-    auto impl = pair->second->mImpl;
-
-    if (WIFEXITED(status))
-    {
-        if (WEXITSTATUS(status) == 0)
-        {
-            CLOG_DEBUG(Process, "process {} exited {}: {}", pid,
-                       WEXITSTATUS(status), impl->mCmdLine);
-        }
-        else
-        {
-            CLOG_WARNING(Process, "process {} exited {}: {}", pid,
-                         WEXITSTATUS(status), impl->mCmdLine);
-        }
-#ifdef __linux__
-        // Linux posix_spawnp does not fault on file-not-found in the
-        // parent process at the point of invocation, as BSD does; so
-        // rather than a fatal error / throw we get an ambiguous and
-        // easily-overlooked shell-like 'exit 127' on waitpid.
-        if (WEXITSTATUS(status) == 127)
-        {
-            CLOG_WARNING(Process, "");
-            CLOG_WARNING(Process, "************");
-            CLOG_WARNING(Process, "");
-            CLOG_WARNING(Process, "  likely 'missing command':");
-            CLOG_WARNING(Process, "");
-            CLOG_WARNING(Process, "    {}", impl->mCmdLine);
-            CLOG_WARNING(Process, "");
-            CLOG_WARNING(Process, "************");
-            CLOG_WARNING(Process, "");
-        }
-#endif
-        // FIXME: this doesn't _quite_ do the right thing; it conveys
-        // the exit status back to the caller but it puts it in "system
-        // category" which on POSIX means if you call .message() on it
-        // you'll get perror(value()), which is not correct. Errno has
-        // nothing to do with process exit values. We could make a new
-        // error_category to tighten this up, but it's a bunch of work
-        // just to convey the meaningless string "exited" to the user.
-        ec = asio::error_code(WEXITSTATUS(status), asio::system_category());
-    }
-    else
-    {
-        // FIXME: for now we also collapse all non-WIFEXITED exits on
-        // posix into a single "exit 1" error_code. This is enough
-        // for most callers; we can enrich it if anyone really wants
-        // to differentiate various signals that might have killed
-        // the child.
-        ec = asio::error_code(1, asio::system_category());
-    }
-
-    if (!impl->finish())
-    {
-        ec = asio::error_code(asio::error::try_again, asio::system_category());
-    }
-
-    --gNumProcessesActive;
-    mHavePolitelyShutdown.erase(pair->second);
-    mHaveForciblyShutdown.erase(pair->second);
-    mProcesses.erase(pair);
-
-    // Fire off any new processes we've made room for before we
-    // trigger the callback.
-    maybeRunPendingProcesses();
-
-    impl->cancel(ec);
-    return ec;
-}
-
 bool
-ProcessManagerImpl::politelyShutdown(std::shared_ptr<ProcessExitEvent> pe)
+ProcessManagerImpl::politeShutdown(std::shared_ptr<ProcessExitEvent> pe)
 {
     ZoneScoped;
-    if (mHavePolitelyShutdown.find(pe) != mHavePolitelyShutdown.end())
+    checkInvariants();
+    if (pe->mImpl->mLifecycle >= ProcessLifecycle::TRIED_POLITE_SHUTDOWN)
     {
         return true;
     }
-    auto ec = ABORT_ERROR_CODE;
-    pe->mImpl->cancel(ec);
+    pe->mImpl->mLifecycle = ProcessLifecycle::TRIED_POLITE_SHUTDOWN;
+    pe->mImpl->cancel(ABORT_ERROR_CODE);
     const int pid = pe->mImpl->getProcessId();
     if (kill(pid, SIGTERM) != 0)
     {
@@ -711,18 +735,19 @@ ProcessManagerImpl::politelyShutdown(std::shared_ptr<ProcessExitEvent> pe)
                      errno, strerror(errno));
         return false;
     }
-    mHavePolitelyShutdown.insert(pe);
     return true;
 }
 
 bool
-ProcessManagerImpl::forciblyShutdown(std::shared_ptr<ProcessExitEvent> pe)
+ProcessManagerImpl::forcedShutdown(std::shared_ptr<ProcessExitEvent> pe)
 {
     ZoneScoped;
-    if (mHaveForciblyShutdown.find(pe) != mHaveForciblyShutdown.end())
+    checkInvariants();
+    if (pe->mImpl->mLifecycle >= ProcessLifecycle::TRIED_FORCED_SHUTDOWN)
     {
         return true;
     }
+    pe->mImpl->mLifecycle = ProcessLifecycle::TRIED_FORCED_SHUTDOWN;
     const int pid = pe->mImpl->getProcessId();
     if (kill(pid, SIGKILL) != 0)
     {
@@ -731,7 +756,6 @@ ProcessManagerImpl::forciblyShutdown(std::shared_ptr<ProcessExitEvent> pe)
                      errno, strerror(errno));
         return false;
     }
-    mHaveForciblyShutdown.insert(pe);
     return true;
 }
 
@@ -750,12 +774,9 @@ ProcessExitEvent::Impl::run()
 {
     ZoneScoped;
     auto manager = mProcManagerImpl.lock();
-    assert(manager && !manager->isShutdown());
-    if (mRunning)
-    {
-        CLOG_ERROR(Process, "ProcessExitEvent::Impl already running");
-        throw std::runtime_error("ProcessExitEvent::Impl already running");
-    }
+    releaseAssertOrThrow(manager && !manager->isShutdown());
+    releaseAssertOrThrow(mLifecycle == ProcessLifecycle::PENDING);
+
     std::vector<std::string> args = split(mCmdLine);
     std::vector<char*> argv;
     for (auto& a : args)
@@ -803,7 +824,7 @@ ProcessExitEvent::Impl::run()
         throw std::runtime_error("posix_spawn() failed");
     }
 
-    mRunning = true;
+    mLifecycle = ProcessLifecycle::RUNNING;
 }
 
 #endif
@@ -834,12 +855,13 @@ void
 ProcessManagerImpl::maybeRunPendingProcesses()
 {
     ZoneScoped;
+    checkInvariants();
     if (mIsShutdown)
     {
         return;
     }
     std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
-    while (!mPending.empty() && gNumProcessesActive < mMaxProcesses)
+    while (!mPending.empty() && getNumRunningOrShuttingDownProcesses() < mMaxProcesses)
     {
         auto i = mPending.front();
         mPending.pop_front();
@@ -865,6 +887,27 @@ ProcessManagerImpl::maybeRunPendingProcesses()
         }
     }
 }
+
+ void
+ ProcessManagerImpl::checkInvariants() const
+ {
+     std::lock_guard<std::recursive_mutex> guard(mProcessesMutex);
+     if (mIsShutdown)
+     {
+         releaseAssertOrThrow(mProcesses.empty());
+         releaseAssertOrThrow(mPending.empty());
+     }
+     for (auto const& pe : mPending)
+     {
+         releaseAssertOrThrow(pe->mImpl->mLifecycle == ProcessLifecycle::PENDING);
+     }
+     for (auto const& pair : mProcesses)
+     {
+         auto const& impl = pair.second->mImpl;
+         releaseAssertOrThrow(impl->mLifecycle != ProcessLifecycle::PENDING);
+         releaseAssertOrThrow(impl->getProcessId() == pair.first);
+     }
+ }
 
 ProcessExitEvent::ProcessExitEvent(asio::io_context& io_context)
     : mTimer(std::make_shared<RealTimer>(io_context))

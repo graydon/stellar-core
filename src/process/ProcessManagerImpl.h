@@ -16,17 +16,17 @@ namespace stellar
 
 class ProcessManagerImpl : public ProcessManager
 {
-    // On windows we use a simple global counter to throttle the
-    // number of processes we run at once.
-    static std::atomic<size_t> gNumProcessesActive;
-
     // Subprocesses will be removed asynchronously, hence the lock on
-    // just this member
+    // just the mProcesses member.
     std::recursive_mutex mProcessesMutex;
+
+    // Stores a map from pid to running-or-shutting-down processes.
+    // Any ProcessExitEvent should be stored either in mProcesses
+    // or in mPending (before it's launched).
     std::map<int, std::shared_ptr<ProcessExitEvent>> mProcesses;
 
     bool mIsShutdown{false};
-    size_t mMaxProcesses;
+    size_t const mMaxProcesses;
     asio::io_context& mIOContext;
     // These are only used on POSIX, but they're harmless here.
     asio::signal_set mSigChild;
@@ -34,16 +34,16 @@ class ProcessManagerImpl : public ProcessManager
     uint64_t mTempFileCount{0};
 
     std::deque<std::shared_ptr<ProcessExitEvent>> mPending;
-    std::set<std::shared_ptr<ProcessExitEvent>> mHavePolitelyShutdown;
-    std::set<std::shared_ptr<ProcessExitEvent>> mHaveForciblyShutdown;
     void maybeRunPendingProcesses();
+    void checkInvariants() const;
 
     void startWaitingForSignalChild();
     void handleSignalChild();
     void reapChildren();
     asio::error_code handleProcessTermination(int pid, int status);
-    bool politelyShutdown(std::shared_ptr<ProcessExitEvent> pe);
-    bool forciblyShutdown(std::shared_ptr<ProcessExitEvent> pe);
+    bool politeShutdown(std::shared_ptr<ProcessExitEvent> pe);
+    bool forcedShutdown(std::shared_ptr<ProcessExitEvent> pe);
+    void tryProcessShutdownAll();
 
     friend class ProcessExitEvent::Impl;
 
@@ -52,6 +52,7 @@ class ProcessManagerImpl : public ProcessManager
     std::weak_ptr<ProcessExitEvent> runProcess(std::string const& cmdLine,
                                                std::string outFile) override;
     size_t getNumRunningProcesses() override;
+    size_t getNumRunningOrShuttingDownProcesses() override;
 
     bool isShutdown() const override;
     void shutdown() override;
