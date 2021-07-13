@@ -93,7 +93,9 @@ enum MessageType
     HELLO = 13,
 
     SURVEY_REQUEST = 14,
-    SURVEY_RESPONSE = 15
+    SURVEY_RESPONSE = 15,
+
+    ALREADY_HAVE = 16
 };
 
 struct DontHave
@@ -136,6 +138,11 @@ struct SignedSurveyResponseMessage
 {
     Signature responseSignature;
     SurveyResponseMessage response;
+};
+
+struct AlreadyHaveMessage
+{
+    uint256 hashes<>;
 };
 
 struct PeerStats
@@ -204,6 +211,9 @@ case SURVEY_REQUEST:
 
 case SURVEY_RESPONSE:
     SignedSurveyResponseMessage signedSurveyResponseMessage;
+
+case ALREADY_HAVE:
+    AlreadyHaveMessage alreadyHaveMessage;
 
 // SCP
 case GET_SCP_QUORUMSET:

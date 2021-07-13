@@ -78,6 +78,12 @@ class OverlayManager
     virtual bool recvFloodedMsgID(StellarMessage const& msg, Peer::pointer peer,
                                   Hash& msgID) = 0;
 
+    // Make a note in the floodgate that `peer` has the messages mentioned in
+    // `have`. This does not necessarily mean that _we_ have any of those
+    // messages yet, merely that we should avoid sending them because `peer` has
+    // already seen them.
+    virtual void recvAlreadyHave(Peer::pointer peer, AlreadyHaveMessage const& have) = 0;
+
     bool
     recvFloodedMsg(StellarMessage const& msg, Peer::pointer peer)
     {

@@ -18,7 +18,7 @@
 
 namespace stellar
 {
-Floodgate::FloodRecord::FloodRecord(StellarMessage const& msg, uint32_t ledger,
+Floodgate::FloodRecord::FloodRecord(std::optional<StellarMessage> const& msg, uint32_t ledger,
                                     Peer::pointer peer)
     : mLedgerSeq(ledger), mMessage(msg)
 {
@@ -55,6 +55,33 @@ Floodgate::clearBelow(uint32_t maxLedger)
     mFloodMapSize.set_count(mFloodMap.size());
 }
 
+std::pair<std::map<Hash, Floodgate::FloodRecord::pointer>::iterator, bool>
+Floodgate::insert(Hash const& index, std::optional<StellarMessage> const& msg, bool force)
+{
+    auto seq = mApp.getHerder().getCurrentLedgerSeq();
+    auto iter = mFloodMap.find(index);
+    if (iter != mFloodMap.end())
+    {
+        if (force)
+        {
+            // "Force" means "clear the mPeersTold and reset seq" when there's
+            // an existing entry.
+            iter->second->mPeersTold.clear();
+            iter->second->mLedgerSeq = seq;
+        }
+        return std::make_pair(iter, false);
+    }
+
+    FloodRecord::pointer rec = std::make_shared<FloodRecord>(
+        msg, seq);
+    auto ret = mFloodMap.emplace(index, rec);
+    assert(ret.second);
+    mFloodMapSize.set_count(mFloodMap.size());
+    TracyPlot("overlay.memory.flood-known",
+                static_cast<int64_t>(mFloodMap.size()));
+    return ret;
+}
+
 bool
 Floodgate::addRecord(StellarMessage const& msg, Peer::pointer peer, Hash& index)
 {
@@ -64,22 +91,32 @@ Floodgate::addRecord(StellarMessage const& msg, Peer::pointer peer, Hash& index)
     {
         return false;
     }
-    auto result = mFloodMap.find(index);
-    if (result == mFloodMap.end())
-    { // we have never seen this message
-        mFloodMap[index] = std::make_shared<FloodRecord>(
-            msg, mApp.getHerder().getCurrentLedgerSeq(), peer);
-        mFloodMapSize.set_count(mFloodMap.size());
-        TracyPlot("overlay.memory.flood-known",
-                  static_cast<int64_t>(mFloodMap.size()));
-        return true;
-    }
-    else
+    auto pair = insert(index, msg);
+    FloodRecord::pointer record = pair.first->second;
+    if (peer)
     {
-        result->second->mPeersTold.insert(peer->toString());
-        return false;
+        record->mPeersTold.insert(peer->toString());
+    }
+    return pair.second;
+}
+
+void
+Floodgate::alreadyHave(Peer::pointer fromPeer, AlreadyHaveMessage const& have)
+{
+    ZoneScoped;
+    if (mShuttingDown)
+    {
+        return;
+    }
+    std::string peerId = fromPeer->toString();
+    for (auto const& index : have.hashes)
+    {
+        auto pair = insert(index, std::nullopt);
+        FloodRecord::pointer record = pair.first->second;
+        record->mPeersTold.insert(peerId);
     }
 }
+
 
 // send message to anyone you haven't gotten it from
 bool
@@ -91,20 +128,7 @@ Floodgate::broadcast(StellarMessage const& msg, bool force)
         return false;
     }
     Hash index = xdrBlake2(msg);
-
-    FloodRecord::pointer fr;
-    auto result = mFloodMap.find(index);
-    if (result == mFloodMap.end() || force)
-    { // no one has sent us this message / start from scratch
-        fr = std::make_shared<FloodRecord>(
-            msg, mApp.getHerder().getCurrentLedgerSeq(), Peer::pointer());
-        mFloodMap[index] = fr;
-        mFloodMapSize.set_count(mFloodMap.size());
-    }
-    else
-    {
-        fr = result->second;
-    }
+    FloodRecord::pointer fr = insert(index, msg, force).first->second;
     // send it to people that haven't sent it to us
     auto& peersTold = fr->mPeersTold;
 

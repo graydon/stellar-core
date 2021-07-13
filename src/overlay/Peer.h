@@ -164,6 +164,7 @@ class Peer : public std::enable_shared_from_this<Peer>,
     void recvPeers(StellarMessage const& msg);
     void recvSurveyRequestMessage(StellarMessage const& msg);
     void recvSurveyResponseMessage(StellarMessage const& msg);
+    void recvAlreadyHaveMessage(StellarMessage const& msg);
 
     void recvGetTxSet(StellarMessage const& msg);
     void recvTxSet(StellarMessage const& msg);

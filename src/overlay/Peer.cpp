@@ -596,6 +596,12 @@ Peer::recvMessage(StellarMessage const& stellarMsg)
         Peer::recvRawMessage(stellarMsg);
         return;
 
+    // Already-Have messages we want to jump the queue and get to the
+    // floodmap as quickly as possible also.
+    case MessageType::ALREADY_HAVE:
+        Peer::recvRawMessage(stellarMsg);
+        return;
+
     // control messages
     case GET_PEERS:
     case PEERS:
@@ -739,6 +745,12 @@ Peer::recvRawMessage(StellarMessage const& stellarMsg)
     {
         auto t = getOverlayMetrics().mRecvSurveyResponseTimer.TimeScope();
         recvSurveyResponseMessage(stellarMsg);
+    }
+    break;
+
+    case ALREADY_HAVE:
+    {
+        recvAlreadyHaveMessage(stellarMsg);
     }
     break;
 
@@ -1304,6 +1316,14 @@ Peer::recvSurveyResponseMessage(StellarMessage const& msg)
     ZoneScoped;
     mApp.getOverlayManager().getSurveyManager().relayOrProcessResponse(
         msg, shared_from_this());
+}
+
+void
+Peer::recvAlreadyHaveMessage(StellarMessage const& msg)
+{
+    ZoneScoped;
+    mApp.getOverlayManager().recvAlreadyHave(shared_from_this(),
+        msg.alreadyHaveMessage());
 }
 
 Peer::PeerMetrics::PeerMetrics(VirtualClock::time_point connectedTime)

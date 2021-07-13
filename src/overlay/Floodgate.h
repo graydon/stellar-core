@@ -37,11 +37,11 @@ class Floodgate
         typedef std::shared_ptr<FloodRecord> pointer;
 
         uint32_t mLedgerSeq;
-        StellarMessage mMessage;
+        std::optional<StellarMessage> mMessage;
         std::set<std::string> mPeersTold;
 
-        FloodRecord(StellarMessage const& msg, uint32_t ledger,
-                    Peer::pointer peer);
+        FloodRecord(std::optional<StellarMessage> const& msg, uint32_t ledger,
+                    Peer::pointer peer = nullptr);
     };
 
     std::map<Hash, FloodRecord::pointer> mFloodMap;
@@ -49,6 +49,9 @@ class Floodgate
     medida::Counter& mFloodMapSize;
     medida::Meter& mSendFromBroadcast;
     bool mShuttingDown;
+
+  std::pair<std::map<Hash, FloodRecord::pointer>::iterator, bool>
+  insert(Hash const& index, std::optional<StellarMessage> const& msg, bool force = false);
 
   public:
     Floodgate(Application& app);
@@ -58,6 +61,8 @@ class Floodgate
     // fills msgID with msg's hash
     bool addRecord(StellarMessage const& msg, Peer::pointer fromPeer,
                    Hash& msgID);
+
+    void alreadyHave(Peer::pointer fromPeer, AlreadyHaveMessage const& have);
 
     // returns true if msg was sent to at least one peer
     bool broadcast(StellarMessage const& msg, bool force);

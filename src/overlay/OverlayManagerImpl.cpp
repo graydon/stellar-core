@@ -892,6 +892,13 @@ OverlayManagerImpl::recvFloodedMsgID(StellarMessage const& msg,
 }
 
 void
+OverlayManagerImpl::recvAlreadyHave(Peer::pointer peer, AlreadyHaveMessage const& have)
+{
+    ZoneScoped;
+    return mFloodGate.alreadyHave(peer, have);
+}
+
+void
 OverlayManagerImpl::forgetFloodedMsg(Hash const& msgID)
 {
     ZoneScoped;
