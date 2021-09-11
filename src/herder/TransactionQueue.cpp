@@ -710,10 +710,11 @@ TransactionQueue::getMaxOpsToFloodThisPeriod() const
     int64_t opsToFloodLedger = static_cast<int64_t>(opsToFloodLedgerDbl);
 
     int64_t opsToFlood;
-    opsToFlood = mBroadcastOpCarryover +
-                 bigDivide(opsToFloodLedger, cfg.FLOOD_TX_PERIOD_MS,
-                           cfg.getExpectedLedgerCloseTime().count() * 1000,
-                           Rounding::ROUND_UP);
+    opsToFlood =
+        mBroadcastOpCarryover +
+        bigDivide(opsToFloodLedger, int64_t(cfg.FLOOD_TX_PERIOD_MS),
+                  int64_t(cfg.getExpectedLedgerCloseTime().count() * 1000),
+                  Rounding::ROUND_UP);
     releaseAssertOrThrow(opsToFlood >= 0);
     return static_cast<size_t>(opsToFlood);
 }

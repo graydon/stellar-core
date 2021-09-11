@@ -137,8 +137,8 @@ exchangeV2(int64_t wheatReceived, Price price, int64_t maxWheatReceive,
     result.reduced = result.reduced || (result.numSheepSend > maxSheepSend);
     result.numSheepSend = std::min(result.numSheepSend, maxSheepSend);
     // bias towards seller (this cannot overflow at this point)
-    result.numWheatReceived =
-        bigDivide(result.numSheepSend, price.d, price.n, ROUND_DOWN);
+    result.numWheatReceived = bigDivide(result.numSheepSend, int64_t(price.d),
+                                        int64_t(price.n), ROUND_DOWN);
 
     return result;
 }
@@ -653,12 +653,14 @@ exchangeV10WithoutPriceErrorThresholds(Price price, int64_t maxWheatSend,
                  round == RoundingType::PATH_PAYMENT_STRICT_RECEIVE)
         {
             wheatReceive = bigDivide(sheepValue, price.n, ROUND_DOWN);
-            sheepSend = bigDivide(wheatReceive, price.n, price.d, ROUND_UP);
+            sheepSend = bigDivide(wheatReceive, int64_t(price.n),
+                                  int64_t(price.d), ROUND_UP);
         }
         else // Sheep is more valuable
         {
             sheepSend = bigDivide(sheepValue, price.d, ROUND_DOWN);
-            wheatReceive = bigDivide(sheepSend, price.d, price.n, ROUND_DOWN);
+            wheatReceive = bigDivide(sheepSend, int64_t(price.d),
+                                     int64_t(price.n), ROUND_DOWN);
         }
     }
     else
@@ -666,12 +668,14 @@ exchangeV10WithoutPriceErrorThresholds(Price price, int64_t maxWheatSend,
         if (price.n > price.d) // Wheat is more valuable
         {
             wheatReceive = bigDivide(wheatValue, price.n, ROUND_DOWN);
-            sheepSend = bigDivide(wheatReceive, price.n, price.d, ROUND_DOWN);
+            sheepSend = bigDivide(wheatReceive, int64_t(price.n),
+                                  int64_t(price.d), ROUND_DOWN);
         }
         else // Sheep is more valuable
         {
             sheepSend = bigDivide(wheatValue, price.d, ROUND_DOWN);
-            wheatReceive = bigDivide(sheepSend, price.d, price.n, ROUND_UP);
+            wheatReceive = bigDivide(sheepSend, int64_t(price.d),
+                                     int64_t(price.n), ROUND_UP);
         }
     }
 

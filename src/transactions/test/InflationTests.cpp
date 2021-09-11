@@ -127,7 +127,8 @@ simulateInflation(int ledgerVersion, int nbAccounts, int64& totCoins,
 
     // 1% annual inflation on a weekly basis
     // 0.000190721
-    auto inflation = bigDivide(totCoins, 190721, 1000000000, ROUND_DOWN);
+    auto inflation =
+        bigDivide(totCoins, int64_t(190721), int64_t(1000000000), ROUND_DOWN);
     auto coinsToDole = inflation + totFees;
     int64 leftToDole = coinsToDole;
 

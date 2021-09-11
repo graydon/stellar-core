@@ -816,7 +816,8 @@ TEST_CASE("TransactionQueue limits", "[herder][transactionqueue]")
             auto fr = limiter.getMinFeeNeeded();
             return fr.second == 0
                        ? 0ll
-                       : bigDivide(fr.first, 1, fr.second, Rounding::ROUND_UP);
+                       : bigDivide(fr.first, int64_t(1), int64_t(fr.second),
+                                   Rounding::ROUND_UP);
         };
 
         SECTION("evict nothing")
