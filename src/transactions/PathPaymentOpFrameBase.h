@@ -13,6 +13,9 @@ class AbstractLedgerTxn;
 
 class PathPaymentOpFrameBase : public OperationFrame
 {
+  public:
+    static bool sSkipCurrentPath;
+
   protected:
     bool convert(AbstractLedgerTxn& ltx, int64_t maxOffersToCross,
                  Asset const& sendAsset, int64_t maxSend, int64_t& amountSend,

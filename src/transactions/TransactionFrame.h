@@ -44,6 +44,7 @@ class TransactionFrame : public TransactionFrameBase
   protected:
     TransactionEnvelope mEnvelope;
     TransactionResult mResult;
+    bool mDoomed{false};
 
     std::shared_ptr<InternalLedgerEntry const> mCachedAccount;
 
@@ -112,6 +113,18 @@ class TransactionFrame : public TransactionFrameBase
 
     virtual ~TransactionFrame()
     {
+    }
+
+    void
+    markTransactionAsDoomed() override
+    {
+        mDoomed = true;
+    }
+
+    bool
+    isDoomed()
+    {
+        return mDoomed;
     }
 
     // clear pre-computed hashes

@@ -24,4 +24,9 @@ TransactionFrameBase::makeTransactionFromWire(Hash const& networkID,
         abort();
     }
 }
+
+void
+TransactionFrameBase::markTransactionAsDoomed()
+{
+}
 }

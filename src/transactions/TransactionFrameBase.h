@@ -57,6 +57,8 @@ class TransactionFrameBase
 
     virtual void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee) = 0;
 
+    virtual void markTransactionAsDoomed();
+
     virtual StellarMessage toStellarMessage() const = 0;
 };
 }

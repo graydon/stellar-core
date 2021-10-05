@@ -67,6 +67,12 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
                     mPathPayment.path.rend());
     fullPath.emplace_back(getSourceAsset());
 
+    if (mParentTx.isDoomed())
+    {
+        setResultConstraintNotMet();
+        return false;
+    }
+
     // Walk the path
     Asset recvAsset = getDestAsset();
     int64_t maxAmountRecv = mPathPayment.destAmount;

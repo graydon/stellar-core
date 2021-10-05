@@ -22,6 +22,8 @@ xdr::xvector<DecoratedSignature, 20>&
 getSignaturesInner(TransactionEnvelope& env);
 xdr::xvector<Operation, MAX_OPS_PER_TX>&
 getOperations(TransactionEnvelope& env);
+xdr::xvector<Operation, MAX_OPS_PER_TX> const&
+getOperations(TransactionEnvelope const& env);
 
 #ifdef BUILD_TESTS
 xdr::xvector<DecoratedSignature, 20>& getSignatures(TransactionFramePtr tx);
