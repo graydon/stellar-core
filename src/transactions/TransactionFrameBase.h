@@ -57,7 +57,8 @@ class TransactionFrameBase
 
     virtual void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee) = 0;
 
-    virtual void markTransactionAsDoomed();
+    virtual void markTransactionAsDoomed() = 0;
+    virtual std::vector<ClaimAtom> const& getDoomedTrail() const = 0;
 
     virtual StellarMessage toStellarMessage() const = 0;
 };

@@ -5,6 +5,7 @@
 #include "transactions/TransactionFrameBase.h"
 #include "transactions/FeeBumpTransactionFrame.h"
 #include "transactions/TransactionFrame.h"
+#include <stdexcept>
 
 namespace stellar
 {
@@ -23,10 +24,5 @@ TransactionFrameBase::makeTransactionFromWire(Hash const& networkID,
     default:
         abort();
     }
-}
-
-void
-TransactionFrameBase::markTransactionAsDoomed()
-{
 }
 }

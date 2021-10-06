@@ -45,6 +45,7 @@ class TransactionFrame : public TransactionFrameBase
     TransactionEnvelope mEnvelope;
     TransactionResult mResult;
     bool mDoomed{false};
+    std::vector<ClaimAtom> mDoomedTrail;
 
     std::shared_ptr<InternalLedgerEntry const> mCachedAccount;
 
@@ -113,6 +114,18 @@ class TransactionFrame : public TransactionFrameBase
 
     virtual ~TransactionFrame()
     {
+    }
+
+    void
+    saveDoomedTrail(std::vector<ClaimAtom> const& doomed)
+    {
+        mDoomedTrail = doomed;
+    }
+
+    std::vector<ClaimAtom> const&
+    getDoomedTrail() const override
+    {
+        return mDoomedTrail;
     }
 
     void

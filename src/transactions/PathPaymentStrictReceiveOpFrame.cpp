@@ -76,6 +76,7 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
     // Walk the path
     Asset recvAsset = getDestAsset();
     int64_t maxAmountRecv = mPathPayment.destAmount;
+    std::vector<ClaimAtom> fullOfferTrail;
     for (auto const& sendAsset : fullPath)
     {
         if (recvAsset == sendAsset)
@@ -117,10 +118,14 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
         // insert in front to match the path's order
         auto& offers = innerResult().success().offers;
         offers.insert(offers.begin(), offerTrail.begin(), offerTrail.end());
+
+        fullOfferTrail.insert(fullOfferTrail.begin(), offerTrail.begin(),
+                              offerTrail.end());
     }
 
     if (maxAmountRecv > mPathPayment.sendMax)
     { // make sure not over the max
+        mParentTx.saveDoomedTrail(fullOfferTrail);
         setResultConstraintNotMet();
         return false;
     }

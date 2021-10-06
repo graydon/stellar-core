@@ -423,6 +423,19 @@ FeeBumpTransactionFrame::resetResults(LedgerHeader const& header,
     mResult.feeCharged = getFee(header, baseFee, applying);
 }
 
+void
+FeeBumpTransactionFrame::markTransactionAsDoomed()
+{
+    throw std::runtime_error(
+        "called FeeBumpTransactionFrame::markTransactionAsDoomed");
+}
+
+std::vector<ClaimAtom> const&
+FeeBumpTransactionFrame::getDoomedTrail() const
+{
+    throw std::runtime_error("called FeeBumpTransactionFrame::getDoomedTrail");
+}
+
 StellarMessage
 FeeBumpTransactionFrame::toStellarMessage() const
 {

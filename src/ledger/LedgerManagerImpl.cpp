@@ -37,6 +37,7 @@
 #include "util/Logging.h"
 #include "util/XDRCereal.h"
 #include "util/XDROperators.h"
+#include <algorithm>
 #include <fmt/format.h>
 
 #include "medida/buckets.h"
@@ -58,6 +59,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <thread>
+#include <unordered_set>
 
 /*
 The ledger module:
@@ -1115,21 +1117,20 @@ isArbSpam(TransactionFrameBasePtr tx)
             auto const& body = ops.at(0).body;
             if (body.type() == PATH_PAYMENT_STRICT_RECEIVE)
             {
-                return true;
                 PathPaymentStrictReceiveOp const& op =
                     body.pathPaymentStrictReceiveOp();
                 if (op.sendAsset.type() == ASSET_TYPE_NATIVE &&
                     op.destAsset.type() == ASSET_TYPE_NATIVE &&
-                    op.sendMax <= op.destAmount)
+                    op.sendMax == op.destAmount)
                 {
                     // To be extra careful we only define a tx as arbspam if
                     // it's a payment loop from XLM->some path->XLM and the
-                    // sender is attempting to cap the amount they pay as
-                    // the amount they receive (i.e. it has the form "send K
-                    // XLM for the price of K-or-less XLM"). All arbspam
-                    // we've seen so far has this form and there's no reason
-                    // to think anyone would bother with anything more
-                    // complex, since everything has an orderbook with XLM.
+                    // sender is attempting to cap the amount they pay as the
+                    // amount they receive (i.e. it has the form "pay at most K
+                    // XLM to send K XLM"). Almost all arbspam we've seen so far
+                    // has this form and there's no reason to think anyone would
+                    // bother with anything more complex, since everything has
+                    // an orderbook with XLM.
                     return true;
                 }
             }
@@ -1165,39 +1166,163 @@ isArbSpamThatFailedOverSendMax(TransactionFrameBasePtr tx)
 }
 
 static bool
+trailMayContainID(std::vector<ClaimAtom> const& trail, AccountID const& id)
+{
+    // Again, it's alright to false-positive here and fail to handle some case,
+    // saying that a trail _might_ contain ID; we just have to avoid false
+    // negatives, saying that a trail doesn't contain ID when it does.
+
+    for (auto const& atom : trail)
+    {
+        switch (atom.type())
+        {
+        case CLAIM_ATOM_TYPE_V0:
+            if (id.type() == PUBLIC_KEY_TYPE_ED25519 &&
+                atom.v0().sellerEd25519 == id.ed25519())
+            {
+                return true;
+            }
+            break;
+        case CLAIM_ATOM_TYPE_ORDER_BOOK:
+            if (atom.orderBook().sellerID == id)
+            {
+                return true;
+            }
+            break;
+        default:
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool
 isRepeatingArbSpam(TransactionFrameBasePtr prev, TransactionFrameBasePtr curr)
 {
-    if (prev && isArbSpam(curr))
+    if (isArbSpam(curr))
     {
         // Double check assumptions about prev.
-        releaseAssertOrThrow(isArbSpamThatFailedOverSendMax(prev));
+        releaseAssert(isArbSpamThatFailedOverSendMax(prev));
 
-        // These should both succeed given isArbSpam check above.
-        auto const& opPrev = txbridge::getOperations(prev->getEnvelope())
-                                 .at(0)
-                                 .body.pathPaymentStrictReceiveOp();
-        auto const& opCurr = txbridge::getOperations(curr->getEnvelope())
-                                 .at(0)
-                                 .body.pathPaymentStrictReceiveOp();
+        auto const& envPrev = prev->getEnvelope();
+        auto const& envCurr = curr->getEnvelope();
+        auto const& opPrev = txbridge::getOperations(envPrev).at(0);
+        auto const& opCurr = txbridge::getOperations(envCurr).at(0);
+        auto const& recvPrev = opPrev.body.pathPaymentStrictReceiveOp();
+        auto const& recvCurr = opCurr.body.pathPaymentStrictReceiveOp();
 
         // We define a "repeating arbspam" as an attempt to send the same amount
-        // through the same path as the exactly-previous transaction, when that
-        // transaction failed.
-        if (opPrev.destAmount == opCurr.destAmount &&
-            opPrev.sendMax == opCurr.sendMax && opPrev.path == opCurr.path)
+        // through the same path as a previous tx that failed, and not from an
+        // account that occurred on the failing trail (as this might produce a
+        // different error code).
+        if (recvPrev.destAmount == recvCurr.destAmount &&
+            recvPrev.path == recvCurr.path &&
+            opPrev.sourceAccount == opCurr.sourceAccount &&
+            !trailMayContainID(prev->getDoomedTrail(), curr->getSourceID()))
         {
             // Double check assumptions in isArbSpam above.
-            releaseAssert(opPrev.sendAsset.type() == ASSET_TYPE_NATIVE);
-            releaseAssert(opCurr.sendAsset.type() == ASSET_TYPE_NATIVE);
-            releaseAssert(opPrev.destAsset.type() == ASSET_TYPE_NATIVE);
-            releaseAssert(opCurr.destAsset.type() == ASSET_TYPE_NATIVE);
-            releaseAssert(opPrev.sendMax <= opPrev.destAmount);
-            releaseAssert(opCurr.sendMax <= opCurr.destAmount);
+            releaseAssert(recvPrev.sendAsset.type() == ASSET_TYPE_NATIVE);
+            releaseAssert(recvCurr.sendAsset.type() == ASSET_TYPE_NATIVE);
+            releaseAssert(recvPrev.destAsset.type() == ASSET_TYPE_NATIVE);
+            releaseAssert(recvCurr.destAsset.type() == ASSET_TYPE_NATIVE);
+            releaseAssert(recvPrev.sendMax == recvPrev.destAmount);
+            releaseAssert(recvCurr.sendMax == recvCurr.destAmount);
 
             return true;
         }
     }
     return false;
+}
+
+static void
+invalidateCachedArbSpams(std::vector<TransactionFrameBasePtr>& cachedArbSpams,
+                         TransactionFrameBasePtr tx)
+{
+    // Our goal here is to explicitly identify and remove elements of the
+    // prevArbSpams set that are logically invalidated by tx (or equivalently:
+    // identify those arbspams it's safe to copy-forward). If we can't tell,
+    // it's fine to just return since the default is to copy-forward nothing.
+    // For now we only handle fine-grained invalidation of the most coarse form:
+    // invalidating an arbspam if an explicit manage-offer op or path-mayment op
+    // mentions any of the assets on the arbspam's path.
+
+    std::vector<TransactionFrameBasePtr> tmp = cachedArbSpams;
+    cachedArbSpams.clear();
+
+    std::unordered_set<Asset> assets;
+    auto const& ops = txbridge::getOperations(tx->getEnvelope());
+    for (auto const& op : ops)
+    {
+        switch (op.body.type())
+        {
+        case MANAGE_BUY_OFFER:
+            assets.insert(op.body.manageBuyOfferOp().buying);
+            assets.insert(op.body.manageBuyOfferOp().selling);
+            break;
+
+        case MANAGE_SELL_OFFER:
+            assets.insert(op.body.manageSellOfferOp().buying);
+            assets.insert(op.body.manageSellOfferOp().selling);
+            break;
+
+        case PATH_PAYMENT_STRICT_RECEIVE:
+            assets.insert(op.body.pathPaymentStrictReceiveOp().sendAsset);
+            assets.insert(op.body.pathPaymentStrictReceiveOp().destAsset);
+            for (auto const& a : op.body.pathPaymentStrictReceiveOp().path)
+            {
+                assets.insert(a);
+            }
+            break;
+
+        case PATH_PAYMENT_STRICT_SEND:
+            assets.insert(op.body.pathPaymentStrictSendOp().sendAsset);
+            assets.insert(op.body.pathPaymentStrictSendOp().destAsset);
+            for (auto const& a : op.body.pathPaymentStrictSendOp().path)
+            {
+                assets.insert(a);
+            }
+            break;
+
+        default:
+            // CLOG_INFO(Ledger, "unhandled op {}, flushing arbspam cache",
+            // (int)op.body.type());
+            return;
+        }
+    }
+
+    for (auto t : tmp)
+    {
+        auto const& ops = txbridge::getOperations(t->getEnvelope());
+        auto const& path = ops.at(0).body.pathPaymentStrictReceiveOp().path;
+        if (!std::any_of(path.begin(), path.end(), [&assets](Asset const& pa) {
+                return assets.find(pa) != assets.end();
+            }))
+        {
+            cachedArbSpams.emplace_back(t);
+        }
+    }
+    // CLOG_INFO(Ledger, "preserving {} arbspam cache entries (avoiding {}
+    // assets)", cachedArbSpams.size(), assets.size());
+}
+
+static std::string
+arbSpamToString(TransactionFrameBasePtr tx)
+{
+    auto const& ops = txbridge::getOperations(tx->getEnvelope());
+    auto const& op = ops.at(0).body.pathPaymentStrictReceiveOp();
+    bool first = true;
+    std::string s =
+        fmt::format("amt={} max={} via ", op.destAmount, op.sendMax);
+    for (auto const& a : op.path)
+    {
+        if (!first)
+        {
+            s += " -> ";
+        }
+        s += assetToString(a);
+        first = false;
+    }
+    return s;
 }
 
 void
@@ -1231,8 +1356,9 @@ LedgerManagerImpl::applyTransactions(
 
     // Keep a 1-entry local cache while processing txs so that we can identify
     // and skip the 2nd..Nth copies of a run of identical arbitrage-spam txs.
-    TransactionFrameBasePtr prevArbSpam{nullptr};
-    size_t nArbSpamTxsSkipped{0};
+    const size_t maxCachedArbSpams = 64;
+    std::vector<TransactionFrameBasePtr> cachedArbSpams;
+    size_t nArbSpamTxs{0}, nArbSpamTxsSkipped{0};
 
     for (auto tx : txs)
     {
@@ -1247,16 +1373,21 @@ LedgerManagerImpl::applyTransactions(
                    tx->getSeqNum(),
                    mApp.getConfig().toShortString(tx->getSourceID()));
 
-        // Special-case: if we are in a run of repeating arbspam, perform
-        // a no-op failing path-payment, ignoring the orderbook.
-        if (isRepeatingArbSpam(prevArbSpam, tx))
+        if (isArbSpam(tx))
         {
-            tx->markTransactionAsDoomed();
-            ++nArbSpamTxsSkipped;
-        }
-        else
-        {
-            prevArbSpam.reset();
+            // CLOG_INFO(Ledger, "arbspam: {}", arbSpamToString(tx));
+            ++nArbSpamTxs;
+
+            // Special-case: if we are in a run of repeating arbspam, perform
+            // a no-op failing path-payment, ignoring the orderbook.
+            if (std::any_of(cachedArbSpams.begin(), cachedArbSpams.end(),
+                            [tx](TransactionFrameBasePtr prevArbSpam) {
+                                return isRepeatingArbSpam(prevArbSpam, tx);
+                            }))
+            {
+                tx->markTransactionAsDoomed();
+                ++nArbSpamTxsSkipped;
+            }
         }
 
         tx->apply(mApp, ltx, tm);
@@ -1264,7 +1395,18 @@ LedgerManagerImpl::applyTransactions(
 
         if (isArbSpamThatFailedOverSendMax(tx))
         {
-            prevArbSpam = tx;
+            if (cachedArbSpams.size() >= maxCachedArbSpams)
+            {
+                rand_element(cachedArbSpams) = tx;
+            }
+            else
+            {
+                cachedArbSpams.emplace_back(tx);
+            }
+        }
+        else
+        {
+            invalidateCachedArbSpams(cachedArbSpams, tx);
         }
 
         // First gather the TransactionResultPair into the TxResultSet for
@@ -1300,10 +1442,11 @@ LedgerManagerImpl::applyTransactions(
     }
 
     logTxApplyMetrics(ltx, numTxs, numOps);
-    if (nArbSpamTxsSkipped != 0)
+    if (nArbSpamTxs != 0 || nArbSpamTxsSkipped != 0)
     {
-        CLOG_INFO(Ledger, "skipped {} repeating-arbspam txs",
-                  nArbSpamTxsSkipped);
+        CLOG_INFO(Ledger,
+                  "skipped {} repeating-arbspam txs (of {} arbspam txs)",
+                  nArbSpamTxsSkipped, nArbSpamTxs);
     }
 }
 

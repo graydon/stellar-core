@@ -89,6 +89,9 @@ class FeeBumpTransactionFrame : public TransactionFrameBase
 
     void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee) override;
 
+    void markTransactionAsDoomed() override;
+    std::vector<ClaimAtom> const& getDoomedTrail() const override;
+
     StellarMessage toStellarMessage() const override;
 
     static TransactionEnvelope
