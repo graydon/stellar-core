@@ -1140,10 +1140,18 @@ isArbSpam(TransactionFrameBasePtr tx)
 }
 
 static bool
-isArbSpamThatFailedOverSendMax(TransactionFrameBasePtr tx)
+isArbSpamThatFailedOverSendMax(TransactionFrameBasePtr tx, bool logit)
 {
     if (isArbSpam(tx))
     {
+        if (logit)
+        {
+            CLOG_INFO(Tx, "arbspam tx {} ops={} txseq={} (@ {}) --> result {}",
+                      hexAbbrev(tx->getContentsHash()), tx->getNumOperations(),
+                      tx->getSeqNum(), hexAbbrev(tx->getSourceID().ed25519()),
+                      xdr::xdr_to_string(tx->getResult()));
+        }
+
         if (tx->getResultCode() == txFAILED)
         {
             TransactionResult const& res = tx->getResult();
@@ -1196,13 +1204,58 @@ trailMayContainID(std::vector<ClaimAtom> const& trail, AccountID const& id)
     return false;
 }
 
+bool
+findRepeatingArbspam(std::vector<TransactionFrameBasePtr> const& cached,
+                     TransactionFrameBasePtr curr)
+{
+    if (getenv("DISABLE_ARBSPAM_CACHE"))
+    {
+        return false;
+    }
+    if (!isArbSpam(curr))
+    {
+        return false;
+    }
+
+    bool found{false};
+    int64 lo{0}, hi{0};
+
+    auto const& envCurr = curr->getEnvelope();
+    auto const& opCurr = txbridge::getOperations(envCurr).at(0);
+    auto const& recvCurr = opCurr.body.pathPaymentStrictReceiveOp();
+
+    for (auto prev : cached)
+    {
+        auto const& envPrev = prev->getEnvelope();
+        auto const& opPrev = txbridge::getOperations(envPrev).at(0);
+        auto const& recvPrev = opPrev.body.pathPaymentStrictReceiveOp();
+        if (recvPrev.path == recvCurr.path &&
+            !trailMayContainID(prev->getDoomedTrail(), curr->getSourceID()))
+        {
+            int64 amt = recvPrev.destAmount;
+            if (found)
+            {
+                lo = std::min(lo, amt);
+                hi = std::max(hi, amt);
+            }
+            else
+            {
+                lo = amt;
+                hi = amt;
+                found = true;
+            }
+        }
+    }
+    return found && (lo <= recvCurr.destAmount) && (recvCurr.destAmount <= hi);
+}
+
 static bool
 isRepeatingArbSpam(TransactionFrameBasePtr prev, TransactionFrameBasePtr curr)
 {
     if (isArbSpam(curr))
     {
         // Double check assumptions about prev.
-        releaseAssert(isArbSpamThatFailedOverSendMax(prev));
+        releaseAssert(isArbSpamThatFailedOverSendMax(prev, false));
 
         auto const& envPrev = prev->getEnvelope();
         auto const& envCurr = curr->getEnvelope();
@@ -1380,10 +1433,7 @@ LedgerManagerImpl::applyTransactions(
 
             // Special-case: if we are in a run of repeating arbspam, perform
             // a no-op failing path-payment, ignoring the orderbook.
-            if (std::any_of(cachedArbSpams.begin(), cachedArbSpams.end(),
-                            [tx](TransactionFrameBasePtr prevArbSpam) {
-                                return isRepeatingArbSpam(prevArbSpam, tx);
-                            }))
+            if (findRepeatingArbspam(cachedArbSpams, tx))
             {
                 tx->markTransactionAsDoomed();
                 ++nArbSpamTxsSkipped;
@@ -1393,7 +1443,8 @@ LedgerManagerImpl::applyTransactions(
         tx->apply(mApp, ltx, tm);
         results.result = tx->getResult();
 
-        if (isArbSpamThatFailedOverSendMax(tx))
+        if (isArbSpamThatFailedOverSendMax(
+                tx, ltx.loadHeader().current().ledgerSeq == 30047975))
         {
             if (cachedArbSpams.size() >= maxCachedArbSpams)
             {
