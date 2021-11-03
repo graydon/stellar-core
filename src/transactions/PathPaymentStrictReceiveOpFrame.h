@@ -25,7 +25,7 @@ class PathPaymentStrictReceiveOpFrame : public PathPaymentOpFrameBase
                                     TransactionFrame& parentTx);
 
     bool doApply(AbstractLedgerTxn& ltx,
-                 PathPaymentStrictReceiveCache& ppsrc) override;
+                 std::optional<PathPaymentStrictReceiveCache>& ppsrc) override;
     bool doApply(AbstractLedgerTxn& ltx) override;
     bool doCheckValid(uint32_t ledgerVersion) override;
 

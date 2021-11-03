@@ -858,7 +858,7 @@ class FuzzTransactionFrame : public TransactionFrame
         loadSourceAccount(ltx, ltx.loadHeader());
         processSeqNum(ltx);
         TransactionMeta tm(2);
-        PathPaymentStrictReceiveCache ppsrc;
+        std::optional<PathPaymentStrictReceiveCache> ppsrc{std::nullopt};
         applyOperations(signatureChecker, app, ltx, tm, ppsrc);
         if (getResultCode() == txINTERNAL_ERROR)
         {

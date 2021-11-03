@@ -82,9 +82,9 @@ updateResult(TransactionResult& outerRes, TransactionFrameBasePtr innerTx)
 }
 
 bool
-FeeBumpTransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
-                               TransactionMeta& meta,
-                               PathPaymentStrictReceiveCache& ppsrc)
+FeeBumpTransactionFrame::apply(
+    Application& app, AbstractLedgerTxn& ltx, TransactionMeta& meta,
+    std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     try
     {

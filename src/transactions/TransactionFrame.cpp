@@ -721,10 +721,10 @@ TransactionFrame::markResultFailed()
 }
 
 bool
-TransactionFrame::applyOperations(SignatureChecker& signatureChecker,
-                                  Application& app, AbstractLedgerTxn& ltx,
-                                  TransactionMeta& outerMeta,
-                                  PathPaymentStrictReceiveCache& ppsrc)
+TransactionFrame::applyOperations(
+    SignatureChecker& signatureChecker, Application& app,
+    AbstractLedgerTxn& ltx, TransactionMeta& outerMeta,
+    std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     ZoneScoped;
     try
@@ -839,7 +839,7 @@ TransactionFrame::applyOperations(SignatureChecker& signatureChecker,
 bool
 TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
                         TransactionMeta& meta, bool chargeFee,
-                        PathPaymentStrictReceiveCache& ppsrc)
+                        std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     ZoneScoped;
     try
@@ -875,13 +875,16 @@ TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
             // correct TransactionResult so we must crash.
             auto res = valid &&
                        applyOperations(signatureChecker, app, ltx, meta, ppsrc);
-            if (res)
+            if (ppsrc.has_value())
             {
-                ppsrc.transactionSuccessful();
-            }
-            else
-            {
-                ppsrc.transactionFailed();
+                if (res)
+                {
+                    ppsrc.value().transactionSuccessful();
+                }
+                else
+                {
+                    ppsrc.value().transactionFailed();
+                }
             }
             return res;
         }
@@ -911,7 +914,7 @@ TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
 bool
 TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
                         TransactionMeta& meta,
-                        PathPaymentStrictReceiveCache& ppsrc)
+                        std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     return apply(app, ltx, meta, true, ppsrc);
 }

@@ -18,7 +18,7 @@ class PathPaymentOpFrameBase : public OperationFrame
                  Asset const& sendAsset, int64_t maxSend, int64_t& amountSend,
                  Asset const& recvAsset, int64_t maxRecv, int64_t& amountRecv,
                  RoundingType round, std::vector<ClaimAtom>& offerTrail,
-                 PathPaymentCacheInformation& cacheInfo);
+                 std::optional<PathPaymentCacheInformation>& cacheInfo);
 
     bool shouldBypassIssuerCheck(std::vector<Asset> const& path) const;
 

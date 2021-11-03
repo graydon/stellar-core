@@ -25,16 +25,13 @@ PathPaymentStrictReceiveOpFrame::PathPaymentStrictReceiveOpFrame(
 bool
 PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
 {
-    // Plain payments happen to run by making a PathPaymentStrictReceive and
-    // calling the 1-arg version -- which is fine since we have to implement
-    // it as a pure-virtual override anyways. Just make a throwaway cache.
-    PathPaymentStrictReceiveCache ppsrc;
+    std::optional<PathPaymentStrictReceiveCache> ppsrc{std::nullopt};
     return doApply(ltx, ppsrc);
 }
 
 bool
-PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx,
-                                         PathPaymentStrictReceiveCache& ppsrc)
+PathPaymentStrictReceiveOpFrame::doApply(
+    AbstractLedgerTxn& ltx, std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     ZoneNamedN(applyZone, "PathPaymentStrictReceiveOp apply", true);
     std::string pathStr = assetToString(getSourceAsset());
@@ -79,10 +76,11 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx,
                     mPathPayment.path.rend());
     fullPath.emplace_back(getSourceAsset());
 
-    if (ppsrc.isGuaranteedToFail(ltx.loadHeader().current().ledgerVersion,
-                                 getSourceID(), mPathPayment.destAmount,
-                                 mPathPayment.sendMax, getDestAsset(), fullPath,
-                                 getMaxOffersToCross(), mResult))
+    if (ppsrc.has_value() &&
+        ppsrc.value().isGuaranteedToFail(
+            ltx.loadHeader().current().ledgerVersion, getSourceID(),
+            mPathPayment.destAmount, mPathPayment.sendMax, getDestAsset(),
+            fullPath, getMaxOffersToCross(), mResult))
     {
         return false;
     }
@@ -117,13 +115,19 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx,
         int64_t amountSend = 0;
         int64_t amountRecv = 0;
         std::vector<ClaimAtom> offerTrail;
-        PathPaymentCacheInformation cacheInfo;
+        auto cacheInfo = ppsrc.has_value()
+                             ? std::make_optional<PathPaymentCacheInformation>()
+                             : std::nullopt;
         auto convRes = convert(ltx, maxOffersToCross, sendAsset, INT64_MAX,
                                amountSend, recvAsset, maxAmountRecv, amountRecv,
                                RoundingType::PATH_PAYMENT_STRICT_RECEIVE,
                                offerTrail, cacheInfo);
 
-        ppsrc.insert(sendAsset, recvAsset, std::move(cacheInfo));
+        if (ppsrc.has_value())
+        {
+            ppsrc.value().insert(sendAsset, recvAsset,
+                                 std::move(cacheInfo.value()));
+        }
 
         if (!convRes)
         {

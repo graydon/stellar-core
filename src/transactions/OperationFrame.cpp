@@ -129,7 +129,7 @@ OperationFrame::OperationFrame(Operation const& op, OperationResult& res,
 
 bool
 OperationFrame::doApply(AbstractLedgerTxn& ltx,
-                        PathPaymentStrictReceiveCache& _ppsrc)
+                        std::optional<PathPaymentStrictReceiveCache>& _ppsrc)
 {
     // By default the 2-arg form calls through to the 1-arg form. We reverse
     // this relationship in the PathPaymentStrictReceiveOpFrame case.
@@ -139,7 +139,7 @@ OperationFrame::doApply(AbstractLedgerTxn& ltx,
 bool
 OperationFrame::apply(SignatureChecker& signatureChecker,
                       AbstractLedgerTxn& ltx,
-                      PathPaymentStrictReceiveCache& ppsrc)
+                      std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     ZoneScoped;
     bool res;

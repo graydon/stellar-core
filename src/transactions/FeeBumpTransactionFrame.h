@@ -57,7 +57,7 @@ class FeeBumpTransactionFrame : public TransactionFrameBase
     virtual ~FeeBumpTransactionFrame(){};
 
     bool apply(Application& app, AbstractLedgerTxn& ltx, TransactionMeta& meta,
-               PathPaymentStrictReceiveCache& ppsrc) override;
+               std::optional<PathPaymentStrictReceiveCache>& ppsrc) override;
 
     bool checkValid(AbstractLedgerTxn& ltxOuter, SequenceNumber current,
                     uint64_t lowerBoundCloseTimeOffset,

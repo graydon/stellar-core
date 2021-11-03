@@ -211,13 +211,14 @@ ManageOfferOpFrameBase::computeOfferExchangeParameters(
 bool
 ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter)
 {
-    PathPaymentStrictReceiveCache ppsrc;
+    std::optional<PathPaymentStrictReceiveCache> ppsrc{std::nullopt};
     return doApply(ltxOuter, ppsrc);
 }
 
 bool
-ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter,
-                                PathPaymentStrictReceiveCache& ppsrc)
+ManageOfferOpFrameBase::doApply(
+    AbstractLedgerTxn& ltxOuter,
+    std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     ZoneNamedN(applyZone, "ManageOfferOp apply", true);
     std::string pairStr = assetToString(mSheep);
@@ -345,7 +346,7 @@ ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter,
         int64_t sheepSent, wheatReceived;
         std::vector<ClaimAtom> offerTrail;
         Price maxWheatPrice(mPrice.d, mPrice.n);
-        PathPaymentCacheInformation cacheInfo;
+        std::optional<PathPaymentCacheInformation> cacheInfo{std::nullopt};
         ConvertResult r = convertWithOffersAndPools(
             ltx, mSheep, maxSheepSend, sheepSent, mWheat, maxWheatReceive,
             wheatReceived, RoundingType::NORMAL,
@@ -533,8 +534,11 @@ ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter,
         }
     }
 
-    ppsrc.invalidate(mSheep, mWheat);
-    ppsrc.invalidate(mWheat, mSheep);
+    if (ppsrc.has_value())
+    {
+        ppsrc.value().invalidate(mSheep, mWheat);
+        ppsrc.value().invalidate(mWheat, mSheep);
+    }
     ltx.commit();
     return true;
 }

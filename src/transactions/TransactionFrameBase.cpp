@@ -30,7 +30,7 @@ bool
 TransactionFrameBase::apply(Application& app, AbstractLedgerTxn& ltx,
                             TransactionMeta& meta)
 {
-    PathPaymentStrictReceiveCache ppsrc;
+    std::optional<PathPaymentStrictReceiveCache> ppsrc{std::nullopt};
     return apply(app, ltx, meta, ppsrc);
 }
 

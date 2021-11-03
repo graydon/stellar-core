@@ -31,13 +31,13 @@ PathPaymentStrictSendOpFrame::isOpSupported(LedgerHeader const& header) const
 bool
 PathPaymentStrictSendOpFrame::doApply(AbstractLedgerTxn& ltx)
 {
-    PathPaymentStrictReceiveCache ppsrc;
+    std::optional<PathPaymentStrictReceiveCache> ppsrc{std::nullopt};
     return doApply(ltx, ppsrc);
 }
 
 bool
-PathPaymentStrictSendOpFrame::doApply(AbstractLedgerTxn& ltx,
-                                      PathPaymentStrictReceiveCache& ppsrc)
+PathPaymentStrictSendOpFrame::doApply(
+    AbstractLedgerTxn& ltx, std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     ZoneNamedN(applyZone, "PathPaymentStrictSendOp apply", true);
     std::string pathStr = assetToString(getSourceAsset());
@@ -99,7 +99,7 @@ PathPaymentStrictSendOpFrame::doApply(AbstractLedgerTxn& ltx,
         int64_t amountSend = 0;
         int64_t amountRecv = 0;
         std::vector<ClaimAtom> offerTrail;
-        PathPaymentCacheInformation cacheInfo;
+        std::optional<PathPaymentCacheInformation> cacheInfo{std::nullopt};
         if (!convert(ltx, maxOffersToCross, sendAsset, maxAmountSend,
                      amountSend, recvAsset, INT64_MAX, amountRecv,
                      RoundingType::PATH_PAYMENT_STRICT_SEND, offerTrail,
@@ -107,7 +107,10 @@ PathPaymentStrictSendOpFrame::doApply(AbstractLedgerTxn& ltx,
         {
             return false;
         }
-        ppsrc.invalidate(sendAsset, recvAsset);
+        if (ppsrc.has_value())
+        {
+            ppsrc.value().invalidate(sendAsset, recvAsset);
+        }
 
         maxAmountSend = amountRecv;
         sendAsset = recvAsset;

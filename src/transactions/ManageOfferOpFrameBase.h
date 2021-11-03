@@ -43,7 +43,7 @@ class ManageOfferOpFrameBase : public OperationFrame
 
     bool doApply(AbstractLedgerTxn& lsOuter) override;
     bool doApply(AbstractLedgerTxn& lsOuter,
-                 PathPaymentStrictReceiveCache& ppsrc) override;
+                 std::optional<PathPaymentStrictReceiveCache>& ppsrc) override;
     void
     insertLedgerKeysToPrefetch(UnorderedSet<LedgerKey>& keys) const override;
 

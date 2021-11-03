@@ -29,7 +29,7 @@ class PathPaymentStrictSendOpFrame : public PathPaymentOpFrameBase
 
     bool doApply(AbstractLedgerTxn& ltx) override;
     bool doApply(AbstractLedgerTxn& ltx,
-                 PathPaymentStrictReceiveCache& ppsrc) override;
+                 std::optional<PathPaymentStrictReceiveCache>& ppsrc) override;
     bool doCheckValid(uint32_t ledgerVersion) override;
 
     bool checkTransfer(int64_t maxSend, int64_t amountSend, int64_t maxRecv,

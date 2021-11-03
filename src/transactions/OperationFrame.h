@@ -45,7 +45,7 @@ class OperationFrame
 
     // Subclasses can override this if they want a ppsrc.
     virtual bool doApply(AbstractLedgerTxn& ltx,
-                         PathPaymentStrictReceiveCache& ppsrc);
+                         std::optional<PathPaymentStrictReceiveCache>& ppsrc);
 
     // Most will simply override this, which is called by the base 2-arg apply.
     virtual bool doApply(AbstractLedgerTxn& ltx) = 0;
@@ -90,7 +90,7 @@ class OperationFrame
                     AbstractLedgerTxn& ltxOuter, bool forApply);
 
     bool apply(SignatureChecker& signatureChecker, AbstractLedgerTxn& ltx,
-               PathPaymentStrictReceiveCache& ppsrc);
+               std::optional<PathPaymentStrictReceiveCache>& ppsrc);
 
     Operation const&
     getOperation() const

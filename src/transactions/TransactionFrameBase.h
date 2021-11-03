@@ -28,7 +28,7 @@ class TransactionFrameBase
 
     virtual bool apply(Application& app, AbstractLedgerTxn& ltx,
                        TransactionMeta& meta,
-                       PathPaymentStrictReceiveCache& ppsrc) = 0;
+                       std::optional<PathPaymentStrictReceiveCache>& ppsrc) = 0;
 
     // version without ppsrc
     bool apply(Application& app, AbstractLedgerTxn& ltx, TransactionMeta& meta);

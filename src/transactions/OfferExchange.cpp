@@ -1102,7 +1102,7 @@ crossOfferV10(AbstractLedgerTxn& ltx, LedgerTxnEntry& sellingWheatOffer,
               int64_t maxWheatReceived, int64_t& numWheatReceived,
               int64_t maxSheepSend, int64_t& numSheepSend, bool& wheatStays,
               RoundingType round, std::vector<ClaimAtom>& offerTrail,
-              CacheableOfferParameters& parameters)
+              std::optional<CacheableOfferParameters>& parameters)
 {
     ZoneScoped;
     releaseAssertOrThrow(maxWheatReceived > 0);
@@ -1221,10 +1221,13 @@ crossOfferV10(AbstractLedgerTxn& ltx, LedgerTxnEntry& sellingWheatOffer,
         ltxInner.commit();
     }
 
-    parameters.sellerID = accountBID;
-    parameters.price = offer.price;
-    parameters.maxWheatSend = maxWheatSend;
-    parameters.maxSheepReceive = maxSheepReceive;
+    if (parameters.has_value())
+    {
+        parameters.value().sellerID = accountBID;
+        parameters.value().price = offer.price;
+        parameters.value().maxWheatSend = maxWheatSend;
+        parameters.value().maxSheepReceive = maxSheepReceive;
+    }
 
     // Note: The previous block creates a nested LedgerTxn so all entries are
     // deactivated at this point. Specifically, you cannot use sellingWheatOffer
@@ -1387,7 +1390,7 @@ exchangeWithPool(AbstractLedgerTxn& ltxOuter, Asset const& toPoolAsset,
                  Asset const& fromPoolAsset, int64_t maxReceiveFromPool,
                  int64_t& fromPool, RoundingType round,
                  int64_t maxOffersToCross,
-                 PathPaymentCacheInformation& cacheInfo)
+                 std::optional<PathPaymentCacheInformation>& cacheInfo)
 {
     LedgerTxn ltx(ltxOuter);
 
@@ -1438,17 +1441,20 @@ exchangeWithPool(AbstractLedgerTxn& ltxOuter, Asset const& toPoolAsset,
         return false;
     }
 
-    if (!cacheInfo.liquidityPool)
+    if (cacheInfo && !cacheInfo->liquidityPool)
     {
-        cacheInfo.liquidityPool = std::make_optional<LiquidityPoolState>();
+        cacheInfo->liquidityPool = std::make_optional<LiquidityPoolState>();
     }
 
     bool res = false;
     if (toPoolAsset == cp().params.assetA &&
         fromPoolAsset == cp().params.assetB)
     {
-        cacheInfo.liquidityPool->reserveSend = cp().reserveA;
-        cacheInfo.liquidityPool->reserveReceive = cp().reserveB;
+        if (cacheInfo)
+        {
+            cacheInfo->liquidityPool->reserveSend = cp().reserveA;
+            cacheInfo->liquidityPool->reserveReceive = cp().reserveB;
+        }
 
         res = exchangeWithPool(cp().reserveA, maxSendToPool, toPool,
                                cp().reserveB, maxReceiveFromPool, fromPool,
@@ -1465,8 +1471,11 @@ exchangeWithPool(AbstractLedgerTxn& ltxOuter, Asset const& toPoolAsset,
     else if (fromPoolAsset == cp().params.assetA &&
              toPoolAsset == cp().params.assetB)
     {
-        cacheInfo.liquidityPool->reserveSend = cp().reserveB;
-        cacheInfo.liquidityPool->reserveReceive = cp().reserveA;
+        if (cacheInfo)
+        {
+            cacheInfo->liquidityPool->reserveSend = cp().reserveB;
+            cacheInfo->liquidityPool->reserveReceive = cp().reserveA;
+        }
 
         res = exchangeWithPool(cp().reserveB, maxSendToPool, toPool,
                                cp().reserveA, maxReceiveFromPool, fromPool,
@@ -1500,7 +1509,7 @@ convertWithOffers(
     int64_t& wheatReceived, RoundingType round,
     std::function<OfferFilterResult(LedgerTxnEntry const&)> filter,
     std::vector<ClaimAtom>& offerTrail, int64_t maxOffersToCross,
-    PathPaymentCacheInformation& cacheInfo)
+    std::optional<PathPaymentCacheInformation>& cacheInfo)
 {
     ZoneScoped;
     std::string pairStr = assetToString(sheep);
@@ -1513,10 +1522,13 @@ convertWithOffers(
     releaseAssertOrThrow(offerTrail.empty());
 
     // Cache information should be properly populated before the start
-    releaseAssertOrThrow(cacheInfo.amountReceiveBeforeLast == 0);
-    releaseAssertOrThrow(cacheInfo.amountSendBeforeLast == 0);
-    releaseAssertOrThrow(!cacheInfo.lastCross);
-    releaseAssertOrThrow(cacheInfo.sellerIDsBeforeLast.empty());
+    if (cacheInfo.has_value())
+    {
+        releaseAssertOrThrow(cacheInfo.value().amountReceiveBeforeLast == 0);
+        releaseAssertOrThrow(cacheInfo.value().amountSendBeforeLast == 0);
+        releaseAssertOrThrow(!cacheInfo.value().lastCross);
+        releaseAssertOrThrow(cacheInfo.value().sellerIDsBeforeLast.empty());
+    }
 
     sheepSend = 0;
     wheatReceived = 0;
@@ -1580,25 +1592,30 @@ convertWithOffers(
         CrossOfferResult cor;
         if (ltx.loadHeader().current().ledgerVersion >= 10)
         {
-            if (cacheInfo.lastCross)
+            if (cacheInfo.has_value())
             {
-                cacheInfo.amountReceiveBeforeLast = wheatReceived;
-                cacheInfo.amountSendBeforeLast = sheepSend;
-                cacheInfo.numOffersCrossedBeforeLast = offerTrail.size();
-                cacheInfo.sellerIDsBeforeLast.emplace_back(
-                    cacheInfo.lastCross->sellerID);
-            }
-            else
-            {
-                cacheInfo.lastCross =
-                    std::make_optional<CacheableOfferParameters>();
+                if (cacheInfo.value().lastCross.has_value())
+                {
+                    cacheInfo.value().amountReceiveBeforeLast = wheatReceived;
+                    cacheInfo.value().amountSendBeforeLast = sheepSend;
+                    cacheInfo.value().numOffersCrossedBeforeLast =
+                        offerTrail.size();
+                    cacheInfo.value().sellerIDsBeforeLast.emplace_back(
+                        cacheInfo.value().lastCross->sellerID);
+                }
+                else
+                {
+                    cacheInfo.value().lastCross =
+                        std::make_optional<CacheableOfferParameters>();
+                }
             }
 
             bool wheatStays;
-            cor = crossOfferV10(ltx, wheatOffer, maxWheatReceive,
-                                numWheatReceived, maxSheepSend, numSheepSend,
-                                wheatStays, round, offerTrail,
-                                *cacheInfo.lastCross);
+            std::optional<CacheableOfferParameters> nocop{std::nullopt};
+            cor = crossOfferV10(
+                ltx, wheatOffer, maxWheatReceive, numWheatReceived,
+                maxSheepSend, numSheepSend, wheatStays, round, offerTrail,
+                cacheInfo.has_value() ? cacheInfo.value().lastCross : nocop);
             needMore = !wheatStays;
         }
         else
@@ -1636,7 +1653,10 @@ convertWithOffers(
         }
     }
 
-    cacheInfo.areNoRemainingOffers = true;
+    if (cacheInfo.has_value())
+    {
+        cacheInfo.value().areNoRemainingOffers = true;
+    }
 
     if ((ltxOuter.loadHeader().current().ledgerVersion < 10) || !needMore)
     {
@@ -1688,7 +1708,8 @@ maybeConvertWithOffers(
     int64_t& wheatReceived, RoundingType round,
     std::function<OfferFilterResult(LedgerTxnEntry const&)> filter,
     std::vector<ClaimAtom>& offerTrail, int64_t maxOffersToCross,
-    ConvertResult& convertRes, PathPaymentCacheInformation& cacheInfo)
+    ConvertResult& convertRes,
+    std::optional<PathPaymentCacheInformation>& cacheInfo)
 {
     // Compute the exchange from the liquidity pool but don't actually do the
     // exchange
@@ -1737,7 +1758,7 @@ convertWithOffersAndPools(
     int64_t& wheatReceived, RoundingType round,
     std::function<OfferFilterResult(LedgerTxnEntry const&)> filter,
     std::vector<ClaimAtom>& offerTrail, int64_t maxOffersToCross,
-    PathPaymentCacheInformation& cacheInfo)
+    std::optional<PathPaymentCacheInformation>& cacheInfo)
 {
     ZoneScoped;
 
@@ -1766,6 +1787,9 @@ convertWithOffersAndPools(
     wheatReceived = 0;
 
     // Compute the exchange from the liquidity pool and actually do the exchange
+    //
+    // cacheInfo has already been set by this function, but its harmless to set
+    // it again
     exchangeWithPool(ltxOuter, sheep, maxSheepSend, sheepSend, wheat,
                      maxWheatReceive, wheatReceived, round, maxOffersToCross,
                      cacheInfo);

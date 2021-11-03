@@ -1109,7 +1109,7 @@ LedgerManagerImpl::applyTransactions(
     }
 
     prefetchTransactionData(txs);
-    PathPaymentStrictReceiveCache ppsrc;
+    auto ppsrc = std::make_optional<PathPaymentStrictReceiveCache>();
 
     for (auto tx : txs)
     {
@@ -1158,7 +1158,7 @@ LedgerManagerImpl::applyTransactions(
         }
     }
 
-    logTxApplyMetrics(ltx, numTxs, numOps, ppsrc);
+    logTxApplyMetrics(ltx, numTxs, numOps, *ppsrc);
 }
 
 void
