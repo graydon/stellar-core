@@ -9,6 +9,7 @@
 #include "ledger/LedgerManager.h"
 #include "main/PersistentState.h"
 #include "transactions/TransactionFrame.h"
+#include "transactions/TransactionFrameBase.h"
 #include "util/XDRStream.h"
 #include "xdr/Stellar-ledger.h"
 #include <filesystem>
@@ -35,6 +36,7 @@ class Application;
 class Database;
 class LedgerTxnHeader;
 class BasicWork;
+class PathPaymentStrictReceiveCache;
 
 class LedgerManagerImpl : public LedgerManager
 {
@@ -92,8 +94,8 @@ class LedgerManagerImpl : public LedgerManager
 
     void advanceLedgerPointers(LedgerHeader const& header,
                                bool debugLog = true);
-    void logTxApplyMetrics(AbstractLedgerTxn& ltx, size_t numTxs,
-                           size_t numOps);
+    void logTxApplyMetrics(AbstractLedgerTxn& ltx, size_t numTxs, size_t numOps,
+                           PathPaymentStrictReceiveCache& ppsrc);
 
   public:
     LedgerManagerImpl(Application& app);

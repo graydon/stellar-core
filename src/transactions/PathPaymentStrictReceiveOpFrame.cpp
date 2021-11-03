@@ -25,6 +25,17 @@ PathPaymentStrictReceiveOpFrame::PathPaymentStrictReceiveOpFrame(
 bool
 PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
 {
+    // Plain payments happen to run by making a PathPaymentStrictReceive and
+    // calling the 1-arg version -- which is fine since we have to implement
+    // it as a pure-virtual override anyways. Just make a throwaway cache.
+    PathPaymentStrictReceiveCache ppsrc;
+    return doApply(ltx, ppsrc);
+}
+
+bool
+PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx,
+                                         PathPaymentStrictReceiveCache& ppsrc)
+{
     ZoneNamedN(applyZone, "PathPaymentStrictReceiveOp apply", true);
     std::string pathStr = assetToString(getSourceAsset());
     for (auto const& asset : mPathPayment.path)
@@ -68,15 +79,12 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
                     mPathPayment.path.rend());
     fullPath.emplace_back(getSourceAsset());
 
+    if (ppsrc.isGuaranteedToFail(ltx.loadHeader().current().ledgerVersion,
+                                 getSourceID(), mPathPayment.destAmount,
+                                 mPathPayment.sendMax, getDestAsset(), fullPath,
+                                 getMaxOffersToCross(), mResult))
     {
-        auto& cache = PathPaymentStrictReceiveCache::getInstance();
-        if (cache.isGuaranteedToFail(ltx.loadHeader().current().ledgerVersion,
-                                     getSourceID(), mPathPayment.destAmount,
-                                     mPathPayment.sendMax, getDestAsset(),
-                                     fullPath, getMaxOffersToCross(), mResult))
-        {
-            return false;
-        }
+        return false;
     }
 
     // Walk the path
@@ -115,8 +123,7 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
                                RoundingType::PATH_PAYMENT_STRICT_RECEIVE,
                                offerTrail, cacheInfo);
 
-        PathPaymentStrictReceiveCache::getInstance().insert(
-            sendAsset, recvAsset, std::move(cacheInfo));
+        ppsrc.insert(sendAsset, recvAsset, std::move(cacheInfo));
 
         if (!convRes)
         {

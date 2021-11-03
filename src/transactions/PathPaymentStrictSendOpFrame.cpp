@@ -31,6 +31,14 @@ PathPaymentStrictSendOpFrame::isOpSupported(LedgerHeader const& header) const
 bool
 PathPaymentStrictSendOpFrame::doApply(AbstractLedgerTxn& ltx)
 {
+    PathPaymentStrictReceiveCache ppsrc;
+    return doApply(ltx, ppsrc);
+}
+
+bool
+PathPaymentStrictSendOpFrame::doApply(AbstractLedgerTxn& ltx,
+                                      PathPaymentStrictReceiveCache& ppsrc)
+{
     ZoneNamedN(applyZone, "PathPaymentStrictSendOp apply", true);
     std::string pathStr = assetToString(getSourceAsset());
     for (auto const& asset : mPathPayment.path)
@@ -99,8 +107,7 @@ PathPaymentStrictSendOpFrame::doApply(AbstractLedgerTxn& ltx)
         {
             return false;
         }
-        PathPaymentStrictReceiveCache::getInstance().invalidate(sendAsset,
-                                                                recvAsset);
+        ppsrc.invalidate(sendAsset, recvAsset);
 
         maxAmountSend = amountRecv;
         sendAsset = recvAsset;

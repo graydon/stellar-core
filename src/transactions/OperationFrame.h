@@ -7,6 +7,7 @@
 #include "ledger/LedgerHashUtils.h"
 #include "ledger/LedgerManager.h"
 #include "overlay/StellarXDR.h"
+#include "transactions/TransactionFrameBase.h"
 #include "util/types.h"
 #include <memory>
 
@@ -24,6 +25,7 @@ class LedgerTxnHeader;
 
 class SignatureChecker;
 class TransactionFrame;
+class PathPaymentStrictReceiveCache;
 
 enum class ThresholdLevel
 {
@@ -40,6 +42,12 @@ class OperationFrame
     OperationResult& mResult;
 
     virtual bool doCheckValid(uint32_t ledgerVersion) = 0;
+
+    // Subclasses can override this if they want a ppsrc.
+    virtual bool doApply(AbstractLedgerTxn& ltx,
+                         PathPaymentStrictReceiveCache& ppsrc);
+
+    // Most will simply override this, which is called by the base 2-arg apply.
     virtual bool doApply(AbstractLedgerTxn& ltx) = 0;
 
     // returns the threshold this operation requires
@@ -81,7 +89,8 @@ class OperationFrame
     bool checkValid(SignatureChecker& signatureChecker,
                     AbstractLedgerTxn& ltxOuter, bool forApply);
 
-    bool apply(SignatureChecker& signatureChecker, AbstractLedgerTxn& ltx);
+    bool apply(SignatureChecker& signatureChecker, AbstractLedgerTxn& ltx,
+               PathPaymentStrictReceiveCache& ppsrc);
 
     Operation const&
     getOperation() const

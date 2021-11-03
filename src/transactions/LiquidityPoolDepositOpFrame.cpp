@@ -187,6 +187,14 @@ updateBalance(LedgerTxnHeader& header, TrustLineWrapper& tl,
 bool
 LiquidityPoolDepositOpFrame::doApply(AbstractLedgerTxn& ltx)
 {
+    PathPaymentStrictReceiveCache ppsrc;
+    return doApply(ltx, ppsrc);
+}
+
+bool
+LiquidityPoolDepositOpFrame::doApply(AbstractLedgerTxn& ltx,
+                                     PathPaymentStrictReceiveCache& ppsrc)
+{
     // Don't need TrustLineWrapper here because pool share trust lines cannot be
     // issuer trust lines.
     auto tlPool = loadPoolShareTrustLine(ltx, getSourceID(),
@@ -305,10 +313,8 @@ LiquidityPoolDepositOpFrame::doApply(AbstractLedgerTxn& ltx)
         throw std::runtime_error("insufficient liquidity pool limit");
     }
 
-    PathPaymentStrictReceiveCache::getInstance().invalidate(cpp().assetA,
-                                                            cpp().assetB);
-    PathPaymentStrictReceiveCache::getInstance().invalidate(cpp().assetB,
-                                                            cpp().assetA);
+    ppsrc.invalidate(cpp().assetA, cpp().assetB);
+    ppsrc.invalidate(cpp().assetB, cpp().assetA);
     innerResult().code(LIQUIDITY_POOL_DEPOSIT_SUCCESS);
     return true;
 }

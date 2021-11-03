@@ -128,8 +128,18 @@ OperationFrame::OperationFrame(Operation const& op, OperationResult& res,
 }
 
 bool
+OperationFrame::doApply(AbstractLedgerTxn& ltx,
+                        PathPaymentStrictReceiveCache& _ppsrc)
+{
+    // By default the 2-arg form calls through to the 1-arg form. We reverse
+    // this relationship in the PathPaymentStrictReceiveOpFrame case.
+    return doApply(ltx);
+}
+
+bool
 OperationFrame::apply(SignatureChecker& signatureChecker,
-                      AbstractLedgerTxn& ltx)
+                      AbstractLedgerTxn& ltx,
+                      PathPaymentStrictReceiveCache& ppsrc)
 {
     ZoneScoped;
     bool res;
@@ -137,7 +147,7 @@ OperationFrame::apply(SignatureChecker& signatureChecker,
     res = checkValid(signatureChecker, ltx, true);
     if (res)
     {
-        res = doApply(ltx);
+        res = doApply(ltx, ppsrc);
         CLOG_TRACE(Tx, "{}", xdr_to_string(mResult, "OperationResult"));
     }
 

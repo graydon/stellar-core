@@ -56,12 +56,5 @@ class PathPaymentStrictReceiveCache
     void transactionSuccessful();
 
     void log();
-
-    static PathPaymentStrictReceiveCache&
-    getInstance()
-    {
-        static PathPaymentStrictReceiveCache ppsrc;
-        return ppsrc;
-    }
 };
 }

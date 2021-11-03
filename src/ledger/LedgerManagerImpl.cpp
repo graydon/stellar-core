@@ -1158,17 +1158,18 @@ LedgerManagerImpl::applyTransactions(
         }
     }
 
-    logTxApplyMetrics(ltx, numTxs, numOps);
+    logTxApplyMetrics(ltx, numTxs, numOps, ppsrc);
 }
 
 void
 LedgerManagerImpl::logTxApplyMetrics(AbstractLedgerTxn& ltx, size_t numTxs,
-                                     size_t numOps)
+                                     size_t numOps,
+                                     PathPaymentStrictReceiveCache& ppsrc)
 {
     auto ledgerSeq = ltx.loadHeader().current().ledgerSeq;
     auto hitRate = mApp.getLedgerTxnRoot().getPrefetchHitRate() * 100;
 
-    PathPaymentStrictReceiveCache::getInstance().log();
+    ppsrc.log();
 
     CLOG_DEBUG(Ledger, "Ledger: {} txs: {}, ops: {}, prefetch hit rate (%): {}",
                ledgerSeq, numTxs, numOps, hitRate);

@@ -9,6 +9,8 @@
 namespace stellar
 {
 
+class PathPaymentStrictReceiveCache;
+
 class PathPaymentStrictSendOpFrame : public PathPaymentOpFrameBase
 {
     PathPaymentStrictSendOp const& mPathPayment;
@@ -26,6 +28,8 @@ class PathPaymentStrictSendOpFrame : public PathPaymentOpFrameBase
     bool isOpSupported(LedgerHeader const& header) const override;
 
     bool doApply(AbstractLedgerTxn& ltx) override;
+    bool doApply(AbstractLedgerTxn& ltx,
+                 PathPaymentStrictReceiveCache& ppsrc) override;
     bool doCheckValid(uint32_t ledgerVersion) override;
 
     bool checkTransfer(int64_t maxSend, int64_t amountSend, int64_t maxRecv,

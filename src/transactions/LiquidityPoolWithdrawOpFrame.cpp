@@ -28,6 +28,14 @@ LiquidityPoolWithdrawOpFrame::isOpSupported(LedgerHeader const& header) const
 bool
 LiquidityPoolWithdrawOpFrame::doApply(AbstractLedgerTxn& ltx)
 {
+    PathPaymentStrictReceiveCache ppsrc;
+    return doApply(ltx, ppsrc);
+}
+
+bool
+LiquidityPoolWithdrawOpFrame::doApply(AbstractLedgerTxn& ltx,
+                                      PathPaymentStrictReceiveCache& ppsrc)
+{
     auto tlPool = loadPoolShareTrustLine(
         ltx, getSourceID(), mLiquidityPoolWithdraw.liquidityPoolID);
     if (!tlPool)
@@ -93,10 +101,10 @@ LiquidityPoolWithdrawOpFrame::doApply(AbstractLedgerTxn& ltx)
         throw std::runtime_error("insufficient reserveB");
     }
 
-    PathPaymentStrictReceiveCache::getInstance().invalidate(
-        constantProduct().params.assetA, constantProduct().params.assetB);
-    PathPaymentStrictReceiveCache::getInstance().invalidate(
-        constantProduct().params.assetB, constantProduct().params.assetA);
+    ppsrc.invalidate(constantProduct().params.assetA,
+                     constantProduct().params.assetB);
+    ppsrc.invalidate(constantProduct().params.assetB,
+                     constantProduct().params.assetA);
     innerResult().code(LIQUIDITY_POOL_WITHDRAW_SUCCESS);
     return true;
 }

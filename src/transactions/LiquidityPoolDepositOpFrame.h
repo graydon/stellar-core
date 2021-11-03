@@ -41,7 +41,10 @@ class LiquidityPoolDepositOpFrame : public OperationFrame
 
     bool isOpSupported(LedgerHeader const& header) const override;
 
+    bool doApply(AbstractLedgerTxn& ltx,
+                 PathPaymentStrictReceiveCache& ppsrc) override;
     bool doApply(AbstractLedgerTxn& ltx) override;
+
     bool doCheckValid(uint32_t ledgerVersion) override;
     void
     insertLedgerKeysToPrefetch(UnorderedSet<LedgerKey>& keys) const override;

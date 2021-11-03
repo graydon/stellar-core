@@ -5,6 +5,7 @@
 #pragma once
 
 #include "transactions/PathPaymentOpFrameBase.h"
+#include "transactions/TransactionFrameBase.h"
 
 namespace stellar
 {
@@ -23,6 +24,8 @@ class PathPaymentStrictReceiveOpFrame : public PathPaymentOpFrameBase
     PathPaymentStrictReceiveOpFrame(Operation const& op, OperationResult& res,
                                     TransactionFrame& parentTx);
 
+    bool doApply(AbstractLedgerTxn& ltx,
+                 PathPaymentStrictReceiveCache& ppsrc) override;
     bool doApply(AbstractLedgerTxn& ltx) override;
     bool doCheckValid(uint32_t ledgerVersion) override;
 

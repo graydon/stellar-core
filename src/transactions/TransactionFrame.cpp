@@ -744,7 +744,7 @@ TransactionFrame::applyOperations(SignatureChecker& signatureChecker,
         {
             auto time = opTimer.TimeScope();
             LedgerTxn ltxOp(ltxTx);
-            bool txRes = op->apply(signatureChecker, ltxOp);
+            bool txRes = op->apply(signatureChecker, ltxOp, ppsrc);
 
             if (!txRes)
             {
@@ -873,16 +873,15 @@ TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
             // This should only throw if the logging during exception handling
             // for applyOperations throws. In that case, we may not have the
             // correct TransactionResult so we must crash.
-            auto& cache = PathPaymentStrictReceiveCache::getInstance();
             auto res = valid &&
                        applyOperations(signatureChecker, app, ltx, meta, ppsrc);
             if (res)
             {
-                cache.transactionSuccessful();
+                ppsrc.transactionSuccessful();
             }
             else
             {
-                cache.transactionFailed();
+                ppsrc.transactionFailed();
             }
             return res;
         }

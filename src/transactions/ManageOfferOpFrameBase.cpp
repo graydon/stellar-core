@@ -211,6 +211,14 @@ ManageOfferOpFrameBase::computeOfferExchangeParameters(
 bool
 ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter)
 {
+    PathPaymentStrictReceiveCache ppsrc;
+    return doApply(ltxOuter, ppsrc);
+}
+
+bool
+ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter,
+                                PathPaymentStrictReceiveCache& ppsrc)
+{
     ZoneNamedN(applyZone, "ManageOfferOp apply", true);
     std::string pairStr = assetToString(mSheep);
     pairStr += ":";
@@ -525,8 +533,8 @@ ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter)
         }
     }
 
-    PathPaymentStrictReceiveCache::getInstance().invalidate(mSheep, mWheat);
-    PathPaymentStrictReceiveCache::getInstance().invalidate(mWheat, mSheep);
+    ppsrc.invalidate(mSheep, mWheat);
+    ppsrc.invalidate(mWheat, mSheep);
     ltx.commit();
     return true;
 }
