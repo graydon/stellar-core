@@ -1109,6 +1109,7 @@ LedgerManagerImpl::applyTransactions(
     }
 
     prefetchTransactionData(txs);
+    PathPaymentStrictReceiveCache ppsrc;
 
     for (auto tx : txs)
     {
@@ -1119,7 +1120,7 @@ LedgerManagerImpl::applyTransactions(
                    hexAbbrev(tx->getContentsHash()), tx->getNumOperations(),
                    tx->getSeqNum(),
                    mApp.getConfig().toShortString(tx->getSourceID()));
-        tx->apply(mApp, ltx, tm);
+        tx->apply(mApp, ltx, tm, ppsrc);
 
         TransactionResultPair results;
         results.transactionHash = tx->getContentsHash();

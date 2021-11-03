@@ -721,16 +721,10 @@ TransactionFrame::markResultFailed()
 }
 
 bool
-TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx)
-{
-    TransactionMeta tm(2);
-    return apply(app, ltx, tm);
-}
-
-bool
 TransactionFrame::applyOperations(SignatureChecker& signatureChecker,
                                   Application& app, AbstractLedgerTxn& ltx,
-                                  TransactionMeta& outerMeta)
+                                  TransactionMeta& outerMeta,
+                                  PathPaymentStrictReceiveCache& ppsrc)
 {
     ZoneScoped;
     try
@@ -844,7 +838,8 @@ TransactionFrame::applyOperations(SignatureChecker& signatureChecker,
 
 bool
 TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
-                        TransactionMeta& meta, bool chargeFee)
+                        TransactionMeta& meta, bool chargeFee,
+                        PathPaymentStrictReceiveCache& ppsrc)
 {
     ZoneScoped;
     try
@@ -879,8 +874,8 @@ TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
             // for applyOperations throws. In that case, we may not have the
             // correct TransactionResult so we must crash.
             auto& cache = PathPaymentStrictReceiveCache::getInstance();
-            auto res =
-                valid && applyOperations(signatureChecker, app, ltx, meta);
+            auto res = valid &&
+                       applyOperations(signatureChecker, app, ltx, meta, ppsrc);
             if (res)
             {
                 cache.transactionSuccessful();
@@ -916,9 +911,10 @@ TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
 
 bool
 TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
-                        TransactionMeta& meta)
+                        TransactionMeta& meta,
+                        PathPaymentStrictReceiveCache& ppsrc)
 {
-    return apply(app, ltx, meta, true);
+    return apply(app, ltx, meta, true, ppsrc);
 }
 
 StellarMessage

@@ -14,6 +14,7 @@ class AbstractLedgerTxn;
 class Application;
 class Database;
 class OperationFrame;
+class PathPaymentStrictReceiveCache;
 
 class TransactionFrameBase;
 using TransactionFrameBasePtr = std::shared_ptr<TransactionFrameBase>;
@@ -26,7 +27,14 @@ class TransactionFrameBase
                             TransactionEnvelope const& env);
 
     virtual bool apply(Application& app, AbstractLedgerTxn& ltx,
-                       TransactionMeta& meta) = 0;
+                       TransactionMeta& meta,
+                       PathPaymentStrictReceiveCache& ppsrc) = 0;
+
+    // version without ppsrc
+    bool apply(Application& app, AbstractLedgerTxn& ltx, TransactionMeta& meta);
+
+    // version without meta or ppsrc
+    bool apply(Application& app, AbstractLedgerTxn& ltx);
 
     virtual bool checkValid(AbstractLedgerTxn& ltxOuter, SequenceNumber current,
                             uint64_t lowerBoundCloseTimeOffset,

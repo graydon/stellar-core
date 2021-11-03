@@ -317,7 +317,7 @@ struct LiquidityPoolState
     int64_t reserveReceive;
 };
 
-struct OfferParameters
+struct CacheableOfferParameters
 {
     AccountID sellerID;
     Price price;
@@ -340,7 +340,7 @@ struct PathPaymentCacheInformation
     bool areNoRemainingOffers{false};
 
     // Parameters for the last offer crossed
-    std::optional<OfferParameters> lastCross;
+    std::optional<CacheableOfferParameters> lastCross;
 
     // Parameters for the liquidity pool before exchanging
     std::optional<LiquidityPoolState> liquidityPool;

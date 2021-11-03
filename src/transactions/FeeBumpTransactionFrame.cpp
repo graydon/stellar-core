@@ -14,6 +14,7 @@
 #include "transactions/SignatureChecker.h"
 #include "transactions/SignatureUtils.h"
 #include "transactions/SponsorshipUtils.h"
+#include "transactions/TransactionFrameBase.h"
 #include "transactions/TransactionUtils.h"
 #include "util/GlobalChecks.h"
 #include "util/numeric128.h"
@@ -82,7 +83,8 @@ updateResult(TransactionResult& outerRes, TransactionFrameBasePtr innerTx)
 
 bool
 FeeBumpTransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
-                               TransactionMeta& meta)
+                               TransactionMeta& meta,
+                               PathPaymentStrictReceiveCache& ppsrc)
 {
     try
     {
@@ -107,7 +109,7 @@ FeeBumpTransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
 
     try
     {
-        bool res = mInnerTx->apply(app, ltx, meta, false);
+        bool res = mInnerTx->apply(app, ltx, meta, false, ppsrc);
         // If this throws, then we may not have the correct TransactionResult so
         // we must crash.
         updateResult(getResult(), mInnerTx);

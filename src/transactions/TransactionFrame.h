@@ -96,7 +96,8 @@ class TransactionFrame : public TransactionFrameBase
     void markResultFailed();
 
     bool applyOperations(SignatureChecker& checker, Application& app,
-                         AbstractLedgerTxn& ltx, TransactionMeta& meta);
+                         AbstractLedgerTxn& ltx, TransactionMeta& meta,
+                         PathPaymentStrictReceiveCache& ppsrc);
 
     virtual void processSeqNum(AbstractLedgerTxn& ltx);
 
@@ -192,12 +193,9 @@ class TransactionFrame : public TransactionFrameBase
     // apply this transaction to the current ledger
     // returns true if successfully applied
     bool apply(Application& app, AbstractLedgerTxn& ltx, TransactionMeta& meta,
-               bool chargeFee);
-    bool apply(Application& app, AbstractLedgerTxn& ltx,
-               TransactionMeta& meta) override;
-
-    // version without meta
-    bool apply(Application& app, AbstractLedgerTxn& ltx);
+               bool chargeFee, PathPaymentStrictReceiveCache& ppsrc);
+    bool apply(Application& app, AbstractLedgerTxn& ltx, TransactionMeta& meta,
+               PathPaymentStrictReceiveCache& ppsrc) override;
 
     StellarMessage toStellarMessage() const override;
 

@@ -34,11 +34,11 @@ class PathPaymentStrictReceiveCache
 
     std::vector<std::pair<Asset, Asset>> mInvalidatedByThisTx;
 
-    PathPaymentStrictReceiveCache();
-
     bool isInvalid(Asset const& sendAsset, Asset const& recvAsset) const;
 
   public:
+    PathPaymentStrictReceiveCache();
+
     bool isGuaranteedToFail(uint32_t ledgerVersion, AccountID const& sourceID,
                             int64_t destAmount, int64_t sendMax,
                             Asset const& firstRecvAsset,

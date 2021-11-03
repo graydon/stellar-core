@@ -221,7 +221,7 @@ applyCheck(TransactionFramePtr tx, Application& app, bool checkSeqNum)
         TransactionMeta tm(2);
         try
         {
-            res = tx->apply(app, ltxTx, tm);
+            res = tx->TransactionFrameBase::apply(app, ltxTx, tm);
         }
         catch (...)
         {

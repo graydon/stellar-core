@@ -1102,7 +1102,7 @@ crossOfferV10(AbstractLedgerTxn& ltx, LedgerTxnEntry& sellingWheatOffer,
               int64_t maxWheatReceived, int64_t& numWheatReceived,
               int64_t maxSheepSend, int64_t& numSheepSend, bool& wheatStays,
               RoundingType round, std::vector<ClaimAtom>& offerTrail,
-              OfferParameters& parameters)
+              CacheableOfferParameters& parameters)
 {
     ZoneScoped;
     releaseAssertOrThrow(maxWheatReceived > 0);
@@ -1590,7 +1590,8 @@ convertWithOffers(
             }
             else
             {
-                cacheInfo.lastCross = std::make_optional<OfferParameters>();
+                cacheInfo.lastCross =
+                    std::make_optional<CacheableOfferParameters>();
             }
 
             bool wheatStays;

@@ -4,6 +4,7 @@
 
 #include "transactions/TransactionFrameBase.h"
 #include "transactions/FeeBumpTransactionFrame.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionFrame.h"
 
 namespace stellar
@@ -24,4 +25,20 @@ TransactionFrameBase::makeTransactionFromWire(Hash const& networkID,
         abort();
     }
 }
+
+bool
+TransactionFrameBase::apply(Application& app, AbstractLedgerTxn& ltx,
+                            TransactionMeta& meta)
+{
+    PathPaymentStrictReceiveCache ppsrc;
+    return apply(app, ltx, meta, ppsrc);
+}
+
+bool
+TransactionFrameBase::apply(Application& app, AbstractLedgerTxn& ltx)
+{
+    TransactionMeta tm(2);
+    return apply(app, ltx, tm);
+}
+
 }

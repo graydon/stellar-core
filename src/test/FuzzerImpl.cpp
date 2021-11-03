@@ -17,7 +17,9 @@
 #include "test/fuzz.h"
 #include "test/test.h"
 #include "transactions/OperationFrame.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/SignatureChecker.h"
+#include "transactions/TransactionFrameBase.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Logging.h"
 #include "util/Math.h"
@@ -856,7 +858,8 @@ class FuzzTransactionFrame : public TransactionFrame
         loadSourceAccount(ltx, ltx.loadHeader());
         processSeqNum(ltx);
         TransactionMeta tm(2);
-        applyOperations(signatureChecker, app, ltx, tm);
+        PathPaymentStrictReceiveCache ppsrc;
+        applyOperations(signatureChecker, app, ltx, tm, ppsrc);
         if (getResultCode() == txINTERNAL_ERROR)
         {
             throw std::runtime_error("Internal error while fuzzing");
