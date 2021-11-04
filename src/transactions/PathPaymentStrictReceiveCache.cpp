@@ -12,7 +12,7 @@ namespace stellar
 {
 
 PathPaymentStrictReceiveCache::PathPaymentStrictReceiveCache()
-    : mIsCacheEnabled(getenv("USE_PPSRC"))
+    : mIsCacheEnabled(!getenv("DISABLE_PPSRC"))
 {
 }
 
