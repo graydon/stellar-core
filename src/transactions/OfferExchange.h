@@ -311,6 +311,45 @@ enum class CrossOfferResult
     eOfferCantConvert
 };
 
+struct LiquidityPoolState
+{
+    int64_t reserveSend;
+    int64_t reserveReceive;
+};
+
+struct OfferParameters
+{
+    AccountID sellerID;
+    Price price;
+    int64_t maxWheatSend;
+    int64_t maxSheepReceive;
+};
+
+struct PathPaymentCacheInformation
+{
+    // Amount received from all offers before reaching lastCross
+    int64_t amountReceiveBeforeLast{0};
+
+    // Amount sent to all offers before reaching lastCross
+    int64_t amountSendBeforeLast{0};
+
+    // Number of offers crossed before reaching lastCross
+    uint32_t numOffersCrossedBeforeLast{0};
+
+    // True if there are no remaining offers
+    bool areNoRemainingOffers{false};
+
+    // Parameters for the last offer crossed
+    std::optional<OfferParameters> lastCross;
+
+    // Parameters for the liquidity pool before exchanging
+    std::optional<LiquidityPoolState> liquidityPool;
+
+    // Every account owning an offer that was crossed before reaching
+    // lastCross
+    std::vector<AccountID> sellerIDsBeforeLast;
+};
+
 // buys wheat with sheep, crossing as many offers as necessary or using a
 // liquidity pool
 ConvertResult convertWithOffersAndPools(
