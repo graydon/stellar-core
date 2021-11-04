@@ -9,6 +9,7 @@
 #include "xdr/Stellar-ledger.h"
 #include "xdr/Stellar-transaction.h"
 #include <algorithm>
+#include <optional>
 
 namespace stellar
 {
@@ -21,6 +22,7 @@ class LedgerTxnEntry;
 class LedgerTxnHeader;
 class TrustLineWrapper;
 class InternalLedgerKey;
+class PathPaymentStrictReceiveCache;
 struct ClaimAtom;
 struct LedgerHeader;
 struct LedgerKey;
@@ -250,7 +252,8 @@ enum class RemoveResult
 
 RemoveResult removeOffersAndPoolShareTrustLines(
     AbstractLedgerTxn& ltx, AccountID const& accountID, Asset const& asset,
-    AccountID const& txSourceID, SequenceNumber txSeqNum, uint32_t opIndex);
+    AccountID const& txSourceID, SequenceNumber txSeqNum, uint32_t opIndex,
+    std::optional<PathPaymentStrictReceiveCache>& ppsrc);
 
 // this can delete the pool
 void decrementPoolSharesTrustLineCount(LedgerTxnEntry& liquidityPool);

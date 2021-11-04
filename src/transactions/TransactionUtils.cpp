@@ -11,6 +11,7 @@
 #include "ledger/LedgerTxnHeader.h"
 #include "ledger/TrustLineWrapper.h"
 #include "transactions/OfferExchange.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/SponsorshipUtils.h"
 #include "util/XDROperators.h"
 #include "util/types.h"
@@ -1215,8 +1216,9 @@ claimableBalanceFlagIsValid(ClaimableBalanceEntry const& cb)
 // The following static methods are used for authorization revocation
 
 static void
-removeOffersByAccountAndAsset(AbstractLedgerTxn& ltx, AccountID const& account,
-                              Asset const& asset)
+removeOffersByAccountAndAsset(
+    AbstractLedgerTxn& ltx, AccountID const& account, Asset const& asset,
+    std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     LedgerTxn ltxInner(ltx);
 
@@ -1233,6 +1235,11 @@ removeOffersByAccountAndAsset(AbstractLedgerTxn& ltx, AccountID const& account,
         {
             throw std::runtime_error(
                 "Offer not buying or selling expected asset");
+        }
+
+        if (ppsrc)
+        {
+            ppsrc->invalidate(oe.buying, oe.selling);
         }
 
         releaseLiabilities(ltxInner, header, offer);
@@ -1375,13 +1382,12 @@ prefetchPoolShareTrustLinesByAccountAndGetKeys(AbstractLedgerTxn& ltx,
 }
 
 RemoveResult
-removeOffersAndPoolShareTrustLines(AbstractLedgerTxn& ltx,
-                                   AccountID const& accountID,
-                                   Asset const& asset,
-                                   AccountID const& txSourceID,
-                                   SequenceNumber txSeqNum, uint32_t opIndex)
+removeOffersAndPoolShareTrustLines(
+    AbstractLedgerTxn& ltx, AccountID const& accountID, Asset const& asset,
+    AccountID const& txSourceID, SequenceNumber txSeqNum, uint32_t opIndex,
+    std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
-    removeOffersByAccountAndAsset(ltx, accountID, asset);
+    removeOffersByAccountAndAsset(ltx, accountID, asset, ppsrc);
 
     LedgerTxn ltxInner(ltx);
 
@@ -1534,6 +1540,14 @@ removeOffersAndPoolShareTrustLines(AbstractLedgerTxn& ltx,
         {
             return pool.current().data.liquidityPool().body.constantProduct();
         };
+
+        if (ppsrc)
+        {
+            ppsrc->invalidate(constantProduct().params.assetA,
+                              constantProduct().params.assetB);
+            ppsrc->invalidate(constantProduct().params.assetB,
+                              constantProduct().params.assetA);
+        }
 
         if (balance != 0)
         {

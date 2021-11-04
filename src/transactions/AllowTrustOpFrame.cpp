@@ -10,6 +10,7 @@
 #include "ledger/LedgerTxnHeader.h"
 #include "ledger/TrustLineWrapper.h"
 #include "main/Application.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionUtils.h"
 #include <Tracy.hpp>
 
@@ -54,6 +55,14 @@ AllowTrustOpFrame::getThresholdLevel() const
 
 bool
 AllowTrustOpFrame::doApply(AbstractLedgerTxn& ltx)
+{
+    std::optional<PathPaymentStrictReceiveCache> ppsrc{std::nullopt};
+    return doApply(ltx, ppsrc);
+}
+
+bool
+AllowTrustOpFrame::doApply(AbstractLedgerTxn& ltx,
+                           std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     ZoneNamedN(applyZone, "AllowTrustOp apply", true);
     auto ledgerVersion = ltx.loadHeader().current().ledgerVersion;
@@ -134,7 +143,7 @@ AllowTrustOpFrame::doApply(AbstractLedgerTxn& ltx)
         // share trustlines owned by the trustor that use this asset
         auto res = removeOffersAndPoolShareTrustLines(
             ltx, mAllowTrust.trustor, mAsset, mParentTx.getSourceID(),
-            mParentTx.getSeqNum(), mOpIndex);
+            mParentTx.getSeqNum(), mOpIndex, ppsrc);
 
         switch (res)
         {

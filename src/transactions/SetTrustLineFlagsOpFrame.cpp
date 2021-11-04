@@ -7,6 +7,7 @@
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTxnHeader.h"
 #include "main/Application.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionUtils.h"
 #include <Tracy.hpp>
 
@@ -37,6 +38,14 @@ SetTrustLineFlagsOpFrame::isOpSupported(LedgerHeader const& header) const
 
 bool
 SetTrustLineFlagsOpFrame::doApply(AbstractLedgerTxn& ltx)
+{
+    std::optional<PathPaymentStrictReceiveCache> ppsrc{std::nullopt};
+    return doApply(ltx, ppsrc);
+}
+
+bool
+SetTrustLineFlagsOpFrame::doApply(
+    AbstractLedgerTxn& ltx, std::optional<PathPaymentStrictReceiveCache>& ppsrc)
 {
     ZoneNamedN(applyZone, "SetTrustLineFlagsOp apply", true);
 
@@ -80,7 +89,7 @@ SetTrustLineFlagsOpFrame::doApply(AbstractLedgerTxn& ltx)
     {
         auto res = removeOffersAndPoolShareTrustLines(
             ltx, mSetTrustLineFlags.trustor, mSetTrustLineFlags.asset,
-            mParentTx.getSourceID(), mParentTx.getSeqNum(), mOpIndex);
+            mParentTx.getSourceID(), mParentTx.getSeqNum(), mOpIndex, ppsrc);
 
         switch (res)
         {

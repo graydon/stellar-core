@@ -26,7 +26,10 @@ class AllowTrustOpFrame : public OperationFrame
     AllowTrustOpFrame(Operation const& op, OperationResult& res,
                       TransactionFrame& parentTx, uint32_t index);
 
-    bool doApply(AbstractLedgerTxn& ls) override;
+    bool doApply(AbstractLedgerTxn& ltx) override;
+    bool doApply(AbstractLedgerTxn& ltx,
+                 std::optional<PathPaymentStrictReceiveCache>& ppsrc) override;
+
     bool doCheckValid(uint32_t ledgerVersion) override;
 
     static AllowTrustResultCode
