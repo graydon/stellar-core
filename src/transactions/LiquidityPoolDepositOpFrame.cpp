@@ -6,6 +6,7 @@
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/TrustLineWrapper.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionUtils.h"
 #include "util/numeric128.h"
 
@@ -304,6 +305,10 @@ LiquidityPoolDepositOpFrame::doApply(AbstractLedgerTxn& ltx)
         throw std::runtime_error("insufficient liquidity pool limit");
     }
 
+    PathPaymentStrictReceiveCache::getInstance().invalidate(cpp().assetA,
+                                                            cpp().assetB);
+    PathPaymentStrictReceiveCache::getInstance().invalidate(cpp().assetB,
+                                                            cpp().assetA);
     innerResult().code(LIQUIDITY_POOL_DEPOSIT_SUCCESS);
     return true;
 }

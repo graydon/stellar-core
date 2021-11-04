@@ -8,6 +8,7 @@
 #include "ledger/LedgerTxnHeader.h"
 #include "ledger/TrustLineWrapper.h"
 #include "transactions/OfferExchange.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/SponsorshipUtils.h"
 #include "transactions/TransactionUtils.h"
 #include "util/GlobalChecks.h"
@@ -336,6 +337,7 @@ ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter)
         int64_t sheepSent, wheatReceived;
         std::vector<ClaimAtom> offerTrail;
         Price maxWheatPrice(mPrice.d, mPrice.n);
+        PathPaymentCacheInformation cacheInfo;
         ConvertResult r = convertWithOffersAndPools(
             ltx, mSheep, maxSheepSend, sheepSent, mWheat, maxWheatReceive,
             wheatReceived, RoundingType::NORMAL,
@@ -354,7 +356,7 @@ ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter)
                 }
                 return OfferFilterResult::eKeep;
             },
-            offerTrail, maxOffersToCross);
+            offerTrail, maxOffersToCross, cacheInfo);
 
         releaseAssertOrThrow(sheepSent >= 0);
 
@@ -523,6 +525,8 @@ ManageOfferOpFrameBase::doApply(AbstractLedgerTxn& ltxOuter)
         }
     }
 
+    PathPaymentStrictReceiveCache::getInstance().invalidate(mSheep, mWheat);
+    PathPaymentStrictReceiveCache::getInstance().invalidate(mWheat, mSheep);
     ltx.commit();
     return true;
 }

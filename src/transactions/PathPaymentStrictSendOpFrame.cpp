@@ -7,6 +7,7 @@
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTxnHeader.h"
 #include "ledger/TrustLineWrapper.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionUtils.h"
 #include "util/XDROperators.h"
 #include <Tracy.hpp>
@@ -90,12 +91,16 @@ PathPaymentStrictSendOpFrame::doApply(AbstractLedgerTxn& ltx)
         int64_t amountSend = 0;
         int64_t amountRecv = 0;
         std::vector<ClaimAtom> offerTrail;
+        PathPaymentCacheInformation cacheInfo;
         if (!convert(ltx, maxOffersToCross, sendAsset, maxAmountSend,
                      amountSend, recvAsset, INT64_MAX, amountRecv,
-                     RoundingType::PATH_PAYMENT_STRICT_SEND, offerTrail))
+                     RoundingType::PATH_PAYMENT_STRICT_SEND, offerTrail,
+                     cacheInfo))
         {
             return false;
         }
+        PathPaymentStrictReceiveCache::getInstance().invalidate(sendAsset,
+                                                                recvAsset);
 
         maxAmountSend = amountRecv;
         sendAsset = recvAsset;

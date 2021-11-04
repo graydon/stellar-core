@@ -19,6 +19,7 @@
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTxnHeader.h"
 #include "main/Application.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/SignatureChecker.h"
 #include "transactions/SignatureUtils.h"
 #include "transactions/SponsorshipUtils.h"
@@ -877,7 +878,18 @@ TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
             // This should only throw if the logging during exception handling
             // for applyOperations throws. In that case, we may not have the
             // correct TransactionResult so we must crash.
-            return valid && applyOperations(signatureChecker, app, ltx, meta);
+            auto& cache = PathPaymentStrictReceiveCache::getInstance();
+            auto res =
+                valid && applyOperations(signatureChecker, app, ltx, meta);
+            if (res)
+            {
+                cache.transactionSuccessful();
+            }
+            else
+            {
+                cache.transactionFailed();
+            }
+            return res;
         }
         catch (std::exception& e)
         {

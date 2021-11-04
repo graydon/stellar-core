@@ -27,6 +27,7 @@
 #include "main/ErrorMessages.h"
 #include "overlay/OverlayManager.h"
 #include "transactions/OperationFrame.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionSQL.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Fs.h"
@@ -1165,6 +1166,8 @@ LedgerManagerImpl::logTxApplyMetrics(AbstractLedgerTxn& ltx, size_t numTxs,
 {
     auto ledgerSeq = ltx.loadHeader().current().ledgerSeq;
     auto hitRate = mApp.getLedgerTxnRoot().getPrefetchHitRate() * 100;
+
+    PathPaymentStrictReceiveCache::getInstance().log();
 
     CLOG_DEBUG(Ledger, "Ledger: {} txs: {}, ops: {}, prefetch hit rate (%): {}",
                ledgerSeq, numTxs, numOps, hitRate);

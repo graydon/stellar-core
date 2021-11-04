@@ -7,6 +7,7 @@
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTxnHeader.h"
 #include "ledger/TrustLineWrapper.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionUtils.h"
 #include "util/XDROperators.h"
 #include <Tracy.hpp>
@@ -67,6 +68,17 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
                     mPathPayment.path.rend());
     fullPath.emplace_back(getSourceAsset());
 
+    {
+        auto& cache = PathPaymentStrictReceiveCache::getInstance();
+        if (cache.isGuaranteedToFail(ltx.loadHeader().current().ledgerVersion,
+                                     getSourceID(), mPathPayment.destAmount,
+                                     mPathPayment.sendMax, getDestAsset(),
+                                     fullPath, getMaxOffersToCross(), mResult))
+        {
+            return false;
+        }
+    }
+
     // Walk the path
     Asset recvAsset = getDestAsset();
     int64_t maxAmountRecv = mPathPayment.destAmount;
@@ -97,9 +109,16 @@ PathPaymentStrictReceiveOpFrame::doApply(AbstractLedgerTxn& ltx)
         int64_t amountSend = 0;
         int64_t amountRecv = 0;
         std::vector<ClaimAtom> offerTrail;
-        if (!convert(ltx, maxOffersToCross, sendAsset, INT64_MAX, amountSend,
-                     recvAsset, maxAmountRecv, amountRecv,
-                     RoundingType::PATH_PAYMENT_STRICT_RECEIVE, offerTrail))
+        PathPaymentCacheInformation cacheInfo;
+        auto convRes = convert(ltx, maxOffersToCross, sendAsset, INT64_MAX,
+                               amountSend, recvAsset, maxAmountRecv, amountRecv,
+                               RoundingType::PATH_PAYMENT_STRICT_RECEIVE,
+                               offerTrail, cacheInfo);
+
+        PathPaymentStrictReceiveCache::getInstance().insert(
+            sendAsset, recvAsset, std::move(cacheInfo));
+
+        if (!convRes)
         {
             return false;
         }

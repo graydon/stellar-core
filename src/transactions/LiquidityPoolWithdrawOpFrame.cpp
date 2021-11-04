@@ -6,6 +6,7 @@
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/TrustLineWrapper.h"
+#include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionUtils.h"
 
 namespace stellar
@@ -92,6 +93,10 @@ LiquidityPoolWithdrawOpFrame::doApply(AbstractLedgerTxn& ltx)
         throw std::runtime_error("insufficient reserveB");
     }
 
+    PathPaymentStrictReceiveCache::getInstance().invalidate(
+        constantProduct().params.assetA, constantProduct().params.assetB);
+    PathPaymentStrictReceiveCache::getInstance().invalidate(
+        constantProduct().params.assetB, constantProduct().params.assetA);
     innerResult().code(LIQUIDITY_POOL_WITHDRAW_SUCCESS);
     return true;
 }

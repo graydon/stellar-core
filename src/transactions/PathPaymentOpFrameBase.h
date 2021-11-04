@@ -17,7 +17,8 @@ class PathPaymentOpFrameBase : public OperationFrame
     bool convert(AbstractLedgerTxn& ltx, int64_t maxOffersToCross,
                  Asset const& sendAsset, int64_t maxSend, int64_t& amountSend,
                  Asset const& recvAsset, int64_t maxRecv, int64_t& amountRecv,
-                 RoundingType round, std::vector<ClaimAtom>& offerTrail);
+                 RoundingType round, std::vector<ClaimAtom>& offerTrail,
+                 PathPaymentCacheInformation& cacheInfo);
 
     bool shouldBypassIssuerCheck(std::vector<Asset> const& path) const;
 

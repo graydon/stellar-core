@@ -61,13 +61,11 @@ PathPaymentOpFrameBase::checkIssuer(AbstractLedgerTxn& ltx, Asset const& asset)
 }
 
 bool
-PathPaymentOpFrameBase::convert(AbstractLedgerTxn& ltx,
-                                int64_t maxOffersToCross,
-                                Asset const& sendAsset, int64_t maxSend,
-                                int64_t& amountSend, Asset const& recvAsset,
-                                int64_t maxRecv, int64_t& amountRecv,
-                                RoundingType round,
-                                std::vector<ClaimAtom>& offerTrail)
+PathPaymentOpFrameBase::convert(
+    AbstractLedgerTxn& ltx, int64_t maxOffersToCross, Asset const& sendAsset,
+    int64_t maxSend, int64_t& amountSend, Asset const& recvAsset,
+    int64_t maxRecv, int64_t& amountRecv, RoundingType round,
+    std::vector<ClaimAtom>& offerTrail, PathPaymentCacheInformation& cacheInfo)
 {
     releaseAssertOrThrow(offerTrail.empty());
     releaseAssertOrThrow(!(sendAsset == recvAsset));
@@ -85,7 +83,7 @@ PathPaymentOpFrameBase::convert(AbstractLedgerTxn& ltx,
             }
             return OfferFilterResult::eKeep;
         },
-        offerTrail, maxOffersToCross);
+        offerTrail, maxOffersToCross, cacheInfo);
 
     if (amountSend < 0 || amountRecv < 0)
     {

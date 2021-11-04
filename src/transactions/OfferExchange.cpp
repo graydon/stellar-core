@@ -1101,7 +1101,8 @@ static CrossOfferResult
 crossOfferV10(AbstractLedgerTxn& ltx, LedgerTxnEntry& sellingWheatOffer,
               int64_t maxWheatReceived, int64_t& numWheatReceived,
               int64_t maxSheepSend, int64_t& numSheepSend, bool& wheatStays,
-              RoundingType round, std::vector<ClaimAtom>& offerTrail)
+              RoundingType round, std::vector<ClaimAtom>& offerTrail,
+              OfferParameters& parameters)
 {
     ZoneScoped;
     releaseAssertOrThrow(maxWheatReceived > 0);
@@ -1219,6 +1220,11 @@ crossOfferV10(AbstractLedgerTxn& ltx, LedgerTxnEntry& sellingWheatOffer,
         }
         ltxInner.commit();
     }
+
+    parameters.sellerID = accountBID;
+    parameters.price = offer.price;
+    parameters.maxWheatSend = maxWheatSend;
+    parameters.maxSheepReceive = maxSheepReceive;
 
     // Note: The previous block creates a nested LedgerTxn so all entries are
     // deactivated at this point. Specifically, you cannot use sellingWheatOffer
@@ -1380,7 +1386,8 @@ exchangeWithPool(AbstractLedgerTxn& ltxOuter, Asset const& toPoolAsset,
                  int64_t maxSendToPool, int64_t& toPool,
                  Asset const& fromPoolAsset, int64_t maxReceiveFromPool,
                  int64_t& fromPool, RoundingType round,
-                 int64_t maxOffersToCross)
+                 int64_t maxOffersToCross,
+                 PathPaymentCacheInformation& cacheInfo)
 {
     LedgerTxn ltx(ltxOuter);
 
@@ -1431,10 +1438,18 @@ exchangeWithPool(AbstractLedgerTxn& ltxOuter, Asset const& toPoolAsset,
         return false;
     }
 
+    if (!cacheInfo.liquidityPool)
+    {
+        cacheInfo.liquidityPool = std::make_optional<LiquidityPoolState>();
+    }
+
     bool res = false;
     if (toPoolAsset == cp().params.assetA &&
         fromPoolAsset == cp().params.assetB)
     {
+        cacheInfo.liquidityPool->reserveSend = cp().reserveA;
+        cacheInfo.liquidityPool->reserveReceive = cp().reserveB;
+
         res = exchangeWithPool(cp().reserveA, maxSendToPool, toPool,
                                cp().reserveB, maxReceiveFromPool, fromPool,
                                feeBps, round);
@@ -1450,6 +1465,9 @@ exchangeWithPool(AbstractLedgerTxn& ltxOuter, Asset const& toPoolAsset,
     else if (fromPoolAsset == cp().params.assetA &&
              toPoolAsset == cp().params.assetB)
     {
+        cacheInfo.liquidityPool->reserveSend = cp().reserveB;
+        cacheInfo.liquidityPool->reserveReceive = cp().reserveA;
+
         res = exchangeWithPool(cp().reserveB, maxSendToPool, toPool,
                                cp().reserveA, maxReceiveFromPool, fromPool,
                                feeBps, round);
@@ -1481,7 +1499,8 @@ convertWithOffers(
     int64_t& sheepSend, Asset const& wheat, int64_t maxWheatReceive,
     int64_t& wheatReceived, RoundingType round,
     std::function<OfferFilterResult(LedgerTxnEntry const&)> filter,
-    std::vector<ClaimAtom>& offerTrail, int64_t maxOffersToCross)
+    std::vector<ClaimAtom>& offerTrail, int64_t maxOffersToCross,
+    PathPaymentCacheInformation& cacheInfo)
 {
     ZoneScoped;
     std::string pairStr = assetToString(sheep);
@@ -1492,6 +1511,12 @@ convertWithOffers(
     // If offerTrail is not empty at the start, then the limit maxOffersToCross
     // will not be imposed correctly.
     releaseAssertOrThrow(offerTrail.empty());
+
+    // Cache information should be properly populated before the start
+    releaseAssertOrThrow(cacheInfo.amountReceiveBeforeLast == 0);
+    releaseAssertOrThrow(cacheInfo.amountSendBeforeLast == 0);
+    releaseAssertOrThrow(!cacheInfo.lastCross);
+    releaseAssertOrThrow(cacheInfo.sellerIDsBeforeLast.empty());
 
     sheepSend = 0;
     wheatReceived = 0;
@@ -1555,10 +1580,24 @@ convertWithOffers(
         CrossOfferResult cor;
         if (ltx.loadHeader().current().ledgerVersion >= 10)
         {
+            if (cacheInfo.lastCross)
+            {
+                cacheInfo.amountReceiveBeforeLast = wheatReceived;
+                cacheInfo.amountSendBeforeLast = sheepSend;
+                cacheInfo.numOffersCrossedBeforeLast = offerTrail.size();
+                cacheInfo.sellerIDsBeforeLast.emplace_back(
+                    cacheInfo.lastCross->sellerID);
+            }
+            else
+            {
+                cacheInfo.lastCross = std::make_optional<OfferParameters>();
+            }
+
             bool wheatStays;
             cor = crossOfferV10(ltx, wheatOffer, maxWheatReceive,
                                 numWheatReceived, maxSheepSend, numSheepSend,
-                                wheatStays, round, offerTrail);
+                                wheatStays, round, offerTrail,
+                                *cacheInfo.lastCross);
             needMore = !wheatStays;
         }
         else
@@ -1595,6 +1634,9 @@ convertWithOffers(
             return ConvertResult::ePartial;
         }
     }
+
+    cacheInfo.areNoRemainingOffers = true;
+
     if ((ltxOuter.loadHeader().current().ledgerVersion < 10) || !needMore)
     {
         return ConvertResult::eOK;
@@ -1645,7 +1687,7 @@ maybeConvertWithOffers(
     int64_t& wheatReceived, RoundingType round,
     std::function<OfferFilterResult(LedgerTxnEntry const&)> filter,
     std::vector<ClaimAtom>& offerTrail, int64_t maxOffersToCross,
-    ConvertResult& convertRes)
+    ConvertResult& convertRes, PathPaymentCacheInformation& cacheInfo)
 {
     // Compute the exchange from the liquidity pool but don't actually do the
     // exchange
@@ -1655,7 +1697,8 @@ maybeConvertWithOffers(
         ExchangedQuantities res;
         if (exchangeWithPool(ltxExchangeWithPool, sheep, maxSheepSend,
                              res.sheepSend, wheat, maxWheatReceive,
-                             res.wheatReceived, round, maxOffersToCross))
+                             res.wheatReceived, round, maxOffersToCross,
+                             cacheInfo))
         {
             poolExchange = std::make_optional<ExchangedQuantities>(res);
         }
@@ -1670,7 +1713,7 @@ maybeConvertWithOffers(
         auto res = convertWithOffers(
             ltxConvertWithOffers, sheep, maxSheepSend, bookExchange.sheepSend,
             wheat, maxWheatReceive, bookExchange.wheatReceived, round, filter,
-            tempOfferTrail, maxOffersToCross);
+            tempOfferTrail, maxOffersToCross, cacheInfo);
 
         if (shouldConvertWithOffers(poolExchange, bookExchange, res))
         {
@@ -1692,7 +1735,8 @@ convertWithOffersAndPools(
     int64_t& sheepSend, Asset const& wheat, int64_t maxWheatReceive,
     int64_t& wheatReceived, RoundingType round,
     std::function<OfferFilterResult(LedgerTxnEntry const&)> filter,
-    std::vector<ClaimAtom>& offerTrail, int64_t maxOffersToCross)
+    std::vector<ClaimAtom>& offerTrail, int64_t maxOffersToCross,
+    PathPaymentCacheInformation& cacheInfo)
 {
     ZoneScoped;
 
@@ -1708,7 +1752,7 @@ convertWithOffersAndPools(
         if (maybeConvertWithOffers(ltxOuter, sheep, maxSheepSend, sheepSend,
                                    wheat, maxWheatReceive, wheatReceived, round,
                                    filter, offerTrail, maxOffersToCross,
-                                   convertRes))
+                                   convertRes, cacheInfo))
         {
             return convertRes;
         }
@@ -1722,7 +1766,8 @@ convertWithOffersAndPools(
 
     // Compute the exchange from the liquidity pool and actually do the exchange
     exchangeWithPool(ltxOuter, sheep, maxSheepSend, sheepSend, wheat,
-                     maxWheatReceive, wheatReceived, round, maxOffersToCross);
+                     maxWheatReceive, wheatReceived, round, maxOffersToCross,
+                     cacheInfo);
 
     ClaimAtom atom(CLAIM_ATOM_TYPE_LIQUIDITY_POOL);
     atom.liquidityPool() =
