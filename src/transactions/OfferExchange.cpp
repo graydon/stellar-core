@@ -1201,6 +1201,14 @@ crossOfferV10(AbstractLedgerTxn& ltx, LedgerTxnEntry& sellingWheatOffer,
         offer.amount = 0;
     }
 
+    if (parameters.has_value())
+    {
+        parameters.value().sellerID = accountBID;
+        parameters.value().price = offer.price;
+        parameters.value().maxWheatSend = maxWheatSend;
+        parameters.value().maxSheepReceive = maxSheepReceive;
+    }
+
     auto res = (offer.amount == 0) ? CrossOfferResult::eOfferTaken
                                    : CrossOfferResult::eOfferPartial;
     {
@@ -1219,14 +1227,6 @@ crossOfferV10(AbstractLedgerTxn& ltx, LedgerTxnEntry& sellingWheatOffer,
             acquireLiabilities(ltxInner, header, sellingWheatOffer);
         }
         ltxInner.commit();
-    }
-
-    if (parameters.has_value())
-    {
-        parameters.value().sellerID = accountBID;
-        parameters.value().price = offer.price;
-        parameters.value().maxWheatSend = maxWheatSend;
-        parameters.value().maxSheepReceive = maxSheepReceive;
     }
 
     // Note: The previous block creates a nested LedgerTxn so all entries are
