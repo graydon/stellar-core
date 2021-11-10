@@ -9,7 +9,9 @@
 #include "ledger/TrustLineWrapper.h"
 #include "transactions/PathPaymentStrictReceiveCache.h"
 #include "transactions/TransactionUtils.h"
+#include "util/GlobalChecks.h"
 #include "util/XDROperators.h"
+#include "util/Logging.h"
 #include <Tracy.hpp>
 
 namespace stellar
@@ -76,77 +78,143 @@ PathPaymentStrictReceiveOpFrame::doApply(
                     mPathPayment.path.rend());
     fullPath.emplace_back(getSourceAsset());
 
-    if (ppsrc.has_value() &&
-        ppsrc.value().isGuaranteedToFail(
-            ltx.loadHeader().current().ledgerVersion, getSourceID(),
-            mPathPayment.destAmount, mPathPayment.sendMax, getDestAsset(),
-            fullPath, getMaxOffersToCross(), mResult))
-    {
-        return false;
-    }
+    // Before each iteration of the path-loop, maxAmountRecv is the upper bound on the amount
+    // of the current step's recv-side to recieve. After each iteration of the loop (including
+    // the final iteration) it is updated to hold the amount of the send-side of the step that
+    // just finished (which becomes the upper-bound of the recv-side of the next iteration if
+    // there is one).
+    int64_t maxAmountRecv;
 
-    // Walk the path
-    Asset recvAsset = getDestAsset();
-    int64_t maxAmountRecv = mPathPayment.destAmount;
-    for (auto const& sendAsset : fullPath)
+    // We walk the path up to twice if we're going to use the cache, otherwise only once.
+    bool shouldUseCache = ppsrc.has_value() && ppsrc->shouldUseCache(ltx.loadHeader().current().ledgerVersion);
+    for (size_t pass = 0; pass < (shouldUseCache ? 2 : 1); ++pass)
     {
-        if (recvAsset == sendAsset)
+        bool passUsesCache = shouldUseCache && pass == 0;
+        size_t maxOffersToCross = getMaxOffersToCross();
+    
+        // Walk the path
+        Asset firstRecvAsset = getDestAsset();
+        Asset const* recvAssetPtr = &firstRecvAsset;
+        maxAmountRecv = mPathPayment.destAmount;
+
+        for (auto sendAssetIter = fullPath.begin();
+             sendAssetIter != fullPath.end(); ++sendAssetIter)
         {
-            continue;
+            auto const& sendAsset = *sendAssetIter;
+            auto const& recvAsset = *recvAssetPtr;
+
+            if (recvAsset == sendAsset)
+            {
+                continue;
+            }
+
+            if (passUsesCache)
+            {
+                if (ltx.loadHeader().current().ledgerVersion >= 18 && maxOffersToCross == 0)
+                {
+                    // We don't need the cache to be valid in this case because we are
+                    // only relying on information from previous cache hits.
+                    mResult.code(opEXCEEDED_WORK_LIMIT);
+                    ppsrc->cacheHit();
+                    return false;
+                }
+
+                auto i = ppsrc->findCacheEntry(maxAmountRecv, recvAsset,
+                                               firstRecvAsset, fullPath.begin(), sendAssetIter);
+                if (!i.has_value())
+                {
+                    // This is just 'continue outer_loop', but C++ has no labeled continue.
+                    goto continue_outer_loop;
+                }
+
+                PathPaymentCacheInformation const &c = (*i)->cacheInfo;
+                PathPaymentStrictReceiveCache::SimulatedExchangeResult ser;
+                if (!PathPaymentStrictReceiveCache::simulateExchangeWithOrderBook(c, getSourceID(), maxAmountRecv,
+                                                maxOffersToCross, ser))
+                {
+                    // We are uncertain about the outcome of exchanging with the order
+                    // book so we can't guarantee failure.
+                    goto continue_outer_loop;
+                }
+
+                ser = PathPaymentStrictReceiveCache::selectExchangeResult(
+                    ser, PathPaymentStrictReceiveCache::simulateExchangeWithLiquidityPool(c, maxAmountRecv));
+                if (std::holds_alternative<OperationResult>(ser))
+                {
+                    mResult = std::get<OperationResult>(ser);
+                    ppsrc->cacheHit();
+                    return false;
+                }
+
+                releaseAssert(std::holds_alternative<PathPaymentStrictReceiveCache::CrossedSuccessfully>(ser));
+                auto const& success = std::get<PathPaymentStrictReceiveCache::CrossedSuccessfully>(ser);
+                maxAmountRecv = success.amountSend;
+                maxOffersToCross -= success.numOffersCrossed;
+            }
+            else
+            {
+                if (!checkIssuer(ltx, sendAsset))
+                {
+                    return false;
+                }
+
+                int64_t maxOffersToCross = INT64_MAX;
+                if (ltx.loadHeader().current().ledgerVersion >=
+                    FIRST_PROTOCOL_SUPPORTING_OPERATION_LIMITS)
+                {
+                    size_t offersCrossed = innerResult().success().offers.size();
+                    // offersCrossed will never be bigger than INT64_MAX because
+                    // - the machine would have run out of memory
+                    // - the limit, which cannot exceed INT64_MAX, should be enforced
+                    // so this subtraction is safe because getMaxOffersToCross() >= 0
+                    maxOffersToCross = getMaxOffersToCross() - offersCrossed;
+                }
+
+                int64_t amountSend = 0;
+                int64_t amountRecv = 0;
+                std::vector<ClaimAtom> offerTrail;
+                auto cacheInfo = ppsrc.has_value()
+                                    ? std::make_optional<PathPaymentCacheInformation>()
+                                    : std::nullopt;
+                auto convRes = convert(ltx, maxOffersToCross, sendAsset, INT64_MAX,
+                                    amountSend, recvAsset, maxAmountRecv, amountRecv,
+                                    RoundingType::PATH_PAYMENT_STRICT_RECEIVE,
+                                    offerTrail, cacheInfo);
+
+                if (ppsrc.has_value())
+                {
+                    ppsrc.value().insert(sendAsset, recvAsset,
+                                        std::move(cacheInfo.value()));
+                }
+
+                if (!convRes)
+                {
+                    return false;
+                }
+
+                maxAmountRecv = amountSend;
+
+                // add offers that got taken on the way
+                // insert in front to match the path's order
+                auto& offers = innerResult().success().offers;
+                offers.insert(offers.begin(), offerTrail.begin(), offerTrail.end());
+            }
+            recvAssetPtr = &sendAsset;
         }
 
-        if (!checkIssuer(ltx, sendAsset))
+        if (maxAmountRecv > mPathPayment.sendMax)
         {
+            if (passUsesCache)
+            {
+                ppsrc->cacheHit();
+            }
+            setResultConstraintNotMet();
             return false;
         }
 
-        int64_t maxOffersToCross = INT64_MAX;
-        if (ltx.loadHeader().current().ledgerVersion >=
-            FIRST_PROTOCOL_SUPPORTING_OPERATION_LIMITS)
-        {
-            size_t offersCrossed = innerResult().success().offers.size();
-            // offersCrossed will never be bigger than INT64_MAX because
-            // - the machine would have run out of memory
-            // - the limit, which cannot exceed INT64_MAX, should be enforced
-            // so this subtraction is safe because getMaxOffersToCross() >= 0
-            maxOffersToCross = getMaxOffersToCross() - offersCrossed;
-        }
-
-        int64_t amountSend = 0;
-        int64_t amountRecv = 0;
-        std::vector<ClaimAtom> offerTrail;
-        auto cacheInfo = ppsrc.has_value()
-                             ? std::make_optional<PathPaymentCacheInformation>()
-                             : std::nullopt;
-        auto convRes = convert(ltx, maxOffersToCross, sendAsset, INT64_MAX,
-                               amountSend, recvAsset, maxAmountRecv, amountRecv,
-                               RoundingType::PATH_PAYMENT_STRICT_RECEIVE,
-                               offerTrail, cacheInfo);
-
-        if (ppsrc.has_value())
-        {
-            ppsrc.value().insert(sendAsset, recvAsset,
-                                 std::move(cacheInfo.value()));
-        }
-
-        if (!convRes)
-        {
-            return false;
-        }
-
-        maxAmountRecv = amountSend;
-        recvAsset = sendAsset;
-
-        // add offers that got taken on the way
-        // insert in front to match the path's order
-        auto& offers = innerResult().success().offers;
-        offers.insert(offers.begin(), offerTrail.begin(), offerTrail.end());
-    }
-
-    if (maxAmountRecv > mPathPayment.sendMax)
-    { // make sure not over the max
-        setResultConstraintNotMet();
-        return false;
+        // Hack to emulate 'continue <outer_loop>', a structured-control primitive C++ lacks.
+        continue_outer_loop:
+            (void)0;
     }
 
     if (!updateSourceBalance(ltx, maxAmountRecv, bypassIssuerCheck,

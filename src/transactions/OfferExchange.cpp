@@ -1443,7 +1443,7 @@ exchangeWithPool(AbstractLedgerTxn& ltxOuter, Asset const& toPoolAsset,
 
     if (cacheInfo && !cacheInfo->liquidityPool)
     {
-        cacheInfo->liquidityPool = std::make_optional<LiquidityPoolState>();
+        cacheInfo->liquidityPool = std::make_optional<CacheableLiquidityPoolState>();
     }
 
     bool res = false;

@@ -3,6 +3,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "transactions/PathPaymentStrictReceiveCache.h"
+#include "transactions/OfferExchange.h"
 #include "util/Logging.h"
 #include "util/Math.h"
 #include <Tracy.hpp>
@@ -31,37 +32,29 @@ PathPaymentStrictReceiveCache::isInvalid(Asset const& sendAsset,
     return false;
 }
 
-struct CrossedSuccessfully
-{
-    int64_t amountSend{0};
-    int64_t numOffersCrossed{0};
-};
-typedef std::variant<CrossedSuccessfully, OperationResult>
-    SimulatedExchangeResult;
-
 static void
 setInner(OperationResult& res, PathPaymentStrictReceiveResultCode code)
 {
     res.tr().pathPaymentStrictReceiveResult().code(code);
 }
 
-static SimulatedExchangeResult
+static PathPaymentStrictReceiveCache::SimulatedExchangeResult
 makeResult(OperationResultCode c)
 {
-    return SimulatedExchangeResult(OperationResult(c));
+    return PathPaymentStrictReceiveCache::SimulatedExchangeResult(OperationResult(c));
 }
 
-static SimulatedExchangeResult
+static PathPaymentStrictReceiveCache::SimulatedExchangeResult
 makeResult(PathPaymentStrictReceiveResultCode c)
 {
     OperationResult res(opINNER);
     res.tr().type(PATH_PAYMENT_STRICT_RECEIVE);
     setInner(res, c);
-    return SimulatedExchangeResult(std::move(res));
+    return PathPaymentStrictReceiveCache::SimulatedExchangeResult(std::move(res));
 }
 
-static std::optional<CrossedSuccessfully>
-simulateExchangeWithLiquidityPool(PathPaymentCacheInformation const& c,
+std::optional<PathPaymentStrictReceiveCache::CrossedSuccessfully>
+PathPaymentStrictReceiveCache::simulateExchangeWithLiquidityPool(PathPaymentCacheInformation const& c,
                                   int64_t destAmount)
 {
     std::optional<CrossedSuccessfully> res;
@@ -83,8 +76,8 @@ simulateExchangeWithLiquidityPool(PathPaymentCacheInformation const& c,
 }
 
 // Returns true if we have a guaranteed result and false otherwise
-static bool
-simulateExchangeWithOrderBook(PathPaymentCacheInformation const& c,
+bool
+PathPaymentStrictReceiveCache::simulateExchangeWithOrderBook(PathPaymentCacheInformation const& c,
                               AccountID const& sourceID, int64_t destAmount,
                               int64_t maxOffersToCross,
                               SimulatedExchangeResult& ser)
@@ -179,8 +172,8 @@ simulateExchangeWithOrderBook(PathPaymentCacheInformation const& c,
     return true;
 }
 
-static SimulatedExchangeResult
-selectExchangeResult(SimulatedExchangeResult const& ob,
+PathPaymentStrictReceiveCache::SimulatedExchangeResult
+PathPaymentStrictReceiveCache::selectExchangeResult(SimulatedExchangeResult const& ob,
                      std::optional<CrossedSuccessfully> const& lp)
 {
     if (!lp)
@@ -191,17 +184,17 @@ selectExchangeResult(SimulatedExchangeResult const& ob,
     {
         auto const& obSuccess = std::get<CrossedSuccessfully>(ob);
         return lp->amountSend <= obSuccess.amountSend
-                   ? SimulatedExchangeResult(*lp)
+                   ? PathPaymentStrictReceiveCache::SimulatedExchangeResult(*lp)
                    : ob;
     }
     else // if (std::holds_alternative<OperationResult>(ob))
     {
-        return SimulatedExchangeResult(*lp);
+        return PathPaymentStrictReceiveCache::SimulatedExchangeResult(*lp);
     }
 }
 
-static bool
-isDuplicateExchange(Asset const& firstRecvAsset,
+bool
+PathPaymentStrictReceiveCache::isDuplicateExchange(Asset const& firstRecvAsset,
                     std::vector<Asset>::const_iterator begin,
                     std::vector<Asset>::const_iterator sendIter)
 {
@@ -227,6 +220,53 @@ isDuplicateExchange(Asset const& firstRecvAsset,
         }
     }
     return false;
+}
+
+bool
+PathPaymentStrictReceiveCache::shouldUseCache(uint32_t ledgerVersion)
+{
+    ++mNumQueries;
+    if (!mIsCacheEnabled)
+    {
+        return false;
+    }
+
+    if (ledgerVersion < 13)
+    {
+        // Before protocol version 10 we used a different rounding algorithm
+        // From protocol version 10 to 13 we also checked issuers
+        return false;
+    }
+    return true;
+}
+
+
+std::optional<std::vector<PathPaymentStrictReceiveCache::CrossedOffersInformation>::const_iterator>
+PathPaymentStrictReceiveCache::findCacheEntry(int64_t destAmount, Asset const& recvAsset, Asset const& firstRecvAsset,
+                    std::vector<Asset>::const_iterator begin,
+                    std::vector<Asset>::const_iterator sendIter) const
+{
+    auto const& sendAsset = *sendIter;
+
+    if (isInvalid(sendAsset, recvAsset) ||
+        isDuplicateExchange(firstRecvAsset, begin, sendIter))
+    {
+        return std::nullopt;
+    }
+
+    std::vector<CrossedOffersInformation>::const_iterator i = mCache.end();
+    for (auto j = mCache.begin(); j != mCache.end(); ++j)
+    {
+        if (j->cacheInfo.amountReceiveBeforeLast <= destAmount &&
+            (i == mCache.end() ||
+                i->cacheInfo.amountReceiveBeforeLast <
+                    j->cacheInfo.amountReceiveBeforeLast) &&
+            j->sendAsset == sendAsset && j->recvAsset == recvAsset)
+        {
+            i = j;
+        }
+    }
+    return i == mCache.end() ? std::nullopt : std::make_optional(i);
 }
 
 bool
@@ -396,6 +436,12 @@ PathPaymentStrictReceiveCache::transactionSuccessful()
     mCache.resize(n);
 
     mInvalidatedByThisTx.clear();
+}
+
+void
+PathPaymentStrictReceiveCache::cacheHit()
+{
+    ++mNumGuaranteedToFail;
 }
 
 void

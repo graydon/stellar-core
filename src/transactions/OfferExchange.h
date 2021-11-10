@@ -311,7 +311,7 @@ enum class CrossOfferResult
     eOfferCantConvert
 };
 
-struct LiquidityPoolState
+struct CacheableLiquidityPoolState
 {
     int64_t reserveSend;
     int64_t reserveReceive;
@@ -325,6 +325,48 @@ struct CacheableOfferParameters
     int64_t maxSheepReceive;
 };
 
+// This struct exists to support the PathPaymentStrictReceiveCache (PPSRC),
+// which stores in itself summaries of recent _unsuccessful_ orderbook inquiries
+// made by PathPaymentStrictReceiveOpFrame::doApply calls.
+//
+// (Actually all orderbook inquiries are cached, but the cache entries for an
+// orderbook are invalidated if any transaction successfully executes a trade on
+// that book, so it is more precisely a cache of successful-or-unsuccessful
+// steps taken on paths in overall-unsuccessful transactions.)
+//
+// Such an PathPaymentStrictReceiveOp is typically an arbitrage attempt and most
+// of those fail, making the cache effective. Each such attempt takes multiple
+// steps (along a payment path) typically of the form XLM->X->Y->XLM. Such paths
+// are traversed by both the PPSRC and the normal doApply loop backwards from
+// recv to send. The PPSRC caches each step separately and caches enough
+// information about each step to replay either its successful execution or its
+// failure.
+//
+// Each step is asking to sell (and asking how much it must sell) an indefinite
+// but bounded amount SEND of asset S for some definite amount RECV of asset R.
+// To do this, each step attempts to cross offers from the S:R orderbook. The
+// cache stores one or more entries for each orderbook.
+//
+// We could key such cache entries by SEND:RECV but then we'd only get a cache
+// hit for an exactly-equal inquiry; arbitrageurs frequently change the target
+// amounts to try to get a success when another amount failed, and we want our
+// cache to serve those "nearby" amounts well. So instead we cache in terms of a
+// one-sided range -- steps that want to receive RECV-or-more of R. To do this
+// correctly, we need to cache not just _that_ a given SEND:RECV call failed,
+// but also we have to store the _last_ offer found and crossed at depth N in
+// the S:R orderbook during the previous failing call (as well as an aggregate
+// summary of the amount of SEND and RECV spent in the N-1 crossed offers
+// leading to the last one). This allows us to reconstruct the execution context
+// of the previous call sufficiently to know whether the current call (which is
+// trying to receive some value possibly greater than the cached call) would
+// succeed or fail the same way.
+//
+// False negatives are ok here: if we aren't _sure_ the current step will
+// succeed or fail at the same offer that the previous call did, it's ok to say
+// we're unsure and let the normal orderbook traversal code decide for sure.
+// This is strictly for trying to identify cases that are "essentially the same"
+// as something we very-recently calculated (often the exactly previous
+// operation).
 struct PathPaymentCacheInformation
 {
     // Amount received from all offers before reaching lastCross
@@ -343,7 +385,7 @@ struct PathPaymentCacheInformation
     std::optional<CacheableOfferParameters> lastCross;
 
     // Parameters for the liquidity pool before exchanging
-    std::optional<LiquidityPoolState> liquidityPool;
+    std::optional<CacheableLiquidityPoolState> liquidityPool;
 
     // Every account owning an offer that was crossed before reaching
     // lastCross
