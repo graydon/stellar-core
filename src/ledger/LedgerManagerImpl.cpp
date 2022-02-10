@@ -16,6 +16,7 @@
 #include "herder/TxSetFrame.h"
 #include "herder/Upgrades.h"
 #include "history/HistoryManager.h"
+#include "ledger/ConcurrentTxPartition.h"
 #include "ledger/FlushAndRotateMetaDebugWork.h"
 #include "ledger/LedgerHeaderUtils.h"
 #include "ledger/LedgerRange.h"
@@ -677,6 +678,12 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
         ledgerCloseMeta = std::make_unique<LedgerCloseMeta>();
         ledgerCloseMeta->v0().txProcessing.reserve(txSet->sizeTx());
         txSet->toXDR(ledgerCloseMeta->v0().txSet);
+    }
+
+    {
+        TransactionSet txset;
+        ledgerData.getTxSet()->toXDR(txset);
+        partitionTxSetForConcurrency(txset);
     }
 
     // the transaction set that was agreed upon by consensus
