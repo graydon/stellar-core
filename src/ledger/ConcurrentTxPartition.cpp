@@ -2,12 +2,115 @@
 #include "ledger/LedgerTxn.h"
 #include "transactions/TransactionUtils.h"
 #include "util/BitSet.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
+#include "util/Math.h"
 #include "xdr/Stellar-ledger-entries.h"
 #include "xdr/Stellar-transaction.h"
 #include "xdr/Stellar-types.h"
+#include <limits>
 #include <optional>
 #include <variant>
+
+// First, a textbook disjoint-sets / union-find implementation.
+// https://en.wikipedia.org/wiki/Disjoint-set_data_structure
+//
+// Augmented with an optional RootData type that there can only be at most one
+// non-nullopt of of in any given join call (it is up to the user to ensure
+// this).
+using SetID = size_t;
+
+template <typename RootData> struct Set
+{
+    SetID mParent;
+    size_t mSize;
+    std::optional<RootData> mRootData{std::nullopt};
+    Set(SetID self) : mParent(self), mSize(1)
+    {
+    }
+};
+
+template <typename RootData> struct SetPartition
+{
+    std::vector<Set<RootData>> mSets;
+
+    SetID
+    add()
+    {
+        SetID n = mSets.size();
+        mSets.emplace_back(Set<RootData>(n));
+        return n;
+    }
+
+    SetID
+    find(SetID x)
+    {
+        SetID root = x;
+        while (mSets.at(root).mParent != root)
+        {
+            using namespace stellar;
+            releaseAssert(!mSets.at(root).mRootData);
+            root = mSets.at(root).mParent;
+        }
+        while (mSets.at(x).mParent != root)
+        {
+            auto parent = mSets.at(x).mParent;
+            mSets.at(x).mParent = root;
+            x = parent;
+        }
+        return root;
+    }
+
+    RootData&
+    getRootData(SetID x)
+    {
+        x = find(x);
+        auto& s = mSets.at(x);
+        if (!s.mRootData)
+        {
+            s.mRootData.emplace();
+        }
+        return *s.mRootData;
+    }
+
+    void
+    join(SetID x, SetID y)
+    {
+
+        x = find(x);
+        y = find(y);
+
+        if (x == y)
+        {
+            return;
+        }
+
+        if (mSets.at(x).mSize < mSets.at(y).mSize)
+        {
+            std::swap(x, y);
+        }
+        auto& setX = mSets.at(x);
+        auto& setY = mSets.at(y);
+        setY.mParent = x;
+        setX.mSize += setY.mSize;
+        if (setY.mRootData)
+        {
+            if (setX.mRootData)
+            {
+                (*setX.mRootData).merge(*setY.mRootData);
+                setY.mRootData.reset();
+            }
+            else
+            {
+                setX.mRootData.swap(setY.mRootData);
+            }
+        }
+    }
+};
+
+// Next, a set of helpers to perform data-dependency
+// analysis of a set of txs, so that we know what they
+// are going to read and write.
 
 namespace std
 {
@@ -36,9 +139,11 @@ enum class AccessMode
 
 using DataKey = std::variant<LedgerKey, AssetPair>;
 
-// This is just a test implementation of the Strife clustering algorithm.
-struct ConcurrentPartitionAnalyzer
+struct DataDependencyAnalyzer
 {
+    DataDependencyAnalyzer(size_t nTxs) : mReadSets(nTxs), mWriteSets(nTxs)
+    {
+    }
     std::unordered_map<DataKey, DataID> keyToDataId;
     DataID
     getID(DataKey const& k)
@@ -47,18 +152,18 @@ struct ConcurrentPartitionAnalyzer
         auto pair = keyToDataId.emplace(k, next);
         return pair.first->second;
     }
-    TxID mNextTx{0};
     std::vector<BitSet> mReadSets;
     std::vector<BitSet> mWriteSets;
+    BitSet
+    getAccessedData(TxID tx) const
+    {
+        return mReadSets.at(tx) | mWriteSets.at(tx);
+    }
     void
     recordDependency(TxID txID, DataKey const& dep, AccessMode mode)
     {
         std::vector<BitSet>& sets =
             (mode == AccessMode::READ) ? mReadSets : mWriteSets;
-        while (sets.size() < txID + 1)
-        {
-            sets.emplace_back(BitSet());
-        }
         DataID data = getID(dep);
         CLOG_DEBUG(Ledger, "Tx {} {}-depends on data {}", txID,
                    (mode == AccessMode::READ) ? "read" : "write", data);
@@ -68,15 +173,15 @@ struct ConcurrentPartitionAnalyzer
 
 struct SingleTxAnalyzer
 {
-    ConcurrentPartitionAnalyzer& mCPA;
+    DataDependencyAnalyzer& mDDA;
     TxID mTxID;
 
     // FIXME: for this generation we're just experimenting so we can skip cases
     // we don't want to analyze and we'll just filter them out of the analysis.
     bool mSkip{false};
 
-    SingleTxAnalyzer(ConcurrentPartitionAnalyzer& cpa)
-        : mCPA(cpa), mTxID(mCPA.mNextTx++)
+    SingleTxAnalyzer(DataDependencyAnalyzer& dda, TxID txID)
+        : mDDA(dda), mTxID(txID)
     {
     }
 
@@ -95,7 +200,7 @@ struct SingleTxAnalyzer
                 std::swap(ap.buying, ap.selling);
             }
         }
-        mCPA.recordDependency(mTxID, k, mode);
+        mDDA.recordDependency(mTxID, k, mode);
     }
 
     void
@@ -408,16 +513,266 @@ struct SingleTxAnalyzer
     }
 };
 
+// Finally, a test implementation of the Strife clustering algorithm.
+// https://homes.cs.washington.edu/~suciu/guna-sigmod-2020-pdfa.pdf
+
+using SpecialID = size_t;
+
+struct RootData
+{
+    // This is set only if the cluster is special.
+    std::optional<SpecialID> mSpecialID{std::nullopt};
+    size_t mCount{1};
+    std::shared_ptr<std::vector<TxID>> mTxs{nullptr};
+    void
+    merge(RootData const& other)
+    {
+        if (mSpecialID)
+        {
+            releaseAssert(!other.mSpecialID);
+        }
+        mCount += other.mCount;
+    }
+};
+
+struct ConcurrentPartitionAnalyzer
+{
+    // Constant parameters and inputs
+    TransactionSet const& mTxs;
+    DataDependencyAnalyzer const& mDDA;
+    size_t const mK;
+    double const mAlpha;
+
+    // Data structures in the paper.
+    BitSet mSpecial;
+    SetPartition<RootData> mDataClusters;
+    std::vector<std::vector<size_t>> mCount;
+    std::vector<std::shared_ptr<std::vector<TxID>>> mTxClusters;
+    std::vector<TxID> mNoAccess;
+    std::vector<TxID> mResidual;
+
+    ConcurrentPartitionAnalyzer(TransactionSet const& txs,
+                                DataDependencyAnalyzer const& dda, size_t k,
+                                double alpha)
+        : mTxs(txs), mDDA(dda), mK(k), mAlpha(alpha), mCount(k)
+    {
+        // Make one singleton data cluster for each data id.
+        for (DataID _d = 0; _d < mDDA.keyToDataId.size(); ++_d)
+        {
+            mDataClusters.add();
+        }
+        for (auto& count : mCount)
+        {
+            // Allocate the special-cluster connection-count arrays.
+            // These are only used in merge for indirectly-connected specials.
+            count.resize(k);
+        }
+    }
+
+    BitSet
+    getAccessedClusters(TxID tx)
+    {
+        BitSet txData = mDDA.getAccessedData(tx);
+        BitSet C;
+        for (DataID data = 0; txData.nextSet(data); ++data)
+        {
+            C.set(mDataClusters.find(data));
+        }
+        // CLOG_INFO(Ledger, "txID {} accessed data {}", tx, C);
+        return C;
+    }
+
+    void
+    joinClusters(SetID& c, BitSet const& C)
+    {
+        releaseAssert(!C.empty());
+        releaseAssert(C.get(c));
+        for (SetID other = c; C.nextSet(other); ++other)
+        {
+            mDataClusters.join(c, other);
+        }
+        c = mDataClusters.find(c);
+    }
+
+    // Steps from the paper.
+
+    // Spot samples K transactions and creates a special cluster out of the data
+    // for each sampled tx if that data is not yet in a special cluster.
+    void
+    spot()
+    {
+        for (SpecialID i = 0; i < mK; ++i)
+        {
+            TxID tx = rand_uniform<size_t>(0, mTxs.txs.size() - 1);
+            BitSet C = getAccessedClusters(tx);
+            CLOG_DEBUG(Ledger, "spot: tx {} accesses clusters {}", tx, C);
+            if (C.empty())
+            {
+                continue;
+            }
+            BitSet S = C & mSpecial;
+            CLOG_DEBUG(Ledger, "spot: tx {} accesses special clusters {}", tx,
+                       S);
+            if (S.empty())
+            {
+                SetID c{0};
+                releaseAssert(C.nextSet(c));
+                joinClusters(c, C);
+                mSpecial.set(c);
+                CLOG_DEBUG(
+                    Ledger,
+                    "spot: tx {} causing {} in cluster {} to become special",
+                    tx, c, S);
+                auto& cdata = mDataClusters.getRootData(c);
+                cdata.mSpecialID.emplace(i);
+            }
+        }
+    }
+
+    // Fuse looks at all txs and clusters the tx's data into an existing special
+    // cluster if it doesn't access more than one. If it does access more than
+    // one, the pairwise connectivity of the specials that it accesses is
+    // increased.
+    void
+    fuse()
+    {
+        for (TxID tx = 0; tx < mTxs.txs.size(); ++tx)
+        {
+            BitSet C = getAccessedClusters(tx);
+            CLOG_DEBUG(Ledger, "fuse: tx {} accesses clusters {}", tx, C);
+            if (C.empty())
+            {
+                continue;
+            }
+            BitSet S = C & mSpecial;
+            CLOG_DEBUG(Ledger, "fuse: tx {} accesses special clusters {}", tx,
+                       S);
+            if (S.count() <= 1)
+            {
+                SetID c{0};
+                if (S.empty())
+                {
+                    releaseAssert(C.nextSet(c));
+                    CLOG_DEBUG(Ledger, "fuse: tx {} clustering non-special {}",
+                               tx, c);
+                }
+                else
+                {
+                    releaseAssert(S.nextSet(c));
+                    CLOG_DEBUG(Ledger, "fuse: tx {} clustering special {}", tx,
+                               c);
+                }
+                joinClusters(c, C);
+                auto& cd = mDataClusters.getRootData(c);
+                cd.mCount++;
+                CLOG_DEBUG(Ledger, "fuse: tx {} bumped count on {} to {}", tx,
+                           c, cd.mCount);
+            }
+            else
+            {
+                for (SetID c1 = 0; S.nextSet(c1); ++c1)
+                {
+                    auto const& c1d = mDataClusters.getRootData(c1);
+                    releaseAssert(c1d.mSpecialID);
+                    for (SetID c2 = 0; S.nextSet(c2); ++c2)
+                    {
+                        auto const& c2d = mDataClusters.getRootData(c2);
+                        releaseAssert(c2d.mSpecialID);
+                        mCount.at(*c1d.mSpecialID).at(*c2d.mSpecialID)++;
+                    }
+                }
+            }
+        }
+    }
+
+    // Merge relaxes the invariant of "no specials get merged" and begins
+    // merging those that have a sufficiently high count of cross-cluster
+    // access.
+    void
+    merge()
+    {
+        for (SetID c1 = 0; mSpecial.nextSet(c1); ++c1)
+        {
+            auto const& c1d = mDataClusters.getRootData(c1);
+            for (SetID c2 = 0; mSpecial.nextSet(c2); ++c2)
+            {
+                auto& c2d = mDataClusters.getRootData(c2);
+                if (c1d.mSpecialID && c2d.mSpecialID)
+                {
+                    size_t n1 = mCount.at(*c1d.mSpecialID).at(*c2d.mSpecialID);
+                    size_t n2 = c1d.mCount + c2d.mCount + n1;
+                    if (n1 > mAlpha * n2)
+                    {
+                        // See paper section 3.1.4: the invariant that
+                        // "no specials are merged" is relaxed in the
+                        // merge step, so we (arbitrarily) forget the
+                        // SpecialID of c2 here.
+                        c2d.mSpecialID.reset();
+                        mDataClusters.join(c1, c2);
+                    }
+                }
+            }
+        }
+    }
+
+    void
+    allocate()
+    {
+        for (TxID tx = 0; tx < mTxs.txs.size(); ++tx)
+        {
+            BitSet C = getAccessedClusters(tx);
+            switch (C.count())
+            {
+            case 0:
+                mNoAccess.emplace_back(tx);
+                break;
+
+            case 1:
+            {
+                SetID c{0};
+                releaseAssert(C.nextSet(c));
+                auto& sd = mDataClusters.getRootData(c);
+                if (!sd.mTxs)
+                {
+                    sd.mTxs = std::make_shared<std::vector<TxID>>();
+                    mTxClusters.emplace_back(sd.mTxs);
+                }
+                sd.mTxs->emplace_back(tx);
+            }
+            break;
+
+            default:
+                mResidual.emplace_back(tx);
+                break;
+            }
+            if (C.empty())
+            {
+                continue;
+            }
+        }
+    }
+
+    void
+    cluster()
+    {
+        spot();
+        fuse();
+        merge();
+        allocate();
+    }
+};
+
 void
 partitionTxSetForConcurrency(TransactionSet const& txset)
 {
     CLOG_INFO(Ledger, "Partitioning {} entry txset", txset.txs.size());
     size_t n_skipped{0};
-    ConcurrentPartitionAnalyzer cpa;
+    DataDependencyAnalyzer dda(txset.txs.size());
 
+    TxID txID{0};
     for (TransactionEnvelope const& tx : txset.txs)
     {
-        SingleTxAnalyzer sta(cpa);
+        SingleTxAnalyzer sta(dda, txID++);
         sta.analyzeTx(tx);
         if (sta.mSkip)
         {
@@ -425,7 +780,14 @@ partitionTxSetForConcurrency(TransactionSet const& txset)
         }
     }
 
-    CLOG_INFO(Ledger, "Partitioned {} entry txset, skipped {}",
-              txset.txs.size(), n_skipped);
+    size_t k = 8;
+    double alpha = 0.4;
+    ConcurrentPartitionAnalyzer cpa(txset, dda, k, alpha);
+    cpa.cluster();
+    CLOG_INFO(Ledger,
+              "Partitioned {} entry txset into {} concurrent clusters, with {} "
+              "residual, {} skipped, {} non-accessing",
+              txset.txs.size(), cpa.mTxClusters.size(), cpa.mResidual.size(),
+              n_skipped, cpa.mNoAccess.size());
 }
 }
