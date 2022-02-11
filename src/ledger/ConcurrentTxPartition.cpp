@@ -107,6 +107,18 @@ template <typename RootData> struct SetPartition
             }
         }
     }
+
+    // For diagnostic logging: enumerate the roots.
+    BitSet
+    getRoots()
+    {
+        BitSet res;
+        for (size_t i = 0; i < mSets.size(); ++i)
+        {
+            res.set(find(i));
+        }
+        return res;
+    }
 };
 
 // Next, a set of helpers to perform data-dependency
@@ -597,9 +609,9 @@ struct ConcurrentPartitionAnalyzer
     {
         releaseAssert(!C.empty());
         releaseAssert(C.get(c));
-        for (SetID other = c; C.nextSet(other); ++other)
+        for (SetID i = 0; C.nextSet(i); ++i)
         {
-            mDataClusters.join(c, other);
+            mDataClusters.join(c, i);
         }
         c = mDataClusters.find(c);
     }
@@ -884,6 +896,19 @@ partitionTxSetForConcurrency(TransactionSet const& txset)
               "residual, {} skipped, {} non-accessing",
               txset.txs.size(), cpa.mTxClusters.size(), cpa.mTxBins.size(),
               cpa.mResidual.size(), n_skipped, cpa.mNoAccess.size());
+
+    BitSet roots = cpa.mDataClusters.getRoots();
+    for (SetID r = 0; roots.nextSet(r); ++r)
+    {
+        CLOG_DEBUG(Ledger, "final cluster {} touched by {} txs", r,
+                   cpa.mDataClusters.getRootData(r).mCount);
+    }
+
+    for (auto const& r : cpa.mResidual)
+    {
+        BitSet C = cpa.getAccessedClusters(r);
+        CLOG_DEBUG(Ledger, "residual tx {} accesses clusters {}", r, C);
+    }
 
     std::vector<BitSet> binData;
     std::string bins;
