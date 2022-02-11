@@ -528,11 +528,16 @@ struct RootData
     size_t mCount{1};
     std::shared_ptr<std::vector<TxID>> mTxs{nullptr};
     void
-    merge(RootData const& other)
+    merge(RootData& other)
     {
         if (mSpecialID)
         {
             releaseAssert(!other.mSpecialID);
+        }
+        else if (other.mSpecialID)
+        {
+            releaseAssert(!mSpecialID);
+            mSpecialID.swap(other.mSpecialID);
         }
         mCount += other.mCount;
     }
@@ -627,7 +632,7 @@ struct ConcurrentPartitionAnalyzer
                 CLOG_DEBUG(
                     Ledger,
                     "spot: tx {} causing {} in cluster {} to become special",
-                    tx, c, S);
+                    tx, c, C);
                 auto& cdata = mDataClusters.getRootData(c);
                 cdata.mSpecialID.emplace(i);
             }
@@ -658,16 +663,30 @@ struct ConcurrentPartitionAnalyzer
                 if (S.empty())
                 {
                     releaseAssert(C.nextSet(c));
-                    CLOG_DEBUG(Ledger, "fuse: tx {} clustering non-special {}",
-                               tx, c);
+                    CLOG_DEBUG(Ledger,
+                               "fuse: tx {} clustering {} with non-special {}",
+                               tx, C, c);
+                    joinClusters(c, C);
                 }
                 else
                 {
                     releaseAssert(S.nextSet(c));
-                    CLOG_DEBUG(Ledger, "fuse: tx {} clustering special {}", tx,
-                               c);
+                    auto saved_special = c;
+                    CLOG_DEBUG(Ledger,
+                               "fuse: tx {} clustering {} with special {}", tx,
+                               C, c);
+                    joinClusters(c, C);
+                    // Might have transferred special from saved_special -> c
+                    if (saved_special != c)
+                    {
+                        CLOG_DEBUG(Ledger,
+                                   "fuse: tx {} transferred special-ness from "
+                                   "{} to {}",
+                                   tx, saved_special, c);
+                        mSpecial.unset(saved_special);
+                        mSpecial.set(c);
+                    }
                 }
-                joinClusters(c, C);
                 auto& cd = mDataClusters.getRootData(c);
                 cd.mCount++;
                 CLOG_DEBUG(Ledger, "fuse: tx {} bumped count on {} to {}", tx,
