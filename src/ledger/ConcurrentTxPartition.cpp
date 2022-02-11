@@ -8,16 +8,17 @@
 #include "xdr/Stellar-ledger-entries.h"
 #include "xdr/Stellar-transaction.h"
 #include "xdr/Stellar-types.h"
+#include <algorithm>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <variant>
 
 // First, a textbook disjoint-sets / union-find implementation.
 // https://en.wikipedia.org/wiki/Disjoint-set_data_structure
 //
-// Augmented with an optional RootData type that there can only be at most one
-// non-nullopt of of in any given join call (it is up to the user to ensure
-// this).
+// Augmented with an optional RootData type that we merge upwards,
+// carrying some user data.
 using SetID = size_t;
 
 template <typename RootData> struct Set
@@ -473,6 +474,8 @@ struct SingleTxAnalyzer
             break;
 
             /*
+                // TODO: finish other op types
+
                 SET_OPTIONS = 5,
                 CHANGE_TRUST = 6,
                 ALLOW_TRUST = 7,
@@ -542,19 +545,21 @@ struct ConcurrentPartitionAnalyzer
     DataDependencyAnalyzer const& mDDA;
     size_t const mK;
     double const mAlpha;
+    size_t mNBins;
 
     // Data structures in the paper.
     BitSet mSpecial;
     SetPartition<RootData> mDataClusters;
     std::vector<std::vector<size_t>> mCount;
     std::vector<std::shared_ptr<std::vector<TxID>>> mTxClusters;
+    std::vector<std::shared_ptr<std::vector<TxID>>> mTxBins;
     std::vector<TxID> mNoAccess;
     std::vector<TxID> mResidual;
 
     ConcurrentPartitionAnalyzer(TransactionSet const& txs,
                                 DataDependencyAnalyzer const& dda, size_t k,
-                                double alpha)
-        : mTxs(txs), mDDA(dda), mK(k), mAlpha(alpha), mCount(k)
+                                double alpha, size_t nbins)
+        : mTxs(txs), mDDA(dda), mK(k), mAlpha(alpha), mNBins(nbins), mCount(k)
     {
         // Make one singleton data cluster for each data id.
         for (DataID _d = 0; _d < mDDA.keyToDataId.size(); ++_d)
@@ -676,6 +681,10 @@ struct ConcurrentPartitionAnalyzer
                     releaseAssert(c1d.mSpecialID);
                     for (SetID c2 = 0; S.nextSet(c2); ++c2)
                     {
+                        if (c1 == c2)
+                        {
+                            continue;
+                        }
                         auto const& c2d = mDataClusters.getRootData(c2);
                         releaseAssert(c2d.mSpecialID);
                         mCount.at(*c1d.mSpecialID).at(*c2d.mSpecialID)++;
@@ -696,12 +705,16 @@ struct ConcurrentPartitionAnalyzer
             auto const& c1d = mDataClusters.getRootData(c1);
             for (SetID c2 = 0; mSpecial.nextSet(c2); ++c2)
             {
+                if (c1 == c2)
+                {
+                    continue;
+                }
                 auto& c2d = mDataClusters.getRootData(c2);
                 if (c1d.mSpecialID && c2d.mSpecialID)
                 {
-                    size_t n1 = mCount.at(*c1d.mSpecialID).at(*c2d.mSpecialID);
-                    size_t n2 = c1d.mCount + c2d.mCount + n1;
-                    if (n1 > mAlpha * n2)
+                    double n1 = mCount.at(*c1d.mSpecialID).at(*c2d.mSpecialID);
+                    double n2 = c1d.mCount + c2d.mCount + n1;
+                    if (n1 >= (mAlpha * n2))
                     {
                         // See paper section 3.1.4: the invariant that
                         // "no specials are merged" is relaxed in the
@@ -745,10 +758,46 @@ struct ConcurrentPartitionAnalyzer
                 mResidual.emplace_back(tx);
                 break;
             }
-            if (C.empty())
+        }
+    }
+
+    void
+    binpack()
+    {
+        size_t nTxs = 0;
+        for (auto const& c : mTxClusters)
+        {
+            nTxs += c->size();
+        }
+        std::sort(mTxClusters.begin(), mTxClusters.end(),
+                  [](std::shared_ptr<std::vector<TxID>> const& a,
+                     std::shared_ptr<std::vector<TxID>> const& b) {
+                      return a->size() > b->size();
+                  });
+        size_t binsz = (nTxs + mNBins - 1) / mNBins;
+        for (size_t i = 0; i < mNBins; ++i)
+        {
+            mTxBins.emplace_back(std::make_shared<std::vector<TxID>>());
+        }
+        std::shared_ptr<std::vector<TxID>> target;
+        for (auto const& c : mTxClusters)
+        {
+            for (auto& b : mTxBins)
             {
-                continue;
+                if (b->empty() || (b->size() + c->size() < binsz))
+                {
+                    if (!target || target->size() > b->size())
+                    {
+                        target = b;
+                    }
+                }
             }
+            if (!target)
+            {
+                target = std::make_shared<std::vector<TxID>>();
+                mTxBins.emplace_back(target);
+            }
+            target->insert(target->end(), c->begin(), c->end());
         }
     }
 
@@ -759,13 +808,41 @@ struct ConcurrentPartitionAnalyzer
         fuse();
         merge();
         allocate();
+
+        // We add an additional final worst-fit binpacking phase here to merge
+        // concurrent clusters, just to buid a static nbins multicore schedule.
+        binpack();
     }
 };
 
 void
 partitionTxSetForConcurrency(TransactionSet const& txset)
 {
-    CLOG_INFO(Ledger, "Partitioning {} entry txset", txset.txs.size());
+    // Parameters from the paper
+    size_t k = 100;
+    double alpha = 0.2;
+
+    // Additional bin-packing parameters.
+    size_t nbins = 8;
+
+    if (getenv("CLUSTER_K"))
+    {
+        k = atoi(getenv("CLUSTER_K"));
+    }
+
+    if (getenv("CLUSTER_ALPHA"))
+    {
+        alpha = atof(getenv("CLUSTER_ALPHA"));
+    }
+
+    if (getenv("CLUSTER_BINS"))
+    {
+        nbins = atoi(getenv("CLUSTER_BINS"));
+    }
+
+    CLOG_INFO(Ledger,
+              "Partitioning {} entry txset with k={}, alpha={}, nbins={}",
+              txset.txs.size(), k, alpha, nbins);
     size_t n_skipped{0};
     DataDependencyAnalyzer dda(txset.txs.size());
 
@@ -780,14 +857,46 @@ partitionTxSetForConcurrency(TransactionSet const& txset)
         }
     }
 
-    size_t k = 8;
-    double alpha = 0.4;
-    ConcurrentPartitionAnalyzer cpa(txset, dda, k, alpha);
+    ConcurrentPartitionAnalyzer cpa(txset, dda, k, alpha, nbins);
     cpa.cluster();
     CLOG_INFO(Ledger,
-              "Partitioned {} entry txset into {} concurrent clusters, with {} "
+              "Partitioned {} entry txset into {} concurrent clusters ({} "
+              "bins), with {} "
               "residual, {} skipped, {} non-accessing",
-              txset.txs.size(), cpa.mTxClusters.size(), cpa.mResidual.size(),
-              n_skipped, cpa.mNoAccess.size());
+              txset.txs.size(), cpa.mTxClusters.size(), cpa.mTxBins.size(),
+              cpa.mResidual.size(), n_skipped, cpa.mNoAccess.size());
+
+    std::vector<BitSet> binData;
+    std::string bins;
+    for (auto const& cc : cpa.mTxBins)
+    {
+        BitSet cd;
+        for (auto tx : *cc)
+        {
+            cd |= dda.getAccessedData(tx);
+        }
+        bins += fmt::format(" {}:{}", cc->size(), cd.count());
+        binData.emplace_back(cd);
+    }
+    CLOG_INFO(Ledger, "bins (ntx:ndata):{}", bins);
+
+    for (size_t i = 0; i < binData.size(); ++i)
+    {
+        BitSet ci = binData.at(i);
+        for (size_t j = 0; j < binData.size(); ++j)
+        {
+            if (i == j)
+            {
+                continue;
+            }
+            BitSet cj = binData.at(j);
+            BitSet isect = ci & cj;
+            if (!isect.empty())
+            {
+                CLOG_ERROR(Ledger, "Bins {} and {} intersect: {} & {} = {}", i,
+                           j, ci, cj, isect);
+            }
+        }
+    }
 }
 }
