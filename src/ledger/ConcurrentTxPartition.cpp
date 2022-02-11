@@ -656,7 +656,7 @@ struct ConcurrentPartitionAnalyzer
     // one, the pairwise connectivity of the specials that it accesses is
     // increased.
     void
-    fuse()
+    fuse(bool countTxs)
     {
         for (TxID tx = 0; tx < mTxs.txs.size(); ++tx)
         {
@@ -699,13 +699,18 @@ struct ConcurrentPartitionAnalyzer
                         mSpecial.set(c);
                     }
                 }
-                auto& cd = mDataClusters.getRootData(c);
-                cd.mCount++;
-                CLOG_DEBUG(Ledger, "fuse: tx {} bumped count on {} to {}", tx,
-                           c, cd.mCount);
+                if (countTxs)
+                {
+                    auto& cd = mDataClusters.getRootData(c);
+                    cd.mCount++;
+                    CLOG_DEBUG(Ledger, "fuse: tx {} bumped count on {} to {}",
+                               tx, c, cd.mCount);
+                }
             }
-            else
+            else if (countTxs)
             {
+                CLOG_DEBUG(Ledger, "fuse: tx {} touches multiple specials {}",
+                           tx, S);
                 for (SetID c1 = 0; S.nextSet(c1); ++c1)
                 {
                     auto const& c1d = mDataClusters.getRootData(c1);
@@ -719,6 +724,12 @@ struct ConcurrentPartitionAnalyzer
                         auto const& c2d = mDataClusters.getRootData(c2);
                         releaseAssert(c2d.mSpecialID);
                         mCount.at(*c1d.mSpecialID).at(*c2d.mSpecialID)++;
+                        CLOG_DEBUG(
+                            Ledger,
+                            "fuse: tx {} bumping special {} (id={}) <-> "
+                            "special {} (id={}) to {}",
+                            tx, c1, *c1d.mSpecialID, c2, *c2d.mSpecialID,
+                            mCount.at(*c1d.mSpecialID).at(*c2d.mSpecialID));
                     }
                 }
             }
@@ -731,6 +742,7 @@ struct ConcurrentPartitionAnalyzer
     void
     merge()
     {
+        std::vector<std::pair<SetID, SetID>> toMerge;
         for (SetID c1 = 0; mSpecial.nextSet(c1); ++c1)
         {
             auto const& c1d = mDataClusters.getRootData(c1);
@@ -743,19 +755,47 @@ struct ConcurrentPartitionAnalyzer
                 auto& c2d = mDataClusters.getRootData(c2);
                 if (c1d.mSpecialID && c2d.mSpecialID)
                 {
+                    CLOG_DEBUG(Ledger,
+                               "merge: considering special {} (id={}) and "
+                               "special {} (id={})",
+                               c1, *c1d.mSpecialID, c2, *c2d.mSpecialID);
                     double n1 = mCount.at(*c1d.mSpecialID).at(*c2d.mSpecialID);
                     double n2 = c1d.mCount + c2d.mCount + n1;
+                    CLOG_DEBUG(Ledger,
+                               "merge: n1={}, {}.count={}, {}.count={}, n2={}, "
+                               "alpha*n2={}",
+                               n1, c1, c1d.mCount, c2, c2d.mCount, n2,
+                               mAlpha * n2);
                     if (n1 >= (mAlpha * n2))
                     {
-                        // See paper section 3.1.4: the invariant that
-                        // "no specials are merged" is relaxed in the
-                        // merge step, so we (arbitrarily) forget the
-                        // SpecialID of c2 here.
-                        c2d.mSpecialID.reset();
-                        mDataClusters.join(c1, c2);
+                        CLOG_DEBUG(
+                            Ledger,
+                            "merge: will merge special {} with special {}", c1,
+                            c2);
+                        // Buffer the merge so we don't drop any SpecialIDs
+                        // until we're done examining all of them.
+                        toMerge.emplace_back(c1, c2);
+                    }
+                    else
+                    {
+                        CLOG_DEBUG(
+                            Ledger,
+                            "merge: not merging special {} with special {}", c1,
+                            c2);
                     }
                 }
             }
+        }
+        for (auto const& pair : toMerge)
+        {
+            // See paper section 3.1.4: the invariant that
+            // "no specials are merged" is relaxed in the
+            // merge step, so we (arbitrarily) forget the
+            // SpecialID of c2 here.
+            auto& c2d = mDataClusters.getRootData(pair.second);
+            c2d.mSpecialID.reset();
+            mSpecial.unset(pair.second);
+            mDataClusters.join(pair.first, pair.second);
         }
     }
 
@@ -836,8 +876,13 @@ struct ConcurrentPartitionAnalyzer
     cluster()
     {
         spot();
-        fuse();
+        fuse(true);
         merge();
+
+        // Modification from paper: run fuse again after merge, which will
+        // further fuse clusters that had specials merged in merge.
+        fuse(false);
+
         allocate();
 
         // We add an additional final worst-fit binpacking phase here to merge
