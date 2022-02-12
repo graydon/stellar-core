@@ -157,6 +157,7 @@ struct DataDependencyAnalyzer
     DataDependencyAnalyzer(size_t nTxs) : mReadSets(nTxs), mWriteSets(nTxs)
     {
     }
+
     std::unordered_map<DataKey, DataID> keyToDataId;
     DataID
     getID(DataKey const& k)
@@ -165,13 +166,17 @@ struct DataDependencyAnalyzer
         auto pair = keyToDataId.emplace(k, next);
         return pair.first->second;
     }
+
     std::vector<BitSet> mReadSets;
     std::vector<BitSet> mWriteSets;
+    BitSet mWrittenByAnyTx;
+
     BitSet
     getAccessedData(TxID tx) const
     {
-        return mReadSets.at(tx) | mWriteSets.at(tx);
+        return (mReadSets.at(tx) | mWriteSets.at(tx)) & mWrittenByAnyTx;
     }
+
     void
     recordDependency(TxID txID, DataKey const& dep, AccessMode mode)
     {
@@ -181,6 +186,10 @@ struct DataDependencyAnalyzer
         CLOG_DEBUG(Ledger, "Tx {} {}-depends on data {}", txID,
                    (mode == AccessMode::READ) ? "read" : "write", data);
         sets.at(txID).set(data);
+        if (mode == AccessMode::WRITE)
+        {
+            mWrittenByAnyTx.set(data);
+        }
     }
 };
 
