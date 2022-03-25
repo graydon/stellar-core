@@ -458,6 +458,17 @@ dispatchClosure4(std::any& host_context, fizzy::Instance& instance,
                     args[3].as<uint64_t>());
 }
 
+fizzy::ExecutionResult
+dispatchClosure5(std::any& host_context, fizzy::Instance& instance,
+                 const fizzy::Value* args,
+                 fizzy::ExecutionContext& ctx) noexcept
+{
+    auto closure5 = std::any_cast<HostClosure5>(host_context);
+    return closure5(instance, ctx, args[0].as<uint32_t>(),
+                    args[1].as<uint32_t>(), args[2].as<uint32_t>(),
+                    args[3].as<uint32_t>());
+}
+
 void
 HostContext::registerHostFunction(HostClosure0 clo, std::string const& module,
                                   std::string const& name)
@@ -491,6 +502,19 @@ HostContext::registerHostFunction(HostClosure4 clo, std::string const& module,
                                   std::string const& name)
 {
     registerHostFunction(4, clo, &dispatchClosure4, module, name);
+}
+
+void
+HostContext::registerHostFunction(HostClosure5 clo, std::string const& module,
+                                  std::string const& name)
+{
+    std::vector<fizzy::ValType> inTypes{4, fizzy::ValType::i32};
+    std::optional<fizzy::ValType> outType;
+    fizzy::ExecuteFunction func{&dispatchClosure5, std::move(clo)};
+    fizzy::ImportedFunction ifunc{std::string(module), std::string(name),
+                                  std::move(inTypes), std::move(outType),
+                                  std::move(func)};
+    mHostFunctions.emplace_back(std::move(ifunc));
 }
 
 void
@@ -536,6 +560,23 @@ HostContext::registerHostFunction(HostMemFun4 mf, std::string const& module,
     using namespace std::placeholders;
     HostClosure4 clo{std::bind(mf, this, _1, _2, _3, _4, _5, _6)};
     registerHostFunction(std::move(clo), module, name);
+}
+
+void
+HostContext::registerHostFunction(HostMemFun5 mf, std::string const& module,
+                                  std::string const& name)
+{
+    using namespace std::placeholders;
+    HostClosure5 clo{std::bind(mf, this, _1, _2, _3, _4, _5, _6)};
+    registerHostFunction(std::move(clo), module, name);
+}
+
+fizzy::ExecutionResult
+HostContext::abort(fizzy::Instance& instance, fizzy::ExecutionContext& exec,
+                   uint32_t message, uint32_t fileName, uint32_t line,
+                   uint32_t column)
+{
+    return fizzy::Trap;
 }
 
 fizzy::ExecutionResult
@@ -793,6 +834,8 @@ HostContext::HostContext()
     // Object 0 is predefined to always be a null unique_ptr, so we can return
     // a reference to it in contexts where users access invalid objects.
     mObjects.emplace_back(nullptr);
+    registerHostFunction(&HostContext::abort, "env", "abort");
+
     registerHostFunction(&HostContext::mapNew, "env", "map_new");
     registerHostFunction(&HostContext::mapPut, "env", "map_put");
     registerHostFunction(&HostContext::mapGet, "env", "map_get");

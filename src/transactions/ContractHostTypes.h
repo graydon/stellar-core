@@ -425,6 +425,9 @@ using HostClosure3 = std::function<fizzy::ExecutionResult(
 using HostClosure4 = std::function<fizzy::ExecutionResult(
     fizzy::Instance&, fizzy::ExecutionContext&, uint64_t, uint64_t, uint64_t,
     uint64_t)>;
+using HostClosure5 = std::function<fizzy::ExecutionResult(
+    fizzy::Instance&, fizzy::ExecutionContext&, uint32_t, uint32_t, uint32_t,
+    uint32_t)>;
 
 class HostContext;
 
@@ -439,6 +442,9 @@ using HostMemFun3 = fizzy::ExecutionResult (HostContext::*)(
 using HostMemFun4 = fizzy::ExecutionResult (HostContext::*)(
     fizzy::Instance&, fizzy::ExecutionContext&, uint64_t, uint64_t, uint64_t,
     uint64_t);
+using HostMemFun5 = fizzy::ExecutionResult (HostContext::*)(
+    fizzy::Instance&, fizzy::ExecutionContext&, uint32_t, uint32_t, uint32_t,
+    uint32_t);
 
 class InvokeContractOpFrame;
 struct HostOpContext
@@ -539,6 +545,8 @@ class HostContext
                               std::string const& name);
     void registerHostFunction(HostClosure4 clo, std::string const& module,
                               std::string const& name);
+    void registerHostFunction(HostClosure5 clo, std::string const& module,
+                              std::string const& name);
 
     void registerHostFunction(HostMemFun0 mf, std::string const& module,
                               std::string const& name);
@@ -549,6 +557,8 @@ class HostContext
     void registerHostFunction(HostMemFun3 mf, std::string const& module,
                               std::string const& name);
     void registerHostFunction(HostMemFun4 mf, std::string const& module,
+                              std::string const& name);
+    void registerHostFunction(HostMemFun5 mf, std::string const& module,
                               std::string const& name);
 
   public:
@@ -596,6 +606,10 @@ class HostContext
 
     // Host functions follow -- plumbing above currently supports 0..4 uint64_t
     // arguments.
+
+    fizzy::ExecutionResult abort(fizzy::Instance&, fizzy::ExecutionContext&,
+                                 uint32_t message, uint32_t fileName,
+                                 uint32_t line, uint32_t column);
 
     fizzy::ExecutionResult mapNew(fizzy::Instance&, fizzy::ExecutionContext&);
     fizzy::ExecutionResult mapPut(fizzy::Instance&, fizzy::ExecutionContext&,
