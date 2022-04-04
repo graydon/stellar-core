@@ -39,6 +39,16 @@ pub fn get_current_ledger_num() -> u32 {
 }
 
 #[inline(always)]
+pub fn create_account(src: Val, dst: Val, starting_balance: Val) -> Val {
+    unsafe { host_fns::host__create_account(src, dst, starting_balance) }
+}
+
+#[inline(always)]
+pub fn create_trustline(src: Val, asset: Val) -> Val {
+    unsafe { host_fns::host__create_trustline(src, asset) }
+}
+
+#[inline(always)]
 pub fn pay(src: Val, dst: Val, asset: Val, amount: Val) -> Val {
     unsafe { host_fns::host__pay(src, dst, asset, amount) }
 }

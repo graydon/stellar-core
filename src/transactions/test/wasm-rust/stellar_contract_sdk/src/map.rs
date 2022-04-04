@@ -57,6 +57,11 @@ impl<K: ValType, V: ValType> Map<K, V> {
     }
 
     #[inline(always)]
+    pub fn has(&self, k: K) -> V {
+        self.try_get(k).is_ok()
+    }
+
+    #[inline(always)]
     pub fn get(&self, k: K) -> V {
         self.try_get(k).or_abort()
     }
