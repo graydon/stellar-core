@@ -60,10 +60,10 @@ RUN apt-get update \
 RUN apt-get -y install git build-essential pkg-config autoconf automake libtool bison flex libpq-dev parallel libunwind-dev
 
 # Update compiler tools
-RUN apt-get -y install libstdc++-8-dev clang-format-10 ccache
+RUN apt-get -y install libstdc++-10-dev clang-format-10 ccache
 
 # gcc
-RUN apt-get -y install cpp-8 gcc-8 g++-8
+RUN apt-get -y install cpp-10 gcc-10 g++-10
 # clang
 RUN apt-get -y install clang-10 llvm-10
 # rust

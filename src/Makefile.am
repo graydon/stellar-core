@@ -27,7 +27,7 @@ TEST_FILES = $(TESTDATA_DIR)/stellar-core_example.cfg $(TESTDATA_DIR)/stellar-co
 
 BUILT_SOURCES = $(SRC_X_FILES:.x=.h) main/StellarCoreVersion.cpp $(TEST_FILES)
 
-$(SRC_X_FILES:.x=.h): $(XDRC)
+$(SRC_X_FILES:.x=.h): $(XDRC) Makefile.am
 SUFFIXES = .x .h .rs
 .x.h:
 	$(XDRC) -hh -pedantic -o $@ $<

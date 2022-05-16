@@ -83,9 +83,9 @@ After installing packages, head to [building with clang and libc++](#building-wi
     # if using clang
     sudo apt-get install clang-10
     # clang with libstdc++
-    sudo apt-get install gcc-8
+    sudo apt-get install gcc-10
     # if using g++ or building with libstdc++
-    # sudo apt-get install gcc-8 g++-8 cpp-8
+    # sudo apt-get install gcc-10 g++-10 cpp-10
 
 In order to make changes, you'll need to install the proper version of clang-format.
 

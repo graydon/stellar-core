@@ -6,8 +6,3 @@
 
 #include <xdrpp/types.h>
 
-namespace stellar
-{
-using xdr::operator==;
-using xdr::operator<;
-}
