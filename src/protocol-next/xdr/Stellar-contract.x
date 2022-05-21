@@ -3,7 +3,6 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 % #include "xdr/Stellar-types.h"
-% #include "xdr/Stellar-ledger-entries.h"
 namespace stellar
 {
 /*
