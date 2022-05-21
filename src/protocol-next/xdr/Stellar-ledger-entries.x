@@ -98,7 +98,9 @@ enum LedgerEntryType
     OFFER = 2,
     DATA = 3,
     CLAIMABLE_BALANCE = 4,
-    LIQUIDITY_POOL = 5
+    LIQUIDITY_POOL = 5,
+    CONTRACT_CODE = 6,
+    CONFIG = 7
 };
 
 struct Signer
@@ -491,6 +493,59 @@ struct LiquidityPoolEntry
     body;
 };
 
+typedef opaque WASMCode<>;
+
+enum ContractCodeType {
+    CONTRACT_CODE_WASM = 0
+};
+
+union ContractBody switch (ContractCodeType type)
+{
+    case CONTRACT_CODE_WASM:
+        WASMCode wasm;
+};
+
+struct ContractCodeEntry {
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+
+    Hash contractID;
+    ContractBody body;
+};
+
+enum ConfigSettingType
+{
+    CONFIG_TYPE_UINT32 = 1
+};
+
+union ConfigSetting switch (ConfigSettingType type)
+{
+case CONFIG_TYPE_UINT32:
+    uint32 uint32Val;
+};
+
+enum ConfigSettingID
+{
+    CONFIG_TYPE_CONTRACT_MAX_SIZE = 1
+};
+
+struct ConfigEntry
+{
+    union switch (int v)
+    {
+    case 0:
+        void;
+    }
+    ext;
+
+    ConfigSettingID configID;
+    ConfigSetting setting;
+};
+
 struct LedgerEntryExtensionV1
 {
     SponsorshipDescriptor sponsoringID;
@@ -521,6 +576,10 @@ struct LedgerEntry
         ClaimableBalanceEntry claimableBalance;
     case LIQUIDITY_POOL:
         LiquidityPoolEntry liquidityPool;
+    case CONTRACT_CODE:
+        ContractCodeEntry contractCode;
+    case CONFIG:
+        ConfigEntry config;
     }
     data;
 
@@ -575,6 +634,16 @@ case LIQUIDITY_POOL:
     {
         PoolID liquidityPoolID;
     } liquidityPool;
+case CONTRACT_CODE:
+    struct
+    {
+        Hash contractID;
+    } contractCode;
+case CONFIG:
+    struct
+    {
+        ConfigSettingID configID;
+    } config;
 };
 
 // list of all envelope types used in the application
@@ -589,6 +658,9 @@ enum EnvelopeType
     ENVELOPE_TYPE_SCPVALUE = 4,
     ENVELOPE_TYPE_TX_FEE_BUMP = 5,
     ENVELOPE_TYPE_OP_ID = 6,
-    ENVELOPE_TYPE_POOL_REVOKE_OP_ID = 7
+    ENVELOPE_TYPE_POOL_REVOKE_OP_ID = 7,
+    ENVELOPE_TYPE_TX_CREATE_CONTRACT_TX = 8,
+    ENVELOPE_TYPE_CONTRACT_ID = 9,
+    ENVELOPE_TYPE_CHILD_CONTRACT_ID = 10
 };
 }
