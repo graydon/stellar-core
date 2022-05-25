@@ -7,6 +7,7 @@
 #include "test/TxTests.h"
 #include "test/test.h"
 #include "work/WorkScheduler.h"
+#include "xdr/Stellar-ledger-entries.h"
 
 namespace stellar
 {
@@ -113,7 +114,12 @@ computeMultiplier(LedgerEntry const& le)
                                                                          : 1;
     case OFFER:
     case DATA:
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    case CONTRACT_CODE:
+    case CONTRACT_DATA:
+    case CONFIG:
         return 1;
+#endif
     case CLAIMABLE_BALANCE:
         return static_cast<uint32_t>(
             le.data.claimableBalance().claimants.size());

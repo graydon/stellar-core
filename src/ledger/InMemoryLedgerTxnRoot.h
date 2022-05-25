@@ -76,6 +76,11 @@ class InMemoryLedgerTxnRoot : public AbstractLedgerTxnParent
     void dropTrustLines() override;
     void dropClaimableBalances() override;
     void dropLiquidityPools() override;
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    void dropContractCode() override;
+    void dropContractData() override;
+    void dropConfig() override;
+#endif
     double getPrefetchHitRate() const override;
     uint32_t prefetch(UnorderedSet<LedgerKey> const& keys) override;
     void prepareNewObjects(size_t s) override;

@@ -7,6 +7,7 @@
 #include "util/GlobalChecks.h"
 #include "util/ProtocolVersion.h"
 #include "util/XDROperators.h"
+#include "xdr/Stellar-ledger-entries.h"
 #include <fmt/format.h>
 
 #include <algorithm>
@@ -49,6 +50,20 @@ LedgerEntryKey(LedgerEntry const& e)
     case LIQUIDITY_POOL:
         k.liquidityPool().liquidityPoolID = d.liquidityPool().liquidityPoolID;
         break;
+
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    case CONTRACT_CODE:
+        k.contractCode().contractID = d.contractCode().contractID;
+        break;
+
+    case CONTRACT_DATA:
+        k.contractData().contractID = d.contractData().contractID;
+        k.contractData().key = d.contractData().key;
+        break;
+    case CONFIG:
+        k.config().configID = d.config().configID;
+        break;
+#endif
 
     default:
         abort();

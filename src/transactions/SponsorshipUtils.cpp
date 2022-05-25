@@ -11,6 +11,7 @@
 #include "util/ProtocolVersion.h"
 #include "util/XDROperators.h"
 #include "util/types.h"
+#include "xdr/Stellar-ledger-entries.h"
 
 using namespace stellar;
 
@@ -197,7 +198,12 @@ computeMultiplier(LedgerEntry const& le)
                                                                          : 1;
     case OFFER:
     case DATA:
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    case CONTRACT_CODE:
+    case CONTRACT_DATA:
+    case CONFIG:
         return 1;
+#endif
     case CLAIMABLE_BALANCE:
         return static_cast<uint32_t>(
             le.data.claimableBalance().claimants.size());
@@ -220,7 +226,11 @@ isSubentry(LedgerEntry const& le)
     case TRUSTLINE:
     case OFFER:
     case DATA:
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    case CONTRACT_CODE:
+    case CONTRACT_DATA:
         return true;
+#endif
     case LIQUIDITY_POOL:
         throw std::runtime_error(
             "LIQUIDITY_POOL is not valid in SponsorshipUtils");

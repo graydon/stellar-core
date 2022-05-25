@@ -90,12 +90,15 @@ struct EntryCounts
     uint64_t mData{0};
     uint64_t mClaimableBalance{0};
     uint64_t mLiquidityPool{0};
+    uint64_t mContractCode{0};
+    uint64_t mContractData{0};
+    uint64_t mConfig{0};
 
     uint64_t
     totalEntries() const
     {
         return mAccounts + mTrustLines + mOffers + mData + mClaimableBalance +
-               mLiquidityPool;
+               mLiquidityPool + mContractCode + mContractData;
     }
 
     void
@@ -121,6 +124,17 @@ struct EntryCounts
         case LIQUIDITY_POOL:
             ++mLiquidityPool;
             break;
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+        case CONTRACT_CODE:
+            ++mContractCode;
+            break;
+        case CONTRACT_DATA:
+            ++mContractData;
+            break;
+        case CONFIG:
+            ++mConfig;
+            break;
+#endif
         default:
             throw std::runtime_error(
                 fmt::format(FMT_STRING("unknown ledger entry type: {:d}"),
@@ -155,7 +169,12 @@ struct EntryCounts
         check(ACCOUNT, mAccounts) && check(TRUSTLINE, mTrustLines) &&
             check(OFFER, mOffers) && check(DATA, mData) &&
             check(CLAIMABLE_BALANCE, mClaimableBalance) &&
-            check(LIQUIDITY_POOL, mLiquidityPool);
+            check(LIQUIDITY_POOL, mLiquidityPool)
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+            && check(CONTRACT_CODE, mContractCode) &&
+            check(CONTRACT_DATA, mContractData) && check(CONFIG, mConfig)
+#endif
+            ;
         return msg;
     }
 };

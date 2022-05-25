@@ -3,6 +3,7 @@
 #include "util/Decoder.h"
 #include "util/XDROperators.h"
 #include "util/XDRStream.h"
+#include "xdr/Stellar-ledger-entries.h"
 
 #include <map>
 #include <numeric>

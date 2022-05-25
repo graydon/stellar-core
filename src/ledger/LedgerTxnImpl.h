@@ -69,6 +69,14 @@ class BulkLedgerEntryChangeAccumulator
     std::vector<EntryIterator> mTrustLinesToDelete;
     std::vector<EntryIterator> mLiquidityPoolToUpsert;
     std::vector<EntryIterator> mLiquidityPoolToDelete;
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    std::vector<EntryIterator> mContractCodeToUpsert;
+    std::vector<EntryIterator> mContractCodeToDelete;
+    std::vector<EntryIterator> mContractDataToUpsert;
+    std::vector<EntryIterator> mContractDataToDelete;
+    std::vector<EntryIterator> mConfigToUpsert;
+    std::vector<EntryIterator> mConfigToDelete;
+#endif
 
   public:
     std::vector<EntryIterator>&
@@ -142,6 +150,32 @@ class BulkLedgerEntryChangeAccumulator
     {
         return mLiquidityPoolToDelete;
     }
+
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    std::vector<EntryIterator>&
+    getContractCodeToUpsert()
+    {
+        return mContractCodeToUpsert;
+    }
+
+    std::vector<EntryIterator>&
+    getContractCodeToDelete()
+    {
+        return mContractCodeToDelete;
+    }
+
+    std::vector<EntryIterator>&
+    getContractDataToUpsert()
+    {
+        return mContractDataToUpsert;
+    }
+
+    std::vector<EntryIterator>&
+    getContractDataToDelete()
+    {
+        return mContractDataToDelete;
+    }
+#endif
 
     void accumulate(EntryIterator const& iter);
 };
@@ -724,6 +758,13 @@ class LedgerTxnRoot::Impl
     loadClaimableBalance(LedgerKey const& key) const;
     std::shared_ptr<LedgerEntry const>
     loadLiquidityPool(LedgerKey const& key) const;
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    std::shared_ptr<LedgerEntry const>
+    loadContractCode(LedgerKey const& key) const;
+    std::shared_ptr<LedgerEntry const>
+    loadContractData(LedgerKey const& key) const;
+    std::shared_ptr<LedgerEntry const> loadConfig(LedgerKey const& key) const;
+#endif
 
     void bulkApply(BulkLedgerEntryChangeAccumulator& bleca,
                    size_t bufferThreshold, LedgerTxnConsistency cons);
@@ -745,6 +786,17 @@ class LedgerTxnRoot::Impl
     void bulkUpsertLiquidityPool(std::vector<EntryIterator> const& entries);
     void bulkDeleteLiquidityPool(std::vector<EntryIterator> const& entries,
                                  LedgerTxnConsistency cons);
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    void bulkUpsertContractCode(std::vector<EntryIterator> const& entries);
+    void bulkDeleteContractCode(std::vector<EntryIterator> const& entries,
+                                LedgerTxnConsistency cons);
+    void bulkUpsertContractData(std::vector<EntryIterator> const& entries);
+    void bulkDeleteContractData(std::vector<EntryIterator> const& entries,
+                                LedgerTxnConsistency cons);
+    void bulkUpsertConfig(std::vector<EntryIterator> const& entries);
+    void bulkDeleteConfig(std::vector<EntryIterator> const& entries,
+                          LedgerTxnConsistency cons);
+#endif
 
     static std::string tableFromLedgerEntryType(LedgerEntryType let);
 
@@ -782,6 +834,14 @@ class LedgerTxnRoot::Impl
     bulkLoadClaimableBalance(UnorderedSet<LedgerKey> const& keys) const;
     UnorderedMap<LedgerKey, std::shared_ptr<LedgerEntry const>>
     bulkLoadLiquidityPool(UnorderedSet<LedgerKey> const& keys) const;
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    UnorderedMap<LedgerKey, std::shared_ptr<LedgerEntry const>>
+    bulkLoadContractCode(UnorderedSet<LedgerKey> const& keys) const;
+    UnorderedMap<LedgerKey, std::shared_ptr<LedgerEntry const>>
+    bulkLoadContractData(UnorderedSet<LedgerKey> const& keys) const;
+    UnorderedMap<LedgerKey, std::shared_ptr<LedgerEntry const>>
+    bulkLoadConfig(UnorderedSet<LedgerKey> const& keys) const;
+#endif
 
     std::deque<LedgerEntry>::const_iterator
     loadNextBestOffersIntoCache(BestOffersEntryPtr cached, Asset const& buying,
@@ -824,6 +884,11 @@ class LedgerTxnRoot::Impl
     void dropTrustLines();
     void dropClaimableBalances();
     void dropLiquidityPools();
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    void dropContractCode();
+    void dropContractData();
+    void dropConfig();
+#endif
 
 #ifdef BUILD_TESTS
     void resetForFuzzer();
