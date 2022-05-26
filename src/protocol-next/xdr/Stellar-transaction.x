@@ -57,7 +57,8 @@ enum OperationType
     CLAWBACK_CLAIMABLE_BALANCE = 20,
     SET_TRUST_LINE_FLAGS = 21,
     LIQUIDITY_POOL_DEPOSIT = 22,
-    LIQUIDITY_POOL_WITHDRAW = 23
+    LIQUIDITY_POOL_WITHDRAW = 23,
+    CREATE_CONTRACT = 24 //TEMPORARY
 };
 
 /* CreateAccount
@@ -465,6 +466,16 @@ struct LiquidityPoolWithdrawOp
     int64 minAmountB; // minimum amount of second asset to withdraw
 };
 
+/* TEMPORARY until we add in CreateContractTransaction from CAP-0047
+
+   Threshold: med
+*/
+struct CreateContractOp
+{
+    uint256 salt;
+    opaque body<>;
+};
+
 /* An operation is the lowest unit of work that a transaction does */
 struct Operation
 {
@@ -523,6 +534,8 @@ struct Operation
         LiquidityPoolDepositOp liquidityPoolDepositOp;
     case LIQUIDITY_POOL_WITHDRAW:
         LiquidityPoolWithdrawOp liquidityPoolWithdrawOp;
+    case CREATE_CONTRACT:
+        CreateContractOp createContractOp;
     }
     body;
 };
@@ -1600,6 +1613,23 @@ case LIQUIDITY_POOL_WITHDRAW_UNDER_MINIMUM:
     void;
 };
 
+enum CreateContractResultCode
+{
+    // codes considered as "success" for the operation
+    CREATE_CONTRACT_SUCCESS = 0,
+
+    // codes considered as "failure" for the operation
+    CREATE_CONTRACT_ALREADY_EXISTS = -1
+};
+
+union CreateContractResult switch (CreateContractResultCode code)
+{
+case CREATE_CONTRACT_SUCCESS:
+    void;
+case CREATE_CONTRACT_ALREADY_EXISTS:
+    void;
+};
+
 /* High level Operation Result */
 enum OperationResultCode
 {
@@ -1666,6 +1696,8 @@ case opINNER:
         LiquidityPoolDepositResult liquidityPoolDepositResult;
     case LIQUIDITY_POOL_WITHDRAW:
         LiquidityPoolWithdrawResult liquidityPoolWithdrawResult;
+    case CREATE_CONTRACT:
+        CreateContractResult createContractResult;
     }
     tr;
 case opBAD_AUTH:
