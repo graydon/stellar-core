@@ -101,7 +101,6 @@ updateChangedSubEntriesCount(
         break;
     }
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_CODE:
     case CONTRACT_DATA:
     case CONFIG:
     {

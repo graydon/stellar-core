@@ -146,11 +146,6 @@ InMemoryLedgerTxnRoot::dropLiquidityPools()
 
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
 void
-InMemoryLedgerTxnRoot::dropContractCode()
-{
-}
-
-void
 InMemoryLedgerTxnRoot::dropContractData()
 {
 }

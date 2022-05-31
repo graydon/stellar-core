@@ -196,10 +196,6 @@ maybeRebuildLedger(Application& app, bool applyBuckets)
                 app.getLedgerTxnRoot().dropLiquidityPools();
                 break;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-            case CONTRACT_CODE:
-                LOG_INFO(DEFAULT_LOG, "Dropping contractcode");
-                app.getLedgerTxnRoot().dropContractCode();
-                break;
             case CONTRACT_DATA:
                 LOG_INFO(DEFAULT_LOG, "Dropping contractdata");
                 app.getLedgerTxnRoot().dropContractData();

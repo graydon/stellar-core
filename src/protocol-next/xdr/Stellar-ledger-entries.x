@@ -100,9 +100,8 @@ enum LedgerEntryType
     DATA = 3,
     CLAIMABLE_BALANCE = 4,
     LIQUIDITY_POOL = 5,
-    CONTRACT_CODE = 6,
-    CONFIG = 7,
-    CONTRACT_DATA = 8
+    CONTRACT_DATA = 6,
+    CONFIG = 7
 };
 
 struct Signer
@@ -495,30 +494,6 @@ struct LiquidityPoolEntry
     body;
 };
 
-typedef opaque WASMCode<>;
-
-enum ContractCodeType {
-    CONTRACT_CODE_WASM = 0
-};
-
-union ContractBody switch (ContractCodeType type)
-{
-    case CONTRACT_CODE_WASM:
-        WASMCode wasm;
-};
-
-struct ContractCodeEntry {
-    union switch (int v)
-    {
-    case 0:
-        void;
-    }
-    ext;
-
-    Hash contractID;
-    ContractBody body;
-};
-
 struct ContractDataEntry {
     Hash contractID;
     SCVal key;
@@ -584,8 +559,6 @@ struct LedgerEntry
         ClaimableBalanceEntry claimableBalance;
     case LIQUIDITY_POOL:
         LiquidityPoolEntry liquidityPool;
-    case CONTRACT_CODE:
-        ContractCodeEntry contractCode;
     case CONTRACT_DATA:
         ContractDataEntry contractData;
     case CONFIG:
@@ -644,11 +617,6 @@ case LIQUIDITY_POOL:
     {
         PoolID liquidityPoolID;
     } liquidityPool;
-case CONTRACT_CODE:
-    struct
-    {
-        Hash contractID;
-    } contractCode;
 case CONTRACT_DATA:
     struct
     {

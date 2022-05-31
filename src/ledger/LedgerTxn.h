@@ -473,10 +473,6 @@ class AbstractLedgerTxnParent
     // anything other than a (real or stub) root LedgerTxn.
     virtual void dropLiquidityPools() = 0;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    // Delete all contract code ledger entries. Will throw when called on
-    // anything other than a (real or stub) root LedgerTxn.
-    virtual void dropContractCode() = 0;
-
     // Delete all contract data ledger entries. Will throw when called on
     // anything other than a (real or stub) root LedgerTxn.
     virtual void dropContractData() = 0;
@@ -783,7 +779,6 @@ class LedgerTxn : public AbstractLedgerTxn
     void dropClaimableBalances() override;
     void dropLiquidityPools() override;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    void dropContractCode() override;
     void dropContractData() override;
     void dropConfig() override;
 #endif
@@ -846,7 +841,6 @@ class LedgerTxnRoot : public AbstractLedgerTxnParent
     void dropClaimableBalances() override;
     void dropLiquidityPools() override;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    void dropContractCode() override;
     void dropContractData() override;
     void dropConfig() override;
 #endif

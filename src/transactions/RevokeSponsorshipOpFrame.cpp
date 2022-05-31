@@ -435,7 +435,6 @@ RevokeSponsorshipOpFrame::doCheckValid(uint32_t ledgerVersion)
             innerResult().code(REVOKE_SPONSORSHIP_MALFORMED);
             return false;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-        case CONTRACT_CODE:
         case CONTRACT_DATA:
         case CONFIG:
             innerResult().code(REVOKE_SPONSORSHIP_MALFORMED);

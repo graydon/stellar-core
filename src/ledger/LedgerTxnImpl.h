@@ -70,8 +70,6 @@ class BulkLedgerEntryChangeAccumulator
     std::vector<EntryIterator> mLiquidityPoolToUpsert;
     std::vector<EntryIterator> mLiquidityPoolToDelete;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    std::vector<EntryIterator> mContractCodeToUpsert;
-    std::vector<EntryIterator> mContractCodeToDelete;
     std::vector<EntryIterator> mContractDataToUpsert;
     std::vector<EntryIterator> mContractDataToDelete;
     std::vector<EntryIterator> mConfigToUpsert;
@@ -152,18 +150,6 @@ class BulkLedgerEntryChangeAccumulator
     }
 
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    std::vector<EntryIterator>&
-    getContractCodeToUpsert()
-    {
-        return mContractCodeToUpsert;
-    }
-
-    std::vector<EntryIterator>&
-    getContractCodeToDelete()
-    {
-        return mContractCodeToDelete;
-    }
-
     std::vector<EntryIterator>&
     getContractDataToUpsert()
     {
@@ -760,8 +746,6 @@ class LedgerTxnRoot::Impl
     loadLiquidityPool(LedgerKey const& key) const;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
     std::shared_ptr<LedgerEntry const>
-    loadContractCode(LedgerKey const& key) const;
-    std::shared_ptr<LedgerEntry const>
     loadContractData(LedgerKey const& key) const;
     std::shared_ptr<LedgerEntry const> loadConfig(LedgerKey const& key) const;
 #endif
@@ -787,9 +771,6 @@ class LedgerTxnRoot::Impl
     void bulkDeleteLiquidityPool(std::vector<EntryIterator> const& entries,
                                  LedgerTxnConsistency cons);
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    void bulkUpsertContractCode(std::vector<EntryIterator> const& entries);
-    void bulkDeleteContractCode(std::vector<EntryIterator> const& entries,
-                                LedgerTxnConsistency cons);
     void bulkUpsertContractData(std::vector<EntryIterator> const& entries);
     void bulkDeleteContractData(std::vector<EntryIterator> const& entries,
                                 LedgerTxnConsistency cons);
@@ -835,8 +816,6 @@ class LedgerTxnRoot::Impl
     UnorderedMap<LedgerKey, std::shared_ptr<LedgerEntry const>>
     bulkLoadLiquidityPool(UnorderedSet<LedgerKey> const& keys) const;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    UnorderedMap<LedgerKey, std::shared_ptr<LedgerEntry const>>
-    bulkLoadContractCode(UnorderedSet<LedgerKey> const& keys) const;
     UnorderedMap<LedgerKey, std::shared_ptr<LedgerEntry const>>
     bulkLoadContractData(UnorderedSet<LedgerKey> const& keys) const;
     UnorderedMap<LedgerKey, std::shared_ptr<LedgerEntry const>>
@@ -885,7 +864,6 @@ class LedgerTxnRoot::Impl
     void dropClaimableBalances();
     void dropLiquidityPools();
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    void dropContractCode();
     void dropContractData();
     void dropConfig();
 #endif

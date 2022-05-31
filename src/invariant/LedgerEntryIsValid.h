@@ -49,8 +49,6 @@ class LedgerEntryIsValid : public Invariant
     std::string checkIsValid(LiquidityPoolEntry const& lp,
                              LedgerEntry const* previous, uint32 version) const;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    std::string checkIsValid(ContractCodeEntry const& cce,
-                             LedgerEntry const* previous, uint32 version) const;
     std::string checkIsValid(ContractDataEntry const& cde,
                              LedgerEntry const* previous, uint32 version) const;
     std::string checkIsValid(ConfigEntry const& ce, LedgerEntry const* previous,

@@ -30,8 +30,6 @@ calculateDeltaBalance(LedgerEntry const* current, LedgerEntry const* previous)
     case DATA:
         break;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_CODE:
-        break;
     case CONTRACT_DATA:
         break;
     case CONFIG:

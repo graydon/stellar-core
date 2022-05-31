@@ -23,7 +23,7 @@ namespace stellar
  *    0x_NNNN_NNNN_NNNN_NNNX  - positive i64, for any even X
  *    0x_0000_000N_NNNN_NNN1  - u32
  *    0x_0000_000N_NNNN_NNN3  - i32
- *    0x_NNNN_NNNN_NNNN_NNN5  - static: void, true, false, ...
+ *    0x_NNNN_NNNN_NNNN_NNN5  - static: void, true, false, ... (SCS_*)
  *    0x_IIII_IIII_TTTT_TTT7  - object: 32-bit index I, 28-bit type code T
  *    0x_NNNN_NNNN_NNNN_NNN9  - symbol: up to 10 6-bit identifier characters
  *    0x_NNNN_NNNN_NNNN_NNNb  - bitset: up to 60 bits
@@ -64,7 +64,8 @@ enum SCStatic
 {
     SCS_VOID = 0,
     SCS_TRUE = 1,
-    SCS_FALSE = 2
+    SCS_FALSE = 2,
+    SCS_LEDGER_KEY_CONTRACT_CODE_WASM = 3
 };
 
 enum SCStatusType

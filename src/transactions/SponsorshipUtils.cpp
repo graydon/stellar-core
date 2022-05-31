@@ -199,7 +199,6 @@ computeMultiplier(LedgerEntry const& le)
     case OFFER:
     case DATA:
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_CODE:
     case CONTRACT_DATA:
     case CONFIG:
         return 1;
@@ -227,7 +226,6 @@ isSubentry(LedgerEntry const& le)
     case OFFER:
     case DATA:
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_CODE:
     case CONTRACT_DATA:
         return true;
 #endif

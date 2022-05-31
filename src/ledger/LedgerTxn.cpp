@@ -1972,12 +1972,6 @@ LedgerTxn::dropLiquidityPools()
 
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
 void
-LedgerTxn::dropContractCode()
-{
-    throw std::runtime_error("called dropContractCode on non-root LedgerTxn");
-}
-
-void
 LedgerTxn::dropContractData()
 {
     throw std::runtime_error("called dropContractData on non-root LedgerTxn");
@@ -2534,9 +2528,6 @@ BulkLedgerEntryChangeAccumulator::accumulate(EntryIterator const& iter)
         accum(iter, mLiquidityPoolToUpsert, mLiquidityPoolToDelete);
         break;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_CODE:
-        accum(iter, mContractCodeToUpsert, mContractCodeToDelete);
-        break;
     case CONTRACT_DATA:
         accum(iter, mContractDataToUpsert, mContractDataToDelete);
         break;
@@ -2627,18 +2618,6 @@ LedgerTxnRoot::Impl::bulkApply(BulkLedgerEntryChangeAccumulator& bleca,
         deleteLiquidityPool.clear();
     }
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    auto& upsertContractCode = bleca.getContractCodeToUpsert();
-    if (upsertContractCode.size() > bufferThreshold)
-    {
-        bulkUpsertContractCode(upsertContractCode);
-        upsertContractCode.clear();
-    }
-    auto& deleteContractCode = bleca.getContractCodeToDelete();
-    if (deleteContractCode.size() > bufferThreshold)
-    {
-        bulkDeleteContractCode(deleteContractCode, cons);
-        deleteContractCode.clear();
-    }
     auto& upsertContractData = bleca.getContractDataToUpsert();
     if (upsertContractData.size() > bufferThreshold)
     {
@@ -2742,8 +2721,6 @@ LedgerTxnRoot::Impl::tableFromLedgerEntryType(LedgerEntryType let)
     case LIQUIDITY_POOL:
         return "liquiditypool";
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_CODE:
-        return "contractcode";
     case CONTRACT_DATA:
         return "contractdata";
     case CONFIG:
@@ -2858,12 +2835,6 @@ LedgerTxnRoot::dropLiquidityPools()
 
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
 void
-LedgerTxnRoot::dropContractCode()
-{
-    mImpl->dropContractCode();
-}
-
-void
 LedgerTxnRoot::dropContractData()
 {
     mImpl->dropContractData();
@@ -2895,7 +2866,6 @@ LedgerTxnRoot::Impl::prefetch(UnorderedSet<LedgerKey> const& keys)
     UnorderedSet<LedgerKey> claimablebalance;
     UnorderedSet<LedgerKey> liquiditypool;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    UnorderedSet<LedgerKey> contractcode;
     UnorderedSet<LedgerKey> contractdata;
     UnorderedSet<LedgerKey> config;
 #endif
@@ -2971,14 +2941,6 @@ LedgerTxnRoot::Impl::prefetch(UnorderedSet<LedgerKey> const& keys)
             }
             break;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-        case CONTRACT_CODE:
-            insertIfNotLoaded(contractcode, key);
-            if (contractcode.size() == mBulkLoadBatchSize)
-            {
-                cacheResult(bulkLoadContractCode(contractcode));
-                contractcode.clear();
-            }
-            break;
         case CONTRACT_DATA:
             insertIfNotLoaded(contractdata, key);
             if (contractdata.size() == mBulkLoadBatchSize)
@@ -3007,7 +2969,6 @@ LedgerTxnRoot::Impl::prefetch(UnorderedSet<LedgerKey> const& keys)
     cacheResult(bulkLoadClaimableBalance(claimablebalance));
     cacheResult(bulkLoadLiquidityPool(liquiditypool));
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    cacheResult(bulkLoadContractCode(contractcode));
     cacheResult(bulkLoadConfig(config));
     cacheResult(bulkLoadContractData(contractdata));
 #endif
@@ -3534,9 +3495,6 @@ LedgerTxnRoot::Impl::getNewestVersion(InternalLedgerKey const& gkey) const
             entry = loadLiquidityPool(key);
             break;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-        case CONTRACT_CODE:
-            entry = loadContractCode(key);
-            break;
         case CONTRACT_DATA:
             entry = loadContractData(key);
             break;

@@ -273,14 +273,6 @@ poolShareTrustLineKey(AccountID const& accountID, PoolID const& poolID)
 
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
 LedgerKey
-contractCodeKey(Hash const& contractID)
-{
-    LedgerKey key(CONTRACT_CODE);
-    key.contractCode().contractID = contractID;
-    return key;
-}
-
-LedgerKey
 contractDataKey(SCVal dataKey, Hash const& contractID)
 {
     LedgerKey key(CONTRACT_DATA);
@@ -419,13 +411,6 @@ loadLiquidityPool(AbstractLedgerTxn& ltx, PoolID const& poolID)
 }
 
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-LedgerTxnEntry
-loadContractCode(AbstractLedgerTxn& ltx, Hash const& contractID)
-{
-    ZoneScoped;
-    return ltx.load(contractCodeKey(contractID));
-}
-
 LedgerTxnEntry
 loadContractData(AbstractLedgerTxn& ltx, SCVal dataKey, Hash const& contractID)
 {

@@ -77,7 +77,6 @@ class InMemoryLedgerTxnRoot : public AbstractLedgerTxnParent
     void dropClaimableBalances() override;
     void dropLiquidityPools() override;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    void dropContractCode() override;
     void dropContractData() override;
     void dropConfig() override;
 #endif

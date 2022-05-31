@@ -48,7 +48,6 @@ getMult(LedgerEntry const& le)
     case CLAIMABLE_BALANCE:
         return le.data.claimableBalance().claimants.size();
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_CODE:
     case CONTRACT_DATA:
     case CONFIG:
 #endif
@@ -73,7 +72,6 @@ getAccountID(LedgerEntry const& le)
     case DATA:
         return le.data.data().accountID;
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_CODE:
     case CONTRACT_DATA:
     case CONFIG:
 #endif
