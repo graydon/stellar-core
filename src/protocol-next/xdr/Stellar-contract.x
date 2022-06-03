@@ -123,8 +123,8 @@ struct SCMapEntry
     SCVal val;
 };
 
-typedef SCVal SCVec<>;
-typedef SCMapEntry SCMap<>;
+typedef SCVal SCVec<256000>;
+typedef SCMapEntry SCMap<256000>;
 
 union SCObject switch (SCObjectType type)
 {
@@ -137,6 +137,6 @@ case SCO_U64:
 case SCO_I64:
     int64 i64;
 case SCO_BINARY:
-    opaque bin<>;
+    opaque bin<256000>;
 };
 }
