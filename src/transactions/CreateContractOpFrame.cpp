@@ -57,7 +57,17 @@ CreateContractOpFrame::doApply(AbstractLedgerTxn& ltx)
     code.val.type(SCV_OBJECT);
     code.val.obj().activate();
     code.val.obj()->type(SCO_BINARY);
-    code.val.obj()->bin() = mCreateContract.body;
+    if (mCreateContract.body.size() <= code.val.obj()->bin().max_size())
+    {
+        code.val.obj()->bin().assign(mCreateContract.body.begin(),
+                                     mCreateContract.body.end());
+    }
+    else
+    {
+        // FIXME: need a different error code here.
+        innerResult().code(CREATE_CONTRACT_ALREADY_EXISTS);
+        return false;
+    }
 
     ltx.create(le);
 
