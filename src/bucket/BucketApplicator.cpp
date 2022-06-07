@@ -224,7 +224,7 @@ BucketApplicator::Counters::getRates(
             mTrustLineDelete + mOfferUpsert + mOfferDelete + mDataUpsert +
             mDataDelete + mClaimableBalanceUpsert + mClaimableBalanceDelete +
             mLiquidityPoolUpsert + mLiquidityPoolDelete + mContractDataUpsert +
-            mContractDataDelete;
+            mContractDataDelete + mConfigUpsert + mConfigDelete;
     au_sec = (mAccountUpsert * 1000000) / usecs;
     ad_sec = (mAccountDelete * 1000000) / usecs;
     tu_sec = (mTrustLineUpsert * 1000000) / usecs;

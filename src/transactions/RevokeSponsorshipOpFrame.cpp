@@ -45,7 +45,7 @@ getAccountID(LedgerEntry const& le)
     case CLAIMABLE_BALANCE:
         return *le.ext.v1().sponsoringID;
     default:
-        throw std::runtime_error("invalid LedgerEntry type");
+        abort();
     }
 }
 

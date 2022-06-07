@@ -29,12 +29,6 @@ calculateDeltaBalance(LedgerEntry const* current, LedgerEntry const* previous)
         break;
     case DATA:
         break;
-#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
-    case CONTRACT_DATA:
-        break;
-    case CONFIG:
-        break;
-#endif
     case CLAIMABLE_BALANCE:
     {
         auto const& asset = current ? current->data.claimableBalance().asset
@@ -75,6 +69,12 @@ calculateDeltaBalance(LedgerEntry const* current, LedgerEntry const* previous)
         }
         return delta;
     }
+#ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
+    case CONTRACT_DATA:
+        break;
+    case CONFIG:
+        break;
+#endif
     }
     return 0;
 }

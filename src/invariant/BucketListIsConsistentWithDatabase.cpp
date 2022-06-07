@@ -97,7 +97,7 @@ struct EntryCounts
     totalEntries() const
     {
         return mAccounts + mTrustLines + mOffers + mData + mClaimableBalance +
-               mLiquidityPool + mContractData;
+               mLiquidityPool + mContractData + mConfig;
     }
 
     void

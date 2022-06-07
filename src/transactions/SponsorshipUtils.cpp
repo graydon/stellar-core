@@ -200,7 +200,6 @@ computeMultiplier(LedgerEntry const& le)
     case DATA:
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
     case CONTRACT_DATA:
-    case CONFIG:
         return 1;
 #endif
     case CLAIMABLE_BALANCE:
@@ -227,7 +226,8 @@ isSubentry(LedgerEntry const& le)
     case DATA:
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
     case CONTRACT_DATA:
-        return true;
+    case CONFIG:
+        return false;
 #endif
     case LIQUIDITY_POOL:
         throw std::runtime_error(

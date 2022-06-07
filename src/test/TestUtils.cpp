@@ -116,7 +116,6 @@ computeMultiplier(LedgerEntry const& le)
     case DATA:
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
     case CONTRACT_DATA:
-    case CONFIG:
         return 1;
 #endif
     case CLAIMABLE_BALANCE:

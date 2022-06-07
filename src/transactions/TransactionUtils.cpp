@@ -273,7 +273,7 @@ poolShareTrustLineKey(AccountID const& accountID, PoolID const& poolID)
 
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
 LedgerKey
-contractDataKey(SCVal dataKey, Hash const& contractID)
+contractDataKey(SCVal const& dataKey, Hash const& contractID)
 {
     LedgerKey key(CONTRACT_DATA);
     key.contractData().contractID = contractID;

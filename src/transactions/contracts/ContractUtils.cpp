@@ -2,17 +2,17 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
-#include "xdr/Stellar-transaction.h"
 #ifdef ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION
 
+#include "transactions/contracts/ContractUtils.h"
 #include "crypto/Hex.h"
 #include "rust/RustBridge.h"
 #include "rust/RustVecXdrMarshal.h"
-#include "transactions/contracts/ContractUtils.h"
 #include "util/Logging.h"
 #include "util/XDROperators.h"
 #include "util/types.h"
 #include "xdr/Stellar-contract.h"
+#include "xdr/Stellar-transaction.h"
 
 #include <Tracy.hpp>
 
