@@ -167,8 +167,8 @@ class XDRInputFileStream
                 // Hitting eof just means there's not a full pageSize
                 // worth of data left in the file. Not a problem: resize our
                 // buffer down to the amount the page we _did_ manage to read.
-                mIn.clear(std::ios_base::eofbit);
                 mBuf.resize(mIn.gcount());
+                mIn.clear(std::ios_base::eofbit);
             }
             else
             {
@@ -177,7 +177,7 @@ class XDRInputFileStream
         }
 
         size_t xdrStart = 0;
-        while (xdrStart + 4 < mBuf.size())
+        while (xdrStart + 4 <= mBuf.size())
         {
             const uint32_t xdrSz = getXDRSize(mBuf.data() + xdrStart);
             xdrStart += 4;
