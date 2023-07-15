@@ -10,7 +10,7 @@ crate-type = ["staticlib"]
 
 [dependencies]
 log = "0.4.17"
-tracy-client = { version = "=0.15.2", features = ["enable"], default-features = false }
+tracy-client = { version = "=0.15.2", features = ["enable"], default-features = false, optional = true}
 cxx = "1.0"
 base64 = "0.13.0"
 rustc-simple-version = "0.1.0"
@@ -67,3 +67,4 @@ features = ["dependency-tree"]
 # writing it out in full here cross-checks that nobody _removed_ that line.
 [features]
 soroban-env-host-prev = ["dep:soroban-env-host-prev"]
+tracy = ["dep:tracy-client", "soroban-env-host-curr/tracy"]
