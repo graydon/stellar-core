@@ -214,14 +214,14 @@ template <typename T,
 class binary_fuse_t
 {
   private:
-    binary_fuse_seed_t _seed;
-    uint32_t _segmentLength;
-    uint32_t _segmentLengthMask;
-    uint32_t _segmentCount;
-    uint32_t _segmentCountLength;
-    uint32_t _arrayLength;
-    std::vector<T> _fingerprints;
-    bool _populated = false;
+    binary_fuse_seed_t Seed;
+    uint32_t SegmentLength;
+    uint32_t SegmentLengthMask;
+    uint32_t SegmentCount;
+    uint32_t SegmentCountLength;
+    uint32_t ArrayLength;
+    std::vector<T> Fingerprints;
+    bool Populated = false;
 
     struct binary_hashes_t
     {
@@ -231,28 +231,26 @@ class binary_fuse_t
     };
 
     binary_hashes_t
-    hash_batch(uint64_t hash) const
-    {
-        uint64_t hi = binary_fuse_mulhi(hash, _segmentCountLength);
+    hash_batch(uint64_t hash) const {
+        uint64_t hi = binary_fuse_mulhi(hash, SegmentCountLength);
         binary_hashes_t ans;
         ans.h0 = (uint32_t)hi;
-        ans.h1 = ans.h0 + _segmentLength;
-        ans.h2 = ans.h1 + _segmentLength;
-        ans.h1 ^= (uint32_t)(hash >> 18) & _segmentLengthMask;
-        ans.h2 ^= (uint32_t)(hash)&_segmentLengthMask;
+        ans.h1 = ans.h0 + SegmentLength;
+        ans.h2 = ans.h1 + SegmentLength;
+        ans.h1 ^= (uint32_t)(hash >> 18) & SegmentLengthMask;
+        ans.h2 ^= (uint32_t)(hash)&SegmentLengthMask;
         return ans;
     }
 
     uint32_t
     binary_fuse_hash(int index, uint64_t hash) const
     {
-        uint64_t h = binary_fuse_mulhi(hash, _segmentCountLength);
-        h += index * _segmentLength;
+        uint64_t h = binary_fuse_mulhi(hash, SegmentCountLength);
+        h += index * SegmentLength;
         // keep the lower 36 bits
         uint64_t hh = hash & ((1UL << 36) - 1);
-        // index 0: right shift by 36; index 1: right shift by 18; index 2: no
-        // shift
-        h ^= (size_t)((hh >> (36 - 18 * index)) & _segmentLengthMask);
+        // index 0: right shift by 36; index 1: right shift by 18; index 2: no shift
+        h ^= (size_t)((hh >> (36 - 18 * index)) & SegmentLengthMask);
         return h;
     }
 
@@ -267,45 +265,41 @@ class binary_fuse_t
         }
 
         uint32_t arity = 3;
-        _segmentLength = binary_fuse_calculate_segment_length(arity, size);
-        if (_segmentLength > 262144)
-        {
-            _segmentLength = 262144;
+        SegmentLength = binary_fuse_calculate_segment_length(arity, size);
+        if (SegmentLength > 262144) {
+            SegmentLength = 262144;
         }
-        _segmentLengthMask = _segmentLength - 1;
+        SegmentLengthMask = SegmentLength - 1;
         double sizeFactor = binary_fuse_calculate_size_factor(arity, size);
         uint32_t capacity = (uint32_t)(round((double)size * sizeFactor));
         uint32_t initSegmentCount =
-            (capacity + _segmentLength - 1) / _segmentLength - (arity - 1);
-        _arrayLength = (initSegmentCount + arity - 1) * _segmentLength;
-        _segmentCount = (_arrayLength + _segmentLength - 1) / _segmentLength;
-        if (_segmentCount <= arity - 1)
-        {
-            _segmentCount = 1;
+            (capacity + SegmentLength - 1) / SegmentLength - (arity - 1);
+        ArrayLength = (initSegmentCount + arity - 1) * SegmentLength;
+        SegmentCount = (ArrayLength + SegmentLength - 1) / SegmentLength;
+        if (SegmentCount <= arity - 1) {
+            SegmentCount = 1;
+        } else {
+            SegmentCount = SegmentCount - (arity - 1);
         }
-        else
-        {
-            _segmentCount = _segmentCount - (arity - 1);
-        }
-        _arrayLength = (_segmentCount + arity - 1) * _segmentLength;
-        _segmentCountLength = _segmentCount * _segmentLength;
-        _fingerprints.resize(_arrayLength);
+        ArrayLength = (SegmentCount + arity - 1) * SegmentLength;
+        SegmentCountLength = SegmentCount * SegmentLength;
+        Fingerprints.resize(ArrayLength);
     }
 
     explicit binary_fuse_t(stellar::SerializedBinaryFuseFilter const& xdrFilter)
-        : _segmentLength(xdrFilter.segmentLength)
-        , _segmentLengthMask(xdrFilter.segementLengthMask)
-        , _segmentCount(xdrFilter.segmentCount)
-        , _segmentCountLength(xdrFilter.segmentCountLength)
-        , _arrayLength(xdrFilter.fingerprintLength)
-        , _populated(true)
+        : SegmentLength(xdrFilter.segmentLength)
+        , SegmentLengthMask(xdrFilter.segementLengthMask)
+        , SegmentCount(xdrFilter.segmentCount)
+        , SegmentCountLength(xdrFilter.segmentCountLength)
+        , ArrayLength(xdrFilter.fingerprintLength)
+        , Populated(true)
     {
         std::copy(xdrFilter.filterSeed.seed.begin(),
-                  xdrFilter.filterSeed.seed.end(), _seed.begin());
+                  xdrFilter.filterSeed.seed.end(), Seed.begin());
 
         // Convert vector<uint8_t> to vector<T>
-        _fingerprints.reserve(_arrayLength);
-        for (size_t elem = 0; elem < _arrayLength; ++elem)
+        Fingerprints.reserve(ArrayLength);
+        for (size_t elem = 0; elem < ArrayLength; ++elem)
         {
             T value = 0;
             auto pos = elem * sizeof(T);
@@ -316,7 +310,7 @@ class binary_fuse_t
                          << (byte_i * 8);
             }
 
-            _fingerprints.push_back(value);
+            Fingerprints.push_back(value);
         }
     }
 
@@ -325,16 +319,16 @@ class binary_fuse_t
     contain(uint64_t key) const
     {
         ZoneScoped;
-        if (!_populated)
+        if (!Populated)
         {
             throw std::runtime_error("filter not populated");
         }
 
-        uint64_t hash = sip_hash24(key, _seed);
+        uint64_t hash = sip_hash24(key, Seed);
         T f = binary_fuse_fingerprint(hash);
         binary_hashes_t hashes = hash_batch(hash);
-        f ^= _fingerprints[hashes.h0] ^ _fingerprints[hashes.h1] ^
-             _fingerprints[hashes.h2];
+        f ^= Fingerprints[hashes.h0] ^ Fingerprints[hashes.h1] ^
+             Fingerprints[hashes.h2];
         return f == 0;
     }
 
@@ -342,12 +336,12 @@ class binary_fuse_t
     size_t
     size_in_bytes() const
     {
-        if (!_populated)
+        if (!Populated)
         {
             throw std::runtime_error("filter not populated");
         }
 
-        return _arrayLength * sizeof(T) + sizeof(*this);
+        return ArrayLength * sizeof(T) + sizeof(*this);
     }
 
     // Construct the filter, returns true on success, false on failure.
@@ -366,7 +360,7 @@ class binary_fuse_t
             throw std::runtime_error("size should be at most 2^32");
         }
 
-        if (_populated)
+        if (Populated)
         {
             throw std::runtime_error("filter already populated");
         }
@@ -374,10 +368,10 @@ class binary_fuse_t
         uint32_t size = keys.size();
         ZoneValue(static_cast<int64_t>(size));
 
-        _seed = rngSeed;
+        Seed = rngSeed;
 
         std::vector<uint64_t> reverseOrder(size + 1);
-        uint32_t capacity = _arrayLength;
+        uint32_t capacity = ArrayLength;
 
         std::vector<uint32_t> alone(capacity);
         std::vector<uint8_t> t2count(capacity);
@@ -385,7 +379,7 @@ class binary_fuse_t
         std::vector<uint64_t> t2hash(capacity);
 
         uint32_t blockBits = 1;
-        while (((uint32_t)1 << blockBits) < _segmentCount)
+        while (((uint32_t)1 << blockBits) < SegmentCount)
         {
             blockBits += 1;
         }
@@ -395,30 +389,24 @@ class binary_fuse_t
         uint32_t h012[5];
 
         reverseOrder[size] = 1;
-        for (int loop = 0; true; ++loop)
-        {
-            if (loop + 1 > XOR_MAX_ITERATIONS)
-            {
+        for (int loop = 0; true; ++loop) {
+            if (loop + 1 > XOR_MAX_ITERATIONS) {
                 // The probability of this happening is lower than the
-                // the cosmic-ray probability (i.e., a cosmic ray corrupts your
-                // system).
+                // the cosmic-ray probability (i.e., a cosmic ray corrupts your system).
                 return false;
             }
 
-            for (uint32_t i = 0; i < block; i++)
-            {
-                // important : i * size would overflow as a 32-bit number in
-                // some cases.
+            for (uint32_t i = 0; i < block; i++) {
+                // important : i * size would overflow as a 32-bit number in some
+                // cases.
                 startPos[i] = ((uint64_t)i * size) >> blockBits;
             }
 
             uint64_t maskblock = block - 1;
-            for (uint32_t i = 0; i < size; i++)
-            {
-                uint64_t hash = sip_hash24(keys[i], _seed);
+            for (uint32_t i = 0; i < size; i++) {
+                uint64_t hash = sip_hash24(keys[i], Seed);
                 uint64_t segment_index = hash >> (64 - blockBits);
-                while (reverseOrder[startPos[segment_index]] != 0)
-                {
+                while (reverseOrder[startPos[segment_index]] != 0) {
                     segment_index++;
                     segment_index &= maskblock;
                 }
@@ -427,8 +415,7 @@ class binary_fuse_t
             }
             int error = 0;
             uint32_t duplicates = 0;
-            for (uint32_t i = 0; i < size; i++)
-            {
+            for (uint32_t i = 0; i < size; i++) {
                 uint64_t hash = reverseOrder[i];
                 uint32_t h0 = binary_fuse_hash(0, hash);
                 t2count[h0] += 4;
@@ -441,12 +428,10 @@ class binary_fuse_t
                 t2count[h2] += 4;
                 t2hash[h2] ^= hash;
                 t2count[h2] ^= 2;
-                if ((t2hash[h0] & t2hash[h1] & t2hash[h2]) == 0)
-                {
-                    if (((t2hash[h0] == 0) && (t2count[h0] == 8)) ||
-                        ((t2hash[h1] == 0) && (t2count[h1] == 8)) ||
-                        ((t2hash[h2] == 0) && (t2count[h2] == 8)))
-                    {
+                if ((t2hash[h0] & t2hash[h1] & t2hash[h2]) == 0) {
+                  if   (((t2hash[h0] == 0) && (t2count[h0] == 8))
+                    ||  ((t2hash[h1] == 0) && (t2count[h1] == 8))
+                    ||  ((t2hash[h2] == 0) && (t2count[h2] == 8))) {
                         duplicates += 1;
                         t2count[h0] -= 4;
                         t2hash[h0] ^= hash;
@@ -462,8 +447,7 @@ class binary_fuse_t
                 error = (t2count[h1] < 4) ? 1 : error;
                 error = (t2count[h2] < 4) ? 1 : error;
             }
-            if (error)
-            {
+            if(error) {
                 std::fill(reverseOrder.begin(), reverseOrder.end(), 0);
                 std::fill(t2count.begin(), t2count.end(), 0);
                 std::fill(t2hash.begin(), t2hash.end(), 0);
@@ -476,18 +460,15 @@ class binary_fuse_t
             // End of key addition
             uint32_t Qsize = 0;
             // Add sets with one key to the queue.
-            for (uint32_t i = 0; i < capacity; i++)
-            {
+            for (uint32_t i = 0; i < capacity; i++) {
                 alone[Qsize] = i;
                 Qsize += ((t2count[i] >> 2) == 1) ? 1 : 0;
             }
             uint32_t stacksize = 0;
-            while (Qsize > 0)
-            {
+            while (Qsize > 0) {
                 Qsize--;
                 uint32_t index = alone[Qsize];
-                if ((t2count[index] >> 2) == 1)
-                {
+                if ((t2count[index] >> 2) == 1) {
                     uint64_t hash = t2hash[index];
 
                     // h012[0] = binary_fuse16_hash(0, hash);
@@ -515,14 +496,11 @@ class binary_fuse_t
                     t2hash[other_index2] ^= hash;
                 }
             }
-            if (stacksize + duplicates == size)
-            {
+            if (stacksize + duplicates == size) {
                 // success
                 size = stacksize;
                 break;
-            }
-            else if (duplicates > 0)
-            {
+            } else if(duplicates > 0) {
                 // Sort keys and remove duplicates
                 std::sort(keys.begin(), keys.end());
                 keys.erase(std::unique(keys.begin(), keys.end()), keys.end());
@@ -538,8 +516,7 @@ class binary_fuse_t
             _seed[0]++;
         }
 
-        for (uint32_t i = size - 1; i < size; i--)
-        {
+        for (uint32_t i = size - 1; i < size; i--) {
             // the hash of the key we insert next
             uint64_t hash = reverseOrder[i];
             T xor2 = binary_fuse_fingerprint(hash);
@@ -549,18 +526,19 @@ class binary_fuse_t
             h012[2] = binary_fuse_hash(2, hash);
             h012[3] = h012[0];
             h012[4] = h012[1];
-            _fingerprints[h012[found]] = xor2 ^ _fingerprints[h012[found + 1]] ^
-                                         _fingerprints[h012[found + 2]];
+            Fingerprints[h012[found]] = xor2 ^
+                                         Fingerprints[h012[found + 1]] ^
+                                         Fingerprints[h012[found + 2]];
         }
 
-        _populated = true;
+        Populated = true;
         return true;
     }
 
     void
     copyTo(stellar::SerializedBinaryFuseFilter& xdrFilter) const
     {
-        if (!_populated)
+        if (!Populated)
         {
             throw std::runtime_error("filter not populated");
         }
@@ -582,17 +560,17 @@ class binary_fuse_t
             static_assert(false, "Invalid BinaryFuseFilter type");
         }
 
-        std::copy(_seed.begin(), _seed.end(),
+        std::copy(Seed.begin(), Seed.end(),
                   xdrFilter.filterSeed.seed.begin());
-        xdrFilter.segmentLength = _segmentLength;
-        xdrFilter.segementLengthMask = _segmentLengthMask;
-        xdrFilter.segmentCount = _segmentCount;
-        xdrFilter.segmentCountLength = _segmentCountLength;
-        xdrFilter.fingerprintLength = _arrayLength;
+        xdrFilter.segmentLength = SegmentLength;
+        xdrFilter.segementLengthMask = SegmentLengthMask;
+        xdrFilter.segmentCount = SegmentCount;
+        xdrFilter.segmentCountLength = SegmentCountLength;
+        xdrFilter.fingerprintLength = ArrayLength;
 
         // We need to convert the in-memory vector<T> into a vector<uint8_t>
-        xdrFilter.fingerprints.reserve(_arrayLength * sizeof(T));
-        for (T f : _fingerprints)
+        xdrFilter.fingerprints.reserve(ArrayLength * sizeof(T));
+        for (T f : Fingerprints)
         {
             for (size_t byte_i = 0; byte_i < sizeof(T); ++byte_i)
             {
@@ -604,13 +582,13 @@ class binary_fuse_t
     bool
     operator==(binary_fuse_t const& other) const
     {
-        return _segmentLength == other._segmentLength &&
-               _segmentLengthMask == other._segmentLengthMask &&
-               _segmentCount == other._segmentCount &&
-               _segmentCountLength == other._segmentCountLength &&
-               _arrayLength == other._arrayLength &&
-               _populated == other._populated && _seed == other._seed &&
-               _fingerprints == other._fingerprints;
+        return SegmentLength == other.SegmentLength &&
+               SegmentLengthMask == other.SegmentLengthMask &&
+               SegmentCount == other.SegmentCount &&
+               SegmentCountLength == other.SegmentCountLength &&
+               ArrayLength == other.ArrayLength &&
+               Populated == other.Populated && Seed == other.Seed &&
+               Fingerprints == other.Fingerprints;
     }
 };
 
