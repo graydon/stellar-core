@@ -210,7 +210,9 @@ binary_fuse_fingerprint(uint64_t hash)
 }
 
 template <typename T,
-          class = typename std::enable_if_t<std::is_unsigned<T>::value>>
+          typename = std::enable_if_t<std::is_same_v<T, uint8_t> ||
+                                                  std::is_same_v<T, uint16_t> ||
+                                                  std::is_same_v<T, uint32_t>>>
 class binary_fuse_t
 {
   private:
@@ -579,7 +581,7 @@ class binary_fuse_t
         }
         else
         {
-            static_assert(false, "Invalid BinaryFuseFilter type");
+            static_assert(!sizeof(T), "Invalid BinaryFuseFilter type");
         }
 
         std::copy(_seed.begin(), _seed.end(),
@@ -638,7 +640,7 @@ binary_fuse_create_from_serialized_xdr(
     }
     else
     {
-        static_assert(false, "Invalid BinaryFuseFilter type");
+        static_assert(!sizeof(T), "Invalid BinaryFuseFilter type");
     }
 }
 
