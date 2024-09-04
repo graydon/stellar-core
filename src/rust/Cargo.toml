@@ -54,18 +54,18 @@ itertools = "=0.11.0"
 # to keep the number of hosts down when and if it's easy to, but having the
 # number grow gradually is also not the end of the world.
 
-[dependencies.soroban-env-host-p22]
-version = "=22.0.0"
-git = "https://github.com/stellar/rs-soroban-env"
-package = "soroban-env-host"
-rev = "5ed156b7fb5dd3e46635aa0f818d5db33dfd6b6a"
+#[dependencies.soroban-env-host-p22]
+#version = "=22.0.0"
+#git = "https://github.com/stellar/rs-soroban-env"
+#package = "soroban-env-host"
+#rev = "5ed156b7fb5dd3e46635aa0f818d5db33dfd6b6a"
 #path = "../../../rs-soroban-env/soroban-env-host"
 
-[dependencies.soroban-env-host-p21]
-version = "=21.2.0"
-git = "https://github.com/stellar/rs-soroban-env"
-package = "soroban-env-host"
-rev = "8809852dcf8489f99407a5ceac12625ee3d14693"
+#[dependencies.soroban-env-host-p21]
+#version = "=21.2.0"
+#git = "https://github.com/stellar/rs-soroban-env"
+#package = "soroban-env-host"
+#rev = "8809852dcf8489f99407a5ceac12625ee3d14693"
 
 # The test wasms and synth-wasm crate should usually be taken from the highest
 # supported host, since test material usually just grows over time.
@@ -91,10 +91,10 @@ features = ["dependency-tree"]
 [features]
 
 # The tracy feature should enable the tracy features of all supported hosts.
-tracy = ["dep:tracy-client", "soroban-env-host-p21/tracy", "soroban-env-host-p22/tracy"]
+tracy = ["dep:tracy-client"] #, "soroban-env-host-p21/tracy", "soroban-env-host-p22/tracy"]
 
 # The "vnext" feature enables not-yet-released features that (a) break protocol
 # but (b) are still under development, in between protocol releases. This
 # feature is not enabled by default, and is only intended for temporary use when
 # staging work across intra-protocol releases.
-core-vnext = ["soroban-env-host-p22/next"]
+#core-vnext = ["soroban-env-host-p22/next"]

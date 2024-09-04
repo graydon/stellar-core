@@ -76,9 +76,20 @@ RUST_BIN_DIR=$(RUST_BUILD_DIR)/bin
 RUST_TARGET_DIR=$(top_builddir)/target
 RUST_CXXBRIDGE=$(RUST_BIN_DIR)/cxxbridge
 RUST_PROFILE=release
-RUST_HOST_DEPFILES=rust/Cargo.toml $(top_srcdir)/Cargo.toml $(top_srcdir)/Cargo.lock $(wildcard rust/src/dep-trees/*.txt)
+RUST_HOST_DEPFILES=rust/Cargo.toml $(top_srcdir)/Cargo.toml $(top_srcdir)/Cargo.lock $(wildcard rust/soroban-host-crates/*/*.*)
+RUST_TARGET_PROFILE_DIR=$(RUST_TARGET_DIR)/$(RUST_PROFILE)
+LIBSOROBAN_ENV_HOST_P21=$(RUST_TARGET_PROFILE_DIR)/libsoroban_env_host_p21.rlib
+LIBSOROBAN_ENV_HOST_P22=$(RUST_TARGET_PROFILE_DIR)/libsoroban_env_host_p22.rlib
+ALL_SOROBAN_HOST_RLIBS=$(LIBSOROBAN_ENV_HOST_P21) $(LIBSOROBAN_ENV_HOST_P22)
 LIBRUST_STELLAR_CORE=$(RUST_TARGET_DIR)/$(RUST_PROFILE)/librust_stellar_core.a
 stellar_core_LDADD += $(LIBRUST_STELLAR_CORE) -ldl
+
+# This is a little awkward, but we want each ".../deps/libsoroban_env_host_p21.rlib"
+# to turn into "--extern soroban_env_host_p21=.../deps/libsoroban_env_host_p21.rlib"
+define extern_flag
+$(shell printf -- '--extern %s=%s\n' $(1) $(abspath $(2)))
+endef
+ALL_SOROBAN_EXTERN_ARGS=$(foreach lib,$(ALL_SOROBAN_HOST_RLIBS),$(call extern_flag,$(patsubst $(RUST_TARGET_PROFILE_DIR)/lib%.rlib,%,$(lib)),$(lib)))
 
 $(RUST_CXXBRIDGE):
 	mkdir -p $(RUST_BIN_DIR)
@@ -92,8 +103,29 @@ rust/RustBridge.cpp: rust/src/lib.rs $(SRC_RUST_FILES) Makefile $(RUST_CXXBRIDGE
 	$(RUST_CXXBRIDGE) $< --cfg test=false --output $@.tmp
 	if cmp -s $@.tmp $@; then rm -v $@.tmp; else mv -v $@.tmp $@; fi
 
-$(LIBRUST_STELLAR_CORE): $(RUST_HOST_DEPFILES) $(SRC_RUST_FILES) Makefile
-	CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build --locked --$(RUST_PROFILE) --target-dir $(abspath $(RUST_TARGET_DIR)) $(CARGO_FEATURES)
+# This is a helper target that will re-fetch a lockfile committed to soroban-env-host
+# from upstream when you change the git rev that each Cargo.toml points to. You do
+# not need to run this normally and we will be committing the Cargo.lock files here
+# as well to improve reproducibility.
+rust/soroban-host-crates/%/Cargo.lock: rust/soroban-host-crates/%/Cargo.toml Makefile
+	curl -o $@ $(shell perl -ne 'print "https://raw.githubusercontent.com/stellar/rs-soroban-env/$$1/Cargo.lock" if /rev = "([a-f0-9]+)"/' $<)
+
+$(RUST_TARGET_PROFILE_DIR)/libsoroban_env_host_%.rlib: rust/soroban-host-crates/%/Cargo.toml Makefile 
+	cd $(dir $<) && \
+		CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build \
+		--$(RUST_PROFILE) \
+		--target-dir $(abspath $(RUST_TARGET_DIR)) \
+		$(CARGO_FEATURES)
+
+$(LIBRUST_STELLAR_CORE): $(RUST_HOST_DEPFILES) $(SRC_RUST_FILES) Makefile $(ALL_SOROBAN_HOST_RLIBS)
+	CARGO_NET_GIT_FETCH_WITH_CLI=true cargo rustc \
+		--package stellar-core \
+		--$(RUST_PROFILE) \
+		--target-dir $(abspath $(RUST_TARGET_DIR)) \
+		$(CARGO_FEATURES) \
+		-- \
+		$(ALL_SOROBAN_EXTERN_ARGS) \
+		-L dependency=$(RUST_TARGET_PROFILE_DIR)/deps
 	ranlib $@
 
 $(srcdir)/src.mk: $(top_srcdir)/make-mks
