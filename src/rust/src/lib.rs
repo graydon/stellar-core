@@ -579,7 +579,10 @@ impl HostModule {
 
         let tree_str = String::from_utf8_lossy(&tree_buf);
         // Normalize line endings to support Windows builds.
-        if tree_str.replace("\r\n", "\n") != self.dep_tree.replace("\r\n", "\n") {
+        let expected_tree = self.dep_tree.replace("\r\n", "\n");
+        let actual_tree = tree_str.replace("\r\n", "\n");
+
+        if expected_tree != actual_tree {
             eprintln!(
                 "Expected 'soroban-env-host@{}' host dependency tree (in dep-trees/{}.txt):",
                 ver_info.env_git_rev, self.name
@@ -590,6 +593,16 @@ impl HostModule {
                 ver_info.env_git_rev
             );
             eprintln!("---\n{}---", tree_str);
+            if let Ok(dep_trees) = std::env::var("DUMP_TREES") {
+                for (tree, name) in &[(expected_tree, "expected"), (actual_tree, "actual")] {
+                    let file_name = format!("/tmp/dep-tree-{}.txt", name);
+                    if let Err(err) = std::fs::write(&file_name, tree) {
+                        eprintln!("Failed to write dep tree to file {}: {}", file_name, err);
+                    } else {
+                        eprintln!("Wrote {} dep tree to file {}", name, file_name);
+                    }
+                }
+            }
             panic!(
                 "Unexpected '{}' / 'soroban-env-host@{}' host dependency tree",
                 self.name, ver_info.env_git_rev
@@ -615,11 +628,9 @@ impl HostModule {
 // The check additionally checks that the major version number of soroban that
 // is compiled-in matches its max supported protocol number.
 fn check_lockfile_has_expected_dep_trees(core_max_proto: u32) {
-    static CARGO_LOCK_FILE_CONTENT: &'static str = include_str!("../../../Cargo.lock");
-    let lockfile = Lockfile::from_str(CARGO_LOCK_FILE_CONTENT)
-        .expect("parsing compiled-in Cargo.lock file content");
-
     for hm in HOST_MODULES.iter() {
+        let lockfile =
+            Lockfile::from_str(hm.lock_file).expect("parsing compiled-in Cargo.lock file content");
         hm.check_lockfile_has_expected_dep_tree(core_max_proto, &lockfile);
     }
 }
@@ -688,6 +699,7 @@ struct HostModule {
     // dynamic strings, which is necessary due to cxx limitations.
     max_proto: u32,
     name: &'static str,
+    lock_file: &'static str,
     dep_tree: &'static str,
     get_soroban_version_info: fn(u32) -> SorobanVersionInfo,
     invoke_host_function: fn(
@@ -719,6 +731,7 @@ macro_rules! proto_versioned_functions_for_module {
     ($module:ident) => {
         HostModule {
             max_proto: $module::contract::get_max_proto(),
+            lock_file: include_str!(concat!("../crates/", stringify!($module), "/Cargo.lock")),
             dep_tree: include_str!(concat!("dep-trees/", stringify!($module), ".txt")),
             name: stringify!($module),
             get_soroban_version_info: $module::contract::get_soroban_version_info,

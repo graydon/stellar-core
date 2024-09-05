@@ -1,0 +1,32 @@
+[workspace]
+# intentionally blank
+
+[package]
+name="soroban-env-host-p21"
+version="1.0.0"
+edition="2021"
+
+[lib]
+crate-type=["rlib"]
+
+[dependencies.soroban-env-host]
+version = "=21.2.0"
+git = "https://github.com/stellar/rs-soroban-env"
+package = "soroban-env-host"
+rev = "8809852dcf8489f99407a5ceac12625ee3d14693"
+
+[profile.release]
+codegen-units = 1
+lto = true
+
+[patch.crates-io]
+tracy-client-sys = { path = "../../../../lib/tracy-client-sys" }
+
+[features]
+tracy = ["soroban-env-host/tracy"]
+# the core-vnext feature exists here (so that the compiler
+# is allowed to pass it without error) but it _doesn't_ turn on
+# the corresponding feature in soroban-env-host; only the most
+# recent soroban-env-host crate should get this feature
+# propagated to it.
+core-vnext = []

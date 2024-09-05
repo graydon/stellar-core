@@ -18,3 +18,10 @@ rev = "5ed156b7fb5dd3e46635aa0f818d5db33dfd6b6a"
 [profile.release]
 codegen-units = 1
 lto = true
+
+[patch.crates-io]
+tracy-client-sys = { path = "../../../../lib/tracy-client-sys" }
+
+[features]
+tracy = ["soroban-env-host/tracy"]
+core-vnext = ["soroban-env-host/next"]

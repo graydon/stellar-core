@@ -76,7 +76,7 @@ RUST_BIN_DIR=$(RUST_BUILD_DIR)/bin
 RUST_TARGET_DIR=$(top_builddir)/target
 RUST_CXXBRIDGE=$(RUST_BIN_DIR)/cxxbridge
 RUST_PROFILE=release
-RUST_HOST_DEPFILES=rust/Cargo.toml $(top_srcdir)/Cargo.toml $(top_srcdir)/Cargo.lock $(wildcard rust/soroban-host-crates/*/*.*)
+RUST_HOST_DEPFILES=rust/Cargo.toml $(top_srcdir)/Cargo.toml $(top_srcdir)/Cargo.lock $(wildcard rust/crates/soroban_*/*.*)
 RUST_TARGET_PROFILE_DIR=$(RUST_TARGET_DIR)/$(RUST_PROFILE)
 LIBSOROBAN_ENV_HOST_P21=$(RUST_TARGET_PROFILE_DIR)/libsoroban_env_host_p21.rlib
 LIBSOROBAN_ENV_HOST_P22=$(RUST_TARGET_PROFILE_DIR)/libsoroban_env_host_p22.rlib
@@ -107,10 +107,10 @@ rust/RustBridge.cpp: rust/src/lib.rs $(SRC_RUST_FILES) Makefile $(RUST_CXXBRIDGE
 # from upstream when you change the git rev that each Cargo.toml points to. You do
 # not need to run this normally and we will be committing the Cargo.lock files here
 # as well to improve reproducibility.
-rust/soroban-host-crates/%/Cargo.lock: rust/soroban-host-crates/%/Cargo.toml Makefile
+rust/crates/soroban_%/Cargo.lock: rust/crates/soroban_%/Cargo.toml Makefile
 	curl -o $@ $(shell perl -ne 'print "https://raw.githubusercontent.com/stellar/rs-soroban-env/$$1/Cargo.lock" if /rev = "([a-f0-9]+)"/' $<)
 
-$(RUST_TARGET_PROFILE_DIR)/libsoroban_env_host_%.rlib: rust/soroban-host-crates/%/Cargo.toml Makefile 
+$(RUST_TARGET_PROFILE_DIR)/libsoroban_env_host_%.rlib: rust/crates/soroban_%/Cargo.toml Makefile 
 	cd $(dir $<) && \
 		CARGO_NET_GIT_FETCH_WITH_CLI=true cargo build \
 		--$(RUST_PROFILE) \
