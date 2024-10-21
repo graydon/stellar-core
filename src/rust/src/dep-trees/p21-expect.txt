@@ -1,8 +1,8 @@
-soroban-env-host v21.2.1 (src/rust/soroban/p21/soroban-env-host)
+soroban-env-host v21.2.0 (src/rust/soroban/p21/soroban-env-host)
 ├── curve25519-dalek v4.1.1
 │   ├── cfg-if v1.0.0
 │   ├── cpufeatures v0.2.8
-│   │   └── libc v0.2.150
+│   │   └── libc v0.2.161
 │   ├── curve25519-dalek-derive v0.1.0 (proc-macro)
 │   │   ├── proc-macro2 v1.0.69
 │   │   │   └── unicode-ident v1.0.9
@@ -53,7 +53,7 @@ soroban-env-host v21.2.1 (src/rust/soroban/p21/soroban-env-host)
 │   │   │   │       │               ├── quote v1.0.33 (*)
 │   │   │   │       │               ├── syn v2.0.39 (*)
 │   │   │   │       │               ├── wasm-bindgen-backend v0.2.87
-│   │   │   │       │               │   ├── bumpalo v3.13.0
+│   │   │   │       │               │   ├── bumpalo v3.16.0
 │   │   │   │       │               │   ├── log v0.4.19
 │   │   │   │       │               │   ├── once_cell v1.18.0
 │   │   │   │       │               │   ├── proc-macro2 v1.0.69 (*)
@@ -61,7 +61,7 @@ soroban-env-host v21.2.1 (src/rust/soroban/p21/soroban-env-host)
 │   │   │   │       │               │   ├── syn v2.0.39 (*)
 │   │   │   │       │               │   └── wasm-bindgen-shared v0.2.87
 │   │   │   │       │               └── wasm-bindgen-shared v0.2.87
-│   │   │   │       ├── libc v0.2.150
+│   │   │   │       ├── libc v0.2.161
 │   │   │   │       ├── wasi v0.11.0+wasi-snapshot-preview1
 │   │   │   │       └── wasm-bindgen v0.2.87 (*)
 │   │   │   ├── subtle v2.5.0
@@ -129,7 +129,7 @@ soroban-env-host v21.2.1 (src/rust/soroban/p21/soroban-env-host)
 │   │   └── elliptic-curve v0.13.5 (*)
 │   └── sha2 v0.10.8 (*)
 ├── rand v0.8.5
-│   ├── libc v0.2.150
+│   ├── libc v0.2.161
 │   ├── rand_chacha v0.3.1
 │   │   ├── ppv-lite86 v0.2.17
 │   │   └── rand_core v0.6.4 (*)
@@ -141,17 +141,17 @@ soroban-env-host v21.2.1 (src/rust/soroban/p21/soroban-env-host)
 │   ├── digest v0.10.7 (*)
 │   └── keccak v0.1.4
 │       └── cpufeatures v0.2.8 (*)
-├── soroban-builtin-sdk-macros v21.2.1 (proc-macro) (src/rust/soroban/p21/soroban-builtin-sdk-macros)
+├── soroban-builtin-sdk-macros v21.2.0 (proc-macro) (src/rust/soroban/p21/soroban-builtin-sdk-macros)
 │   ├── itertools v0.11.0
 │   │   └── either v1.8.1
 │   ├── proc-macro2 v1.0.69 (*)
 │   ├── quote v1.0.33 (*)
 │   └── syn v2.0.39 (*)
-├── soroban-env-common v21.2.1 (src/rust/soroban/p21/soroban-env-common)
+├── soroban-env-common v21.2.0 (src/rust/soroban/p21/soroban-env-common)
 │   ├── ethnum v1.5.0
 │   ├── num-derive v0.4.1 (proc-macro) (*)
 │   ├── num-traits v0.2.17 (*)
-│   ├── soroban-env-macros v21.2.1 (proc-macro) (src/rust/soroban/p21/soroban-env-macros)
+│   ├── soroban-env-macros v21.2.0 (proc-macro) (src/rust/soroban/p21/soroban-env-macros)
 │   │   ├── itertools v0.11.0 (*)
 │   │   ├── proc-macro2 v1.0.69 (*)
 │   │   ├── quote v1.0.33 (*)
@@ -169,8 +169,8 @@ soroban-env-host v21.2.1 (src/rust/soroban/p21/soroban-env-host)
 │   │   │   ├── hex v0.4.3
 │   │   │   └── stellar-strkey v0.0.8
 │   │   │       ├── base32 v0.4.0
-│   │   │       └── thiserror v1.0.40
-│   │   │           └── thiserror-impl v1.0.40 (proc-macro)
+│   │   │       └── thiserror v1.0.55
+│   │   │           └── thiserror-impl v1.0.55 (proc-macro)
 │   │   │               ├── proc-macro2 v1.0.69 (*)
 │   │   │               ├── quote v1.0.33 (*)
 │   │   │               └── syn v2.0.39 (*)
@@ -184,6 +184,8 @@ soroban-env-host v21.2.1 (src/rust/soroban/p21/soroban-env-host)
 │   │   └── syn v2.0.39 (*)
 │   ├── soroban-wasmi v0.31.1-soroban.20.0.1 (https://github.com/stellar/wasmi?rev=0ed3f3dee30dc41ebe21972399e0a73a41944aa0#0ed3f3de)
 │   │   ├── smallvec v1.10.0
+│   │   │   └── serde v1.0.192
+│   │   │       └── serde_derive v1.0.192 (proc-macro) (*)
 │   │   ├── spin v0.9.8
 │   │   ├── wasmi_arena v0.4.0 (https://github.com/stellar/wasmi?rev=0ed3f3dee30dc41ebe21972399e0a73a41944aa0#0ed3f3de)
 │   │   ├── wasmi_core v0.13.0 (https://github.com/stellar/wasmi?rev=0ed3f3dee30dc41ebe21972399e0a73a41944aa0#0ed3f3de)
@@ -204,11 +206,208 @@ soroban-env-host v21.2.1 (src/rust/soroban/p21/soroban-env-host)
 │   └── wasmparser v0.116.1
 │       ├── indexmap v2.0.2
 │       │   ├── equivalent v1.0.1
-│       │   └── hashbrown v0.14.1
+│       │   ├── hashbrown v0.14.5
+│       │   │   ├── ahash v0.8.11
+│       │   │   │   ├── cfg-if v1.0.0
+│       │   │   │   ├── once_cell v1.18.0
+│       │   │   │   └── zerocopy v0.7.35
+│       │   │   │       └── zerocopy-derive v0.7.35 (proc-macro)
+│       │   │   │           ├── proc-macro2 v1.0.69 (*)
+│       │   │   │           ├── quote v1.0.33 (*)
+│       │   │   │           └── syn v2.0.39 (*)
+│       │   │   │   [build-dependencies]
+│       │   │   │   └── version_check v0.9.4
+│       │   │   └── serde v1.0.192 (*)
+│       │   └── serde v1.0.192 (*)
 │       └── semver v1.0.17
 │   [build-dependencies]
 │   └── crate-git-revision v0.0.6 (*)
 ├── soroban-wasmi v0.31.1-soroban.20.0.1 (https://github.com/stellar/wasmi?rev=0ed3f3dee30dc41ebe21972399e0a73a41944aa0#0ed3f3de) (*)
 ├── static_assertions v1.1.0
 ├── stellar-strkey v0.0.8 (*)
-└── wasmparser v0.116.1 (*)
+├── wasmparser v0.116.1 (*)
+└── wasmtime v25.0.2
+    ├── anyhow v1.0.75
+    ├── bitflags v2.4.1
+    ├── bumpalo v3.16.0
+    ├── cfg-if v1.0.0
+    ├── hashbrown v0.14.5 (*)
+    ├── indexmap v2.0.2 (*)
+    ├── libc v0.2.161
+    ├── libm v0.2.7
+    ├── log v0.4.19
+    ├── mach2 v0.4.2
+    │   └── libc v0.2.161
+    ├── memfd v0.6.4
+    │   └── rustix v0.38.37
+    │       ├── bitflags v2.4.1
+    │       ├── errno v0.3.9
+    │       │   ├── libc v0.2.161
+    │       │   └── windows-sys v0.52.0
+    │       │       └── windows-targets v0.52.6
+    │       │           ├── windows_aarch64_gnullvm v0.52.6
+    │       │           ├── windows_aarch64_msvc v0.52.6
+    │       │           ├── windows_i686_gnu v0.52.6
+    │       │           ├── windows_i686_gnullvm v0.52.6
+    │       │           ├── windows_i686_msvc v0.52.6
+    │       │           ├── windows_x86_64_gnu v0.52.6
+    │       │           ├── windows_x86_64_gnullvm v0.52.6
+    │       │           └── windows_x86_64_msvc v0.52.6
+    │       ├── libc v0.2.161
+    │       ├── linux-raw-sys v0.4.14
+    │       └── windows-sys v0.52.0 (*)
+    ├── object v0.36.5
+    │   ├── crc32fast v1.4.2
+    │   │   └── cfg-if v1.0.0
+    │   ├── hashbrown v0.15.0
+    │   │   └── foldhash v0.1.3
+    │   ├── indexmap v2.0.2 (*)
+    │   └── memchr v2.6.4
+    ├── once_cell v1.18.0
+    ├── paste v1.0.12 (proc-macro)
+    ├── postcard v1.0.10
+    │   ├── cobs v0.2.3
+    │   └── serde v1.0.192 (*)
+    ├── psm v0.1.23
+    │   [build-dependencies]
+    │   └── cc v1.0.83
+    │       └── libc v0.2.161
+    ├── rustix v0.38.37 (*)
+    ├── serde v1.0.192 (*)
+    ├── serde_derive v1.0.192 (proc-macro) (*)
+    ├── smallvec v1.10.0 (*)
+    ├── sptr v0.3.2
+    ├── target-lexicon v0.12.16
+    ├── wasmparser v0.217.0
+    │   ├── ahash v0.8.11 (*)
+    │   ├── bitflags v2.4.1
+    │   ├── hashbrown v0.14.5 (*)
+    │   ├── indexmap v2.0.2 (*)
+    │   ├── semver v1.0.17
+    │   └── serde v1.0.192 (*)
+    ├── wasmtime-asm-macros v25.0.2
+    │   └── cfg-if v1.0.0
+    ├── wasmtime-environ v25.0.2
+    │   ├── anyhow v1.0.75
+    │   ├── cranelift-bitset v0.112.2
+    │   │   ├── serde v1.0.192 (*)
+    │   │   └── serde_derive v1.0.192 (proc-macro) (*)
+    │   ├── cranelift-entity v0.112.2
+    │   │   ├── cranelift-bitset v0.112.2 (*)
+    │   │   ├── serde v1.0.192 (*)
+    │   │   └── serde_derive v1.0.192 (proc-macro) (*)
+    │   ├── gimli v0.29.0
+    │   │   └── indexmap v2.0.2 (*)
+    │   ├── indexmap v2.0.2 (*)
+    │   ├── log v0.4.19
+    │   ├── object v0.36.5 (*)
+    │   ├── postcard v1.0.10 (*)
+    │   ├── serde v1.0.192 (*)
+    │   ├── serde_derive v1.0.192 (proc-macro) (*)
+    │   ├── target-lexicon v0.12.16
+    │   ├── wasm-encoder v0.217.0
+    │   │   └── leb128 v0.2.5
+    │   ├── wasmparser v0.217.0 (*)
+    │   ├── wasmprinter v0.217.0
+    │   │   ├── anyhow v1.0.75
+    │   │   ├── termcolor v1.4.1
+    │   │   │   └── winapi-util v0.1.9
+    │   │   │       └── windows-sys v0.52.0 (*)
+    │   │   └── wasmparser v0.217.0 (*)
+    │   └── wasmtime-types v25.0.2
+    │       ├── anyhow v1.0.75
+    │       ├── cranelift-entity v0.112.2 (*)
+    │       ├── serde v1.0.192 (*)
+    │       ├── serde_derive v1.0.192 (proc-macro) (*)
+    │       ├── smallvec v1.10.0 (*)
+    │       └── wasmparser v0.217.0 (*)
+    ├── wasmtime-jit-icache-coherence v25.0.2
+    │   ├── anyhow v1.0.75
+    │   ├── cfg-if v1.0.0
+    │   ├── libc v0.2.161
+    │   └── windows-sys v0.52.0 (*)
+    ├── wasmtime-slab v25.0.2
+    ├── wasmtime-versioned-export-macros v25.0.2 (proc-macro)
+    │   ├── proc-macro2 v1.0.69 (*)
+    │   ├── quote v1.0.33 (*)
+    │   └── syn v2.0.39 (*)
+    ├── wasmtime-winch v25.0.2
+    │   ├── anyhow v1.0.75
+    │   ├── cranelift-codegen v0.112.2
+    │   │   ├── bumpalo v3.16.0
+    │   │   ├── cranelift-bforest v0.112.2
+    │   │   │   └── cranelift-entity v0.112.2 (*)
+    │   │   ├── cranelift-bitset v0.112.2 (*)
+    │   │   ├── cranelift-codegen-shared v0.112.2
+    │   │   ├── cranelift-control v0.112.2
+    │   │   │   └── arbitrary v1.3.2
+    │   │   ├── cranelift-entity v0.112.2 (*)
+    │   │   ├── gimli v0.29.0 (*)
+    │   │   ├── hashbrown v0.14.5 (*)
+    │   │   ├── log v0.4.19
+    │   │   ├── regalloc2 v0.10.2
+    │   │   │   ├── hashbrown v0.14.5 (*)
+    │   │   │   ├── log v0.4.19
+    │   │   │   ├── rustc-hash v2.0.0
+    │   │   │   ├── slice-group-by v0.3.1
+    │   │   │   └── smallvec v1.10.0 (*)
+    │   │   ├── rustc-hash v2.0.0
+    │   │   ├── smallvec v1.10.0 (*)
+    │   │   └── target-lexicon v0.12.16
+    │   │   [build-dependencies]
+    │   │   ├── cranelift-codegen-meta v0.112.2
+    │   │   │   └── cranelift-codegen-shared v0.112.2
+    │   │   └── cranelift-isle v0.112.2
+    │   ├── gimli v0.29.0 (*)
+    │   ├── object v0.36.5 (*)
+    │   ├── target-lexicon v0.12.16
+    │   ├── wasmparser v0.217.0 (*)
+    │   ├── wasmtime-cranelift v25.0.2
+    │   │   ├── anyhow v1.0.75
+    │   │   ├── cfg-if v1.0.0
+    │   │   ├── cranelift-codegen v0.112.2 (*)
+    │   │   ├── cranelift-control v0.112.2 (*)
+    │   │   ├── cranelift-entity v0.112.2 (*)
+    │   │   ├── cranelift-frontend v0.112.2
+    │   │   │   ├── cranelift-codegen v0.112.2 (*)
+    │   │   │   ├── log v0.4.19
+    │   │   │   ├── smallvec v1.10.0 (*)
+    │   │   │   └── target-lexicon v0.12.16
+    │   │   ├── cranelift-native v0.112.2
+    │   │   │   ├── cranelift-codegen v0.112.2 (*)
+    │   │   │   ├── libc v0.2.161
+    │   │   │   └── target-lexicon v0.12.16
+    │   │   ├── cranelift-wasm v0.112.2
+    │   │   │   ├── cranelift-codegen v0.112.2 (*)
+    │   │   │   ├── cranelift-entity v0.112.2 (*)
+    │   │   │   ├── cranelift-frontend v0.112.2 (*)
+    │   │   │   ├── itertools v0.12.1
+    │   │   │   │   └── either v1.8.1
+    │   │   │   ├── log v0.4.19
+    │   │   │   ├── smallvec v1.10.0 (*)
+    │   │   │   ├── wasmparser v0.217.0 (*)
+    │   │   │   └── wasmtime-types v25.0.2 (*)
+    │   │   ├── gimli v0.29.0 (*)
+    │   │   ├── log v0.4.19
+    │   │   ├── object v0.36.5 (*)
+    │   │   ├── smallvec v1.10.0 (*)
+    │   │   ├── target-lexicon v0.12.16
+    │   │   ├── thiserror v1.0.55 (*)
+    │   │   ├── wasmparser v0.217.0 (*)
+    │   │   ├── wasmtime-environ v25.0.2 (*)
+    │   │   └── wasmtime-versioned-export-macros v25.0.2 (proc-macro) (*)
+    │   ├── wasmtime-environ v25.0.2 (*)
+    │   └── winch-codegen v0.23.2
+    │       ├── anyhow v1.0.75
+    │       ├── cranelift-codegen v0.112.2 (*)
+    │       ├── gimli v0.29.0 (*)
+    │       ├── regalloc2 v0.10.2 (*)
+    │       ├── smallvec v1.10.0 (*)
+    │       ├── target-lexicon v0.12.16
+    │       ├── wasmparser v0.217.0 (*)
+    │       ├── wasmtime-cranelift v25.0.2 (*)
+    │       └── wasmtime-environ v25.0.2 (*)
+    └── windows-sys v0.52.0 (*)
+    [build-dependencies]
+    ├── cc v1.0.83 (*)
+    └── wasmtime-versioned-export-macros v25.0.2 (proc-macro) (*)
