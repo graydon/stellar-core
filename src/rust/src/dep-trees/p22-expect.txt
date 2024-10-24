@@ -192,6 +192,7 @@ soroban-env-host v22.0.0-rc.2 (src/rust/soroban/p22/soroban-env-host)
 ├── elliptic-curve v0.13.8 (*)
 ├── generic-array v0.14.7 (*)
 ├── getrandom v0.2.11 (*)
+├── hex v0.4.3
 ├── hex-literal v0.4.1
 ├── hmac v0.12.1 (*)
 ├── k256 v0.13.4
