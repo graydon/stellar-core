@@ -130,6 +130,11 @@ class BucketIndex : public NonMovableOrCopyable
     virtual std::optional<std::pair<std::streamoff, std::streamoff>>
     getOfferRange() const = 0;
 
+    // Returns lower bound and upper bound for contract code entry positions in
+    // the given bucket, or std::nullopt if no contract code entries exist
+    virtual std::optional<std::pair<std::streamoff, std::streamoff>>
+    getContractCodeRange() const = 0;
+
     // Returns page size for index. InidividualIndex returns 0 for page size
     virtual std::streamoff getPageSize() const = 0;
 

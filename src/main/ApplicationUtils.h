@@ -64,4 +64,6 @@ void setAuthenticatedLedgerHashPair(Application::pointer app,
                                     std::string startHash);
 std::optional<uint32_t>
 getStellarCoreMajorReleaseVersion(std::string const& vstr);
+
+int listContracts(Config const& cfg);
 }

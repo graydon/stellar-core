@@ -93,6 +93,11 @@ class BucketBase : public NonMovableOrCopyable
     std::optional<std::pair<std::streamoff, std::streamoff>>
     getOfferRange() const;
 
+    // Returns [lowerBound, upperBound) of file offsets for all contract code
+    // entries in the bucket, or std::nullopt if no contract code exists
+    std::optional<std::pair<std::streamoff, std::streamoff>>
+    getContractCodeRange() const;
+
     // Sets index, throws if index is already set
     void setIndex(std::unique_ptr<BucketIndex const>&& index);
 

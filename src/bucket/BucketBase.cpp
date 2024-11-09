@@ -51,6 +51,12 @@ BucketBase::getOfferRange() const
     return getIndex().getOfferRange();
 }
 
+std::optional<std::pair<std::streamoff, std::streamoff>>
+BucketBase::getContractCodeRange() const
+{
+    return getIndex().getContractCodeRange();
+}
+
 void
 BucketBase::setIndex(std::unique_ptr<BucketIndex const>&& index)
 {

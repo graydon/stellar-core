@@ -571,6 +571,20 @@ BucketIndexImpl<IndexT>::getOfferRange() const
     return getOffsetBounds(lowerBound, upperBound);
 }
 
+template <class IndexT>
+std::optional<std::pair<std::streamoff, std::streamoff>>
+BucketIndexImpl<IndexT>::getContractCodeRange() const
+{
+    // Get the smallest and largest possible contract code keys
+    LedgerKey lowerBound(CONTRACT_CODE);
+    lowerBound.contractCode().hash.fill(std::numeric_limits<uint8_t>::min());
+
+    LedgerKey upperBound(CONTRACT_CODE);
+    upperBound.contractCode().hash.fill(std::numeric_limits<uint8_t>::max());
+
+    return getOffsetBounds(lowerBound, upperBound);
+}
+
 #ifdef BUILD_TESTS
 template <class IndexT>
 bool

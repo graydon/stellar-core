@@ -86,6 +86,10 @@ class LiveBucketSnapshot : public BucketSnapshotBase<LiveBucket>
                          uint32_t ledgerSeq,
                          std::list<EvictionResultEntry>& evictableKeys,
                          SearchableLiveBucketListSnapshot const& bl) const;
+
+    // Scans contract code entries in the bucket.
+    Loop
+    scanForContractCode(std::function<Loop(LedgerEntry const&)> callback) const;
 };
 
 class HotArchiveBucketSnapshot : public BucketSnapshotBase<HotArchiveBucket>
