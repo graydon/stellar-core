@@ -34,6 +34,8 @@ class SearchableLiveBucketListSnapshot
                                    std::shared_ptr<EvictionStatistics> stats,
                                    StateArchivalSettings const& sas);
 
+    void scanForContractCode(std::function<Loop(LedgerEntry const&)> callback);
+
     friend std::shared_ptr<SearchableLiveBucketListSnapshot>
     BucketSnapshotManager::copySearchableLiveBucketListSnapshot() const;
 };

@@ -100,6 +100,9 @@ template <class IndexT> class BucketIndexImpl : public BucketIndex
     virtual std::optional<std::pair<std::streamoff, std::streamoff>>
     getOfferRange() const override;
 
+    virtual std::optional<std::pair<std::streamoff, std::streamoff>>
+    getContractCodeRange() const override;
+
     virtual std::streamoff
     getPageSize() const override
     {

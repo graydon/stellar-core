@@ -1167,4 +1167,25 @@ getStellarCoreMajorReleaseVersion(std::string const& vstr)
     return std::nullopt;
 }
 
+int
+listContracts(Config const& cfg)
+{
+    VirtualClock clock(VirtualClock::REAL_TIME);
+    auto config = cfg;
+    config.setNoListen();
+    auto app = Application::create(clock, config, /* newDB */ false);
+
+    // Start app to ensure BucketManager is initialized
+    // app->start();
+
+    auto snap = app->getBucketManager().getSearchableLiveBucketListSnapshot();
+    snap->scanForContractCode([](LedgerEntry const& entry) {
+        auto hash = sha256(xdr::xdr_to_opaque(entry));
+        std::cout << binToHex(hash) << std::endl;
+        return Loop::COMPLETE; // Continue scanning
+    });
+
+    return 0;
+}
+
 }

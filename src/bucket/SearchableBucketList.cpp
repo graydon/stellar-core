@@ -60,6 +60,19 @@ SearchableLiveBucketListSnapshot::scanForEviction(
     return result;
 }
 
+void
+SearchableLiveBucketListSnapshot::scanForContractCode(
+    std::function<Loop(LedgerEntry const&)> callback)
+{
+    ZoneScoped;
+    mSnapshotManager.maybeUpdateSnapshot(mSnapshot, mHistoricalSnapshots);
+    releaseAssert(mSnapshot);
+    auto f = [&callback](auto const& b) {
+        return b.scanForContractCode(callback);
+    };
+    loopAllBuckets(f, *mSnapshot);
+}
+
 template <class BucketT>
 std::optional<std::vector<typename BucketT::LoadT>>
 SearchableBucketListSnapshotBase<BucketT>::loadKeysInternal(
