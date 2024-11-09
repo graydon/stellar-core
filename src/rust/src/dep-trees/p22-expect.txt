@@ -1,4 +1,4 @@
-soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
+soroban-env-host v22.0.0-rc.2 (src/rust/soroban/p22/soroban-env-host)
 ├── ark-bls12-381 v0.4.0
 │   ├── ark-ec v0.4.2
 │   │   ├── ark-ff v0.4.2
@@ -35,7 +35,7 @@ soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
 │   │   │   │   │   │   [build-dependencies]
 │   │   │   │   │   │   └── autocfg v1.1.0
 │   │   │   │   │   └── rand v0.8.5
-│   │   │   │   │       ├── libc v0.2.150
+│   │   │   │   │       ├── libc v0.2.161
 │   │   │   │   │       ├── rand_chacha v0.3.1
 │   │   │   │   │       │   ├── ppv-lite86 v0.2.17
 │   │   │   │   │       │   └── rand_core v0.6.4
@@ -54,7 +54,7 @@ soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
 │   │   │   │   │       │           │               │   ├── quote v1.0.33 (*)
 │   │   │   │   │       │           │               │   └── unicode-ident v1.0.9
 │   │   │   │   │       │           │               ├── wasm-bindgen-backend v0.2.87
-│   │   │   │   │       │           │               │   ├── bumpalo v3.13.0
+│   │   │   │   │       │           │               │   ├── bumpalo v3.16.0
 │   │   │   │   │       │           │               │   ├── log v0.4.19
 │   │   │   │   │       │           │               │   ├── once_cell v1.19.0
 │   │   │   │   │       │           │               │   ├── proc-macro2 v1.0.69 (*)
@@ -62,7 +62,7 @@ soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
 │   │   │   │   │       │           │               │   ├── syn v2.0.39 (*)
 │   │   │   │   │       │           │               │   └── wasm-bindgen-shared v0.2.87
 │   │   │   │   │       │           │               └── wasm-bindgen-shared v0.2.87
-│   │   │   │   │       │           ├── libc v0.2.150
+│   │   │   │   │       │           ├── libc v0.2.161
 │   │   │   │   │       │           ├── wasi v0.11.0+wasi-snapshot-preview1
 │   │   │   │   │       │           └── wasm-bindgen v0.2.87 (*)
 │   │   │   │   │       └── rand_core v0.6.4 (*)
@@ -130,7 +130,7 @@ soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
 ├── curve25519-dalek v4.1.3
 │   ├── cfg-if v1.0.0
 │   ├── cpufeatures v0.2.8
-│   │   └── libc v0.2.150
+│   │   └── libc v0.2.161
 │   ├── curve25519-dalek-derive v0.1.0 (proc-macro)
 │   │   ├── proc-macro2 v1.0.69 (*)
 │   │   ├── quote v1.0.33 (*)
@@ -222,17 +222,17 @@ soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
 │   ├── digest v0.10.7 (*)
 │   └── keccak v0.1.4
 │       └── cpufeatures v0.2.8 (*)
-├── soroban-builtin-sdk-macros v22.0.0 (proc-macro) (src/rust/soroban/p22/soroban-builtin-sdk-macros)
+├── soroban-builtin-sdk-macros v22.0.0-rc.2 (proc-macro) (src/rust/soroban/p22/soroban-builtin-sdk-macros)
 │   ├── itertools v0.10.5
 │   │   └── either v1.8.1
 │   ├── proc-macro2 v1.0.69 (*)
 │   ├── quote v1.0.33 (*)
 │   └── syn v2.0.39 (*)
-├── soroban-env-common v22.0.0 (src/rust/soroban/p22/soroban-env-common)
+├── soroban-env-common v22.0.0-rc.2 (src/rust/soroban/p22/soroban-env-common)
 │   ├── ethnum v1.5.0
 │   ├── num-derive v0.4.1 (proc-macro) (*)
 │   ├── num-traits v0.2.17 (*)
-│   ├── soroban-env-macros v22.0.0 (proc-macro) (src/rust/soroban/p22/soroban-env-macros)
+│   ├── soroban-env-macros v22.0.0-rc.2 (proc-macro) (src/rust/soroban/p22/soroban-env-macros)
 │   │   ├── itertools v0.10.5 (*)
 │   │   ├── proc-macro2 v1.0.69 (*)
 │   │   ├── quote v1.0.33 (*)
@@ -245,13 +245,13 @@ soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
 │   │   │   ├── itoa v1.0.6
 │   │   │   ├── ryu v1.0.13
 │   │   │   └── serde v1.0.192 (*)
-│   │   ├── stellar-xdr v22.0.0
+│   │   ├── stellar-xdr v22.0.0-rc.1.1
 │   │   │   ├── escape-bytes v0.1.1
 │   │   │   ├── hex v0.4.3
 │   │   │   └── stellar-strkey v0.0.9
 │   │   │       ├── data-encoding v2.6.0
-│   │   │       └── thiserror v1.0.40
-│   │   │           └── thiserror-impl v1.0.40 (proc-macro)
+│   │   │       └── thiserror v1.0.55
+│   │   │           └── thiserror-impl v1.0.55 (proc-macro)
 │   │   │               ├── proc-macro2 v1.0.69 (*)
 │   │   │               ├── quote v1.0.33 (*)
 │   │   │               └── syn v2.0.39 (*)
@@ -265,6 +265,8 @@ soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
 │   │   └── syn v2.0.39 (*)
 │   ├── soroban-wasmi v0.31.1-soroban.20.0.1 (https://github.com/stellar/wasmi?rev=0ed3f3dee30dc41ebe21972399e0a73a41944aa0#0ed3f3de)
 │   │   ├── smallvec v1.13.2
+│   │   │   └── serde v1.0.192
+│   │   │       └── serde_derive v1.0.192 (proc-macro) (*)
 │   │   ├── spin v0.9.8
 │   │   ├── wasmi_arena v0.4.0 (https://github.com/stellar/wasmi?rev=0ed3f3dee30dc41ebe21972399e0a73a41944aa0#0ed3f3de)
 │   │   ├── wasmi_core v0.13.0 (https://github.com/stellar/wasmi?rev=0ed3f3dee30dc41ebe21972399e0a73a41944aa0#0ed3f3de)
@@ -275,21 +277,197 @@ soroban-env-host v22.0.0 (src/rust/soroban/p22/soroban-env-host)
 │   │   └── wasmparser-nostd v0.100.2
 │   │       └── indexmap-nostd v0.4.0
 │   ├── static_assertions v1.1.0
-│   ├── stellar-xdr v22.0.0
+│   ├── stellar-xdr v22.0.0-rc.1.1
 │   │   ├── base64 v0.13.1
 │   │   ├── escape-bytes v0.1.1
 │   │   ├── hex v0.4.3
 │   │   └── stellar-strkey v0.0.9 (*)
 │   │   [build-dependencies]
 │   │   └── crate-git-revision v0.0.6 (*)
-│   └── wasmparser v0.116.1
-│       ├── indexmap v2.0.2
-│       │   ├── equivalent v1.0.1
-│       │   └── hashbrown v0.14.1
-│       └── semver v1.0.17
+│   ├── wasmparser v0.116.1
+│   │   ├── indexmap v2.0.2
+│   │   │   ├── equivalent v1.0.1
+│   │   │   ├── hashbrown v0.14.5
+│   │   │   │   ├── ahash v0.8.11 (*)
+│   │   │   │   └── serde v1.0.192 (*)
+│   │   │   └── serde v1.0.192 (*)
+│   │   └── semver v1.0.17
+│   └── wasmtime v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       ├── anyhow v1.0.75
+│       ├── bitflags v2.4.1
+│       ├── bumpalo v3.16.0
+│       ├── cfg-if v1.0.0
+│       ├── hashbrown v0.14.5 (*)
+│       ├── indexmap v2.0.2 (*)
+│       ├── libc v0.2.161
+│       ├── libm v0.2.8
+│       ├── log v0.4.19
+│       ├── mach2 v0.4.2
+│       │   └── libc v0.2.161
+│       ├── memfd v0.6.4
+│       │   └── rustix v0.38.37
+│       │       ├── bitflags v2.4.1
+│       │       ├── errno v0.3.9
+│       │       │   ├── libc v0.2.161
+│       │       │   └── windows-sys v0.52.0
+│       │       │       └── windows-targets v0.52.6
+│       │       │           ├── windows_aarch64_gnullvm v0.52.6
+│       │       │           ├── windows_aarch64_msvc v0.52.6
+│       │       │           ├── windows_i686_gnu v0.52.6
+│       │       │           ├── windows_i686_gnullvm v0.52.6
+│       │       │           ├── windows_i686_msvc v0.52.6
+│       │       │           ├── windows_x86_64_gnu v0.52.6
+│       │       │           ├── windows_x86_64_gnullvm v0.52.6
+│       │       │           └── windows_x86_64_msvc v0.52.6
+│       │       ├── libc v0.2.161
+│       │       ├── linux-raw-sys v0.4.14
+│       │       └── windows-sys v0.52.0 (*)
+│       ├── object v0.36.5
+│       │   ├── crc32fast v1.4.2
+│       │   │   └── cfg-if v1.0.0
+│       │   ├── hashbrown v0.15.1
+│       │   │   └── foldhash v0.1.3
+│       │   ├── indexmap v2.0.2 (*)
+│       │   └── memchr v2.6.4
+│       ├── once_cell v1.19.0
+│       ├── paste v1.0.12 (proc-macro)
+│       ├── postcard v1.0.10
+│       │   ├── cobs v0.2.3
+│       │   └── serde v1.0.192 (*)
+│       ├── psm v0.1.23
+│       │   [build-dependencies]
+│       │   └── cc v1.0.83
+│       │       └── libc v0.2.161
+│       ├── rustix v0.38.37 (*)
+│       ├── serde v1.0.192 (*)
+│       ├── serde_derive v1.0.192 (proc-macro) (*)
+│       ├── smallvec v1.13.2 (*)
+│       ├── sptr v0.3.2
+│       ├── target-lexicon v0.12.16
+│       ├── wasmparser v0.219.1
+│       │   ├── ahash v0.8.11 (*)
+│       │   ├── bitflags v2.4.1
+│       │   ├── hashbrown v0.14.5 (*)
+│       │   ├── indexmap v2.0.2 (*)
+│       │   ├── semver v1.0.17
+│       │   └── serde v1.0.192 (*)
+│       ├── wasmtime-asm-macros v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   └── cfg-if v1.0.0
+│       ├── wasmtime-environ v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   ├── anyhow v1.0.75
+│       │   ├── cranelift-bitset v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   ├── serde v1.0.192 (*)
+│       │   │   └── serde_derive v1.0.192 (proc-macro) (*)
+│       │   ├── cranelift-entity v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   ├── cranelift-bitset v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   ├── serde v1.0.192 (*)
+│       │   │   └── serde_derive v1.0.192 (proc-macro) (*)
+│       │   ├── gimli v0.31.1
+│       │   │   └── indexmap v2.0.2 (*)
+│       │   ├── indexmap v2.0.2 (*)
+│       │   ├── log v0.4.19
+│       │   ├── object v0.36.5 (*)
+│       │   ├── postcard v1.0.10 (*)
+│       │   ├── serde v1.0.192 (*)
+│       │   ├── serde_derive v1.0.192 (proc-macro) (*)
+│       │   ├── smallvec v1.13.2 (*)
+│       │   ├── target-lexicon v0.12.16
+│       │   ├── wasm-encoder v0.219.1
+│       │   │   └── leb128 v0.2.5
+│       │   ├── wasmparser v0.219.1 (*)
+│       │   └── wasmprinter v0.219.1
+│       │       ├── anyhow v1.0.75
+│       │       ├── termcolor v1.4.1
+│       │       │   └── winapi-util v0.1.9
+│       │       │       └── windows-sys v0.59.0
+│       │       │           └── windows-targets v0.52.6 (*)
+│       │       └── wasmparser v0.219.1 (*)
+│       ├── wasmtime-jit-icache-coherence v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   ├── anyhow v1.0.75
+│       │   ├── cfg-if v1.0.0
+│       │   ├── libc v0.2.161
+│       │   └── windows-sys v0.59.0 (*)
+│       ├── wasmtime-slab v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       ├── wasmtime-versioned-export-macros v28.0.0 (proc-macro) (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   ├── proc-macro2 v1.0.69 (*)
+│       │   ├── quote v1.0.33 (*)
+│       │   └── syn v2.0.39 (*)
+│       ├── wasmtime-winch v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   ├── anyhow v1.0.75
+│       │   ├── cranelift-codegen v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   ├── bumpalo v3.16.0
+│       │   │   ├── cranelift-bforest v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   │   └── cranelift-entity v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   ├── cranelift-bitset v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   ├── cranelift-codegen-shared v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   ├── cranelift-control v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   │   └── arbitrary v1.3.2
+│       │   │   ├── cranelift-entity v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   ├── gimli v0.31.1 (*)
+│       │   │   ├── hashbrown v0.14.5 (*)
+│       │   │   ├── log v0.4.19
+│       │   │   ├── regalloc2 v0.10.2
+│       │   │   │   ├── hashbrown v0.14.5 (*)
+│       │   │   │   ├── log v0.4.19
+│       │   │   │   ├── rustc-hash v2.0.0
+│       │   │   │   ├── slice-group-by v0.3.1
+│       │   │   │   └── smallvec v1.13.2 (*)
+│       │   │   ├── rustc-hash v2.0.0
+│       │   │   ├── smallvec v1.13.2 (*)
+│       │   │   └── target-lexicon v0.12.16
+│       │   │   [build-dependencies]
+│       │   │   ├── cranelift-codegen-meta v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   │   └── cranelift-codegen-shared v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   └── cranelift-isle v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   ├── gimli v0.31.1 (*)
+│       │   ├── object v0.36.5 (*)
+│       │   ├── target-lexicon v0.12.16
+│       │   ├── wasmparser v0.219.1 (*)
+│       │   ├── wasmtime-cranelift v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   ├── anyhow v1.0.75
+│       │   │   ├── cfg-if v1.0.0
+│       │   │   ├── cranelift-codegen v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   ├── cranelift-control v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   ├── cranelift-entity v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   ├── cranelift-frontend v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   │   ├── cranelift-codegen v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   │   ├── log v0.4.19
+│       │   │   │   ├── smallvec v1.13.2 (*)
+│       │   │   │   └── target-lexicon v0.12.16
+│       │   │   ├── cranelift-native v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │   │   │   ├── cranelift-codegen v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   │   ├── libc v0.2.161
+│       │   │   │   └── target-lexicon v0.12.16
+│       │   │   ├── gimli v0.31.1 (*)
+│       │   │   ├── itertools v0.12.1
+│       │   │   │   └── either v1.8.1
+│       │   │   ├── log v0.4.19
+│       │   │   ├── object v0.36.5 (*)
+│       │   │   ├── smallvec v1.13.2 (*)
+│       │   │   ├── target-lexicon v0.12.16
+│       │   │   ├── thiserror v1.0.55 (*)
+│       │   │   ├── wasmparser v0.219.1 (*)
+│       │   │   ├── wasmtime-environ v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   │   └── wasmtime-versioned-export-macros v28.0.0 (proc-macro) (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   ├── wasmtime-environ v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │   └── winch-codegen v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86)
+│       │       ├── anyhow v1.0.75
+│       │       ├── cranelift-codegen v0.115.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │       ├── gimli v0.31.1 (*)
+│       │       ├── regalloc2 v0.10.2 (*)
+│       │       ├── smallvec v1.13.2 (*)
+│       │       ├── target-lexicon v0.12.16
+│       │       ├── wasmparser v0.219.1 (*)
+│       │       ├── wasmtime-cranelift v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       │       └── wasmtime-environ v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
+│       └── windows-sys v0.59.0 (*)
+│       [build-dependencies]
+│       ├── cc v1.0.83 (*)
+│       └── wasmtime-versioned-export-macros v28.0.0 (proc-macro) (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)
 │   [build-dependencies]
 │   └── crate-git-revision v0.0.6 (*)
 ├── soroban-wasmi v0.31.1-soroban.20.0.1 (https://github.com/stellar/wasmi?rev=0ed3f3dee30dc41ebe21972399e0a73a41944aa0#0ed3f3de) (*)
 ├── static_assertions v1.1.0
 ├── stellar-strkey v0.0.9 (*)
-└── wasmparser v0.116.1 (*)
+├── wasmparser v0.116.1 (*)
+└── wasmtime v28.0.0 (https://github.com/bytecodealliance/wasmtime?rev=b5627a86a7740ffc732f4c22b9f0b2c66252638b#b5627a86) (*)

@@ -1475,24 +1475,17 @@ runListContracts(CommandLineArgs const& args)
 {
     CommandLine::ConfigOption configOption;
 
+    return runWithHelp(args, {configurationParser(configOption)},
+                       [&] { return listContracts(configOption.getConfig()); });
+}
+
+int
+runCompileContracts(CommandLineArgs const& args)
+{
+    CommandLine::ConfigOption configOption;
+
     return runWithHelp(args, {configurationParser(configOption)}, [&] {
-        VirtualClock clock(VirtualClock::REAL_TIME);
-        auto config = configOption.getConfig();
-        config.setNoListen();
-        auto app = Application::create(clock, config, /* newDB */ false);
-
-        // Start app to ensure BucketManager is initialized
-        app->start();
-
-        auto snap =
-            app->getBucketManager().getSearchableLiveBucketListSnapshot();
-        snap->scanForContractCode([](LedgerEntry const& entry) {
-            auto hash = sha256(xdr::xdr_to_opaque(entry));
-            std::cout << binToHex(hash) << std::endl;
-            return Loop::INCOMPLETE; // Continue scanning
-        });
-
-        return 0;
+        return compileContracts(configOption.getConfig());
     });
 }
 
@@ -1973,6 +1966,8 @@ handleCommandLine(int argc, char* const* argv)
          {"list-contracts",
           "List sha256 hashes of all contract code entries in the bucket list",
           runListContracts},
+         {"compile-contracts", "Compile wasm files and cache them",
+          runCompileContracts},
          {"version", "print version information", runVersion}}};
 
     auto adjustedCommandLine = commandLine.adjustCommandLine({argc, argv});

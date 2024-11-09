@@ -22,6 +22,7 @@
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTxnHeader.h"
+#include "ledger/SharedModuleCacheCompiler.h"
 #include "main/Application.h"
 #include "main/Config.h"
 #include "main/ErrorMessages.h"
@@ -41,6 +42,7 @@
 #include "util/XDRStream.h"
 #include "work/WorkScheduler.h"
 
+#include <cstdint>
 #include <fmt/format.h>
 
 #include "xdr/Stellar-ledger.h"
@@ -154,6 +156,7 @@ LedgerManagerImpl::LedgerManagerImpl(Application& app)
     , mCatchupDuration(
           app.getMetrics().NewTimer({"ledger", "catchup", "duration"}))
     , mState(LM_BOOTING_STATE)
+    , mModuleCache(::rust_bridge::new_module_cache())
 
 {
     setupLedgerCloseMetaStream();
@@ -396,6 +399,9 @@ LedgerManagerImpl::loadLastKnownLedger(bool restoreBucketlist)
         updateNetworkConfig(ltx);
         mSorobanNetworkConfigReadOnly = mSorobanNetworkConfigForApply;
     }
+
+    // Prime module cache with ledger content.
+    compileAllContractsInLedger(latestLedgerHeader->ledgerVersion);
 }
 
 bool
@@ -588,6 +594,26 @@ SorobanMetrics&
 LedgerManagerImpl::getSorobanMetrics()
 {
     return mSorobanMetrics;
+}
+
+rust_bridge::SorobanModuleCache&
+LedgerManagerImpl::getModuleCache()
+{
+    return *mModuleCache;
+}
+
+void
+LedgerManagerImpl::compileAllContractsInLedger(uint32_t minLedgerVersion)
+{
+    auto& moduleCache = getModuleCache();
+    std::vector<uint32_t> ledgerVersions;
+    for (uint32_t i = minLedgerVersion; i <= Config::CURRENT_LEDGER_PROTOCOL_VERSION; i++)
+    {
+        ledgerVersions.push_back(i);
+    }
+    auto compiler =
+        std::make_shared<SharedModuleCacheCompiler>(mApp, moduleCache, ledgerVersions);
+    compiler->run();
 }
 
 void

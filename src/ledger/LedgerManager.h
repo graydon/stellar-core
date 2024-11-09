@@ -7,6 +7,7 @@
 #include "catchup/CatchupManager.h"
 #include "history/HistoryManager.h"
 #include "ledger/NetworkConfig.h"
+#include "rust/RustBridge.h"
 #include <memory>
 
 namespace stellar
@@ -193,6 +194,12 @@ class LedgerManager
     virtual void manuallyAdvanceLedgerHeader(LedgerHeader const& header) = 0;
 
     virtual SorobanMetrics& getSorobanMetrics() = 0;
+    virtual rust_bridge::SorobanModuleCache& getModuleCache() = 0;
+
+    // Compiles all contracts in the current ledger, for ledger protocols
+    // starting at minLedgerVersion and running through to
+    // Config::CURRENT_LEDGER_PROTOCOL_VERSION (to enable upgrades).
+    virtual void compileAllContractsInLedger(uint32_t minLedgerVersion) = 0;
 
     virtual ~LedgerManager()
     {
