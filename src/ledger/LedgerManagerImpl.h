@@ -11,6 +11,7 @@
 #include "ledger/NetworkConfig.h"
 #include "ledger/SorobanMetrics.h"
 #include "main/PersistentState.h"
+#include "rust/RustBridge.h"
 #include "transactions/TransactionFrame.h"
 #include "util/XDRStream.h"
 #include "xdr/Stellar-ledger.h"
@@ -118,6 +119,9 @@ class LedgerManagerImpl : public LedgerManager
     // as the actual ledger usage.
     void publishSorobanMetrics();
 
+    // The reusable / inter-ledger soroban module cache.
+    ::rust::Box<rust_bridge::SorobanModuleCache> mModuleCache;
+
   protected:
     // initialLedgerVers must be the ledger version at the start of the ledger
     // and currLedgerVers is the ledger version in the current ltx header. These
@@ -202,5 +206,7 @@ class LedgerManagerImpl : public LedgerManager
     void maybeResetLedgerCloseMetaDebugStream(uint32_t ledgerSeq);
 
     SorobanMetrics& getSorobanMetrics() override;
+    rust_bridge::SorobanModuleCache& getModuleCache() override;
+    void compileAllContractsInLedger() override;
 };
 }

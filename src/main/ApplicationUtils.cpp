@@ -23,6 +23,7 @@
 #include "main/PersistentState.h"
 #include "main/StellarCoreVersion.h"
 #include "overlay/OverlayManager.h"
+#include "rust/RustBridge.h"
 #include "scp/LocalNode.h"
 #include "util/GlobalChecks.h"
 #include "util/Logging.h"
@@ -1176,15 +1177,28 @@ listContracts(Config const& cfg)
     auto app = Application::create(clock, config, /* newDB */ false);
 
     // Start app to ensure BucketManager is initialized
-    // app->start();
+    app->start();
 
     auto snap = app->getBucketManager().getSearchableLiveBucketListSnapshot();
     snap->scanForContractCode([](LedgerEntry const& entry) {
-        auto hash = sha256(xdr::xdr_to_opaque(entry));
+        auto hash = sha256(entry.data.contractCode().code);
         std::cout << binToHex(hash) << std::endl;
         return Loop::COMPLETE; // Continue scanning
     });
 
+    return 0;
+}
+
+int
+compileContracts(Config const& cfg)
+{
+    VirtualClock clock(VirtualClock::REAL_TIME);
+    auto config = cfg;
+    config.setNoListen();
+    auto app = Application::create(clock, config, /* newDB */ false);
+    // Start app to ensure BucketManager is initialized
+    app->start();
+    app->getLedgerManager().compileAllContractsInLedger();
     return 0;
 }
 

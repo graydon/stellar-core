@@ -70,4 +70,5 @@ std::optional<uint32_t>
 getStellarCoreMajorReleaseVersion(std::string const& vstr);
 
 int listContracts(Config const& cfg);
+int compileContracts(Config const& cfg);
 }

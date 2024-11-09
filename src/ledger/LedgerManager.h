@@ -7,6 +7,7 @@
 #include "catchup/CatchupManager.h"
 #include "history/HistoryManager.h"
 #include "ledger/NetworkConfig.h"
+#include "rust/RustBridge.h"
 #include <memory>
 
 namespace stellar
@@ -190,6 +191,8 @@ class LedgerManager
     virtual void manuallyAdvanceLedgerHeader(LedgerHeader const& header) = 0;
 
     virtual SorobanMetrics& getSorobanMetrics() = 0;
+    virtual rust_bridge::SorobanModuleCache& getModuleCache() = 0;
+    virtual void compileAllContractsInLedger() = 0;
 
     virtual ~LedgerManager()
     {

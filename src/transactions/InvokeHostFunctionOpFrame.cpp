@@ -489,7 +489,8 @@ InvokeHostFunctionOpFrame::doApply(
             toCxxBuf(getSourceID()), authEntryCxxBufs,
             getLedgerInfo(ltx, app, sorobanConfig), ledgerEntryCxxBufs,
             ttlEntryCxxBufs, basePrngSeedBuf,
-            sorobanConfig.rustBridgeRentFeeConfiguration());
+            sorobanConfig.rustBridgeRentFeeConfiguration(),
+            app.getLedgerManager().getModuleCache());
         metrics.mCpuInsn = out.cpu_insns;
         metrics.mMemByte = out.mem_bytes;
         metrics.mInvokeTimeNsecs = out.time_nsecs;

@@ -19,7 +19,7 @@ use std::{fmt::Display, io::Cursor, panic, rc::Rc, time::Instant};
 // import it from our _parent_ module rather than from the crate root.
 pub(crate) use super::soroban_env_host::{
     budget::Budget,
-    e2e_invoke::{self, extract_rent_changes, LedgerEntryChange},
+    e2e_invoke::{extract_rent_changes, LedgerEntryChange},
     fees::{
         compute_rent_fee as host_compute_rent_fee,
         compute_transaction_resource_fee as host_compute_transaction_resource_fee,
@@ -336,6 +336,7 @@ pub(crate) fn invoke_host_function(
     ttl_entries: &Vec<CxxBuf>,
     base_prng_seed: &CxxBuf,
     rent_fee_configuration: &CxxRentFeeConfiguration,
+    module_cache: &crate::SorobanModuleCache,
 ) -> Result<InvokeHostFunctionOutput, Box<dyn Error>> {
     let res = panic::catch_unwind(panic::AssertUnwindSafe(|| {
         invoke_host_function_or_maybe_panic(
@@ -350,6 +351,7 @@ pub(crate) fn invoke_host_function(
             ttl_entries,
             base_prng_seed,
             rent_fee_configuration,
+            module_cache,
         )
     }));
     match res {
@@ -405,6 +407,7 @@ fn invoke_host_function_or_maybe_panic(
     ttl_entries: &Vec<CxxBuf>,
     base_prng_seed: &CxxBuf,
     rent_fee_configuration: &CxxRentFeeConfiguration,
+    module_cache: &crate::SorobanModuleCache,
 ) -> Result<InvokeHostFunctionOutput, Box<dyn Error>> {
     #[cfg(feature = "tracy")]
     let client = tracy_client::Client::start();
@@ -432,7 +435,8 @@ fn invoke_host_function_or_maybe_panic(
     let (res, time_nsecs) = {
         let _span1 = tracy_span!("e2e_invoke::invoke_function");
         let start_time = Instant::now();
-        let res = e2e_invoke::invoke_host_function_with_trace_hook(
+
+        let res = super::invoke_host_function_with_trace_hook_and_module_cache(
             &budget,
             enable_diagnostics,
             hf_buf,
@@ -445,6 +449,7 @@ fn invoke_host_function_or_maybe_panic(
             base_prng_seed,
             &mut diagnostic_events,
             trace_hook,
+            module_cache,
         );
         let stop_time = Instant::now();
         let time_nsecs = stop_time.duration_since(start_time).as_nanos() as u64;
