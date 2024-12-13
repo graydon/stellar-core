@@ -8,12 +8,13 @@
 using namespace stellar;
 
 SharedModuleCacheCompiler::SharedModuleCacheCompiler(
-    Application& app, rust_bridge::SorobanModuleCache& moduleCache)
+    Application& app, rust_bridge::SorobanModuleCache& moduleCache, std::vector<uint32_t> const& ledgerVersions)
     : mApp(app)
     , mModuleCache(moduleCache)
     , mSnap(app.getBucketManager().getSearchableLiveBucketListSnapshot())
     , mNumThreads(
           static_cast<size_t>(std::max(2, app.getConfig().WORKER_THREADS) - 1))
+    , mLedgerVersions(ledgerVersions)
 {
 }
 
@@ -79,7 +80,10 @@ SharedModuleCacheCompiler::popAndCompileWasm(size_t thread,
     auto slice = rust::Slice<const uint8_t>(wasm.data(), wasm.size());
     try
     {
-        cache->compile(slice);
+        for (auto ledgerVersion : mLedgerVersions)
+        {
+            cache->compile(ledgerVersion, slice);
+        }
     }
     catch (std::exception const& e)
     {

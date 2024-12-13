@@ -1196,9 +1196,10 @@ compileContracts(Config const& cfg)
     auto config = cfg;
     config.setNoListen();
     auto app = Application::create(clock, config, /* newDB */ false);
-    // Start app to ensure BucketManager is initialized
+    // Initializing the ledgerManager will, in restoring the last known ledger,
+    // also cause all contracts to be compiled. All we need to do is start and
+    // stop the application.
     app->start();
-    app->getLedgerManager().compileAllContractsInLedger();
     return 0;
 }
 

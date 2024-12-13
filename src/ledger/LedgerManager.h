@@ -192,7 +192,11 @@ class LedgerManager
 
     virtual SorobanMetrics& getSorobanMetrics() = 0;
     virtual rust_bridge::SorobanModuleCache& getModuleCache() = 0;
-    virtual void compileAllContractsInLedger() = 0;
+
+    // Compiles all contracts in the current ledger, for ledger protocols
+    // starting at minLedgerVersion and running through to
+    // Config::CURRENT_LEDGER_PROTOCOL_VERSION (to enable upgrades).
+    virtual void compileAllContractsInLedger(uint32_t minLedgerVersion) = 0;
 
     virtual ~LedgerManager()
     {

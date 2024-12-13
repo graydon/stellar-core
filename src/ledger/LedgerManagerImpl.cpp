@@ -42,6 +42,7 @@
 #include "util/XDRStream.h"
 #include "work/WorkScheduler.h"
 
+#include <cstdint>
 #include <fmt/format.h>
 
 #include "xdr/Stellar-ledger.h"
@@ -419,7 +420,7 @@ LedgerManagerImpl::loadLastKnownLedger(bool restoreBucketlist,
     }
 
     // Prime module cache with ledger content.
-    compileAllContractsInLedger();
+    compileAllContractsInLedger(latestLedgerHeader->ledgerVersion);
 }
 
 bool
@@ -600,11 +601,16 @@ LedgerManagerImpl::getModuleCache()
 }
 
 void
-LedgerManagerImpl::compileAllContractsInLedger()
+LedgerManagerImpl::compileAllContractsInLedger(uint32_t minLedgerVersion)
 {
     auto& moduleCache = getModuleCache();
+    std::vector<uint32_t> ledgerVersions;
+    for (uint32_t i = minLedgerVersion; i <= Config::CURRENT_LEDGER_PROTOCOL_VERSION; i++)
+    {
+        ledgerVersions.push_back(i);
+    }
     auto compiler =
-        std::make_shared<SharedModuleCacheCompiler>(mApp, moduleCache);
+        std::make_shared<SharedModuleCacheCompiler>(mApp, moduleCache, ledgerVersions);
     compiler->run();
 }
 

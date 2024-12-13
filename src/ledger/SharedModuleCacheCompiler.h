@@ -35,6 +35,7 @@ class SharedModuleCacheCompiler
     bool mLoadedAll{false};
     size_t mBytesLoaded{0};
     size_t mBytesCompiled{0};
+    std::vector<uint32_t> mLedgerVersions;
 
     std::mutex mMutex;
     std::condition_variable mHaveSpace;
@@ -52,6 +53,7 @@ class SharedModuleCacheCompiler
   public:
     SharedModuleCacheCompiler(
         stellar::Application& app,
-        stellar::rust_bridge::SorobanModuleCache& moduleCache);
+        stellar::rust_bridge::SorobanModuleCache& moduleCache,
+        std::vector<uint32_t> const& ledgerVersions);
     void run();
 };

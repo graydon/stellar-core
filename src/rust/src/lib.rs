@@ -268,7 +268,7 @@ mod rust_bridge {
         type SorobanModuleCache;
 
         fn new_module_cache() -> Result<Box<SorobanModuleCache>>;
-        fn compile(self: &mut SorobanModuleCache, source: &[u8]) -> Result<()>;
+        fn compile(self: &mut SorobanModuleCache, ledger_protocol: u32, source: &[u8]) -> Result<()>;
         fn shallow_clone(self: &SorobanModuleCache) -> Result<Box<SorobanModuleCache>>;
     }
 
@@ -539,6 +539,13 @@ mod p22 {
         HostError, LedgerInfo, TraceHook,
     };
 
+    // We do some more local re-exports here of things used in contract.rs that
+    // don't exist in older hosts (eg. the p21 host, where we define stubs for
+    // these imports).
+    #[cfg(feature = "wasmtime")]
+    pub(crate) use soroban_env_host::wasmtime;
+    pub(crate) use soroban_env_host::{ModuleCache, ErrorHandler}; 
+
     // An adapter for some API breakage between p21 and p22.
     pub(crate) const fn get_version_pre_release(v: &soroban_env_host::Version) -> u32 {
         v.interface.pre_release
@@ -579,7 +586,7 @@ mod p22 {
             base_prng_seed,
             diagnostic_events,
             trace_hook,
-            Some(module_cache.module_cache.clone()),
+            Some(module_cache.p22_cache.module_cache.clone()),
         )
     }
 }
@@ -594,8 +601,70 @@ mod p21 {
         budget::Budget,
         e2e_invoke::{self, InvokeHostFunctionResult},
         xdr::DiagnosticEvent,
-        HostError, LedgerInfo, TraceHook,
+        HostError, LedgerInfo, TraceHook, Val, Error
     };
+
+    // Some stub definitions to handle API additions for the
+    // reusable module cache and optional wasmtime engine.
+
+    #[allow(dead_code)]
+    #[cfg(feature = "wasmtime")]
+    pub(crate) mod wasmtime {
+        #[derive(Debug)]
+        pub(crate) struct Error;
+        impl Error {
+            pub(crate) fn downcast<T>(self) -> Result<T,Self> {
+                Err(self)
+            }
+            pub(crate) fn downcast_ref<T>(&self) -> Option<&T> {
+                None
+            }
+            pub(crate) fn root_cause(&self) -> &Self {
+                self
+            }
+        }
+        #[allow(dead_code)]
+        #[derive(Clone, Copy)]
+        pub(crate) struct Trap;
+        impl From<self::Error> for super::soroban_env_host::Error {
+            fn from(_: self::Error) -> Self {
+                super::soroban_env_host::Error::from_type_and_code(
+                    super::soroban_env_host::xdr::ScErrorType::Context,
+                    super::soroban_env_host::xdr::ScErrorCode::InternalError,
+                )
+            }
+        }
+        impl From<self::Trap> for super::soroban_env_host::Error {
+            fn from(_: self::Trap) -> Self {
+                super::soroban_env_host::Error::from_type_and_code(
+                    super::soroban_env_host::xdr::ScErrorType::Context,
+                    super::soroban_env_host::xdr::ScErrorCode::InternalError,
+                )
+            }
+        }
+    }
+    #[allow(dead_code)]
+    #[derive(Clone)]
+    pub(crate) struct ModuleCache;
+    #[allow(dead_code)]
+    pub(crate) trait ErrorHandler {
+        fn map_err<T, E>(&self, res: Result<T, E>) -> Result<T, HostError>
+        where
+            Error: From<E>,
+            E: core::fmt::Debug;    
+        #[cfg(feature = "wasmtime")]
+        fn map_wasmtime_error<T>(&self, r: Result<T, wasmtime::Error>) -> Result<T, HostError>;
+        fn error(&self, error: Error, msg: &str, args: &[Val]) -> HostError;
+    }
+    #[allow(dead_code)]
+    impl ModuleCache {
+        pub(crate) fn new_reusable<T>(_handler: T) -> Result<Self,HostError> {
+            Ok(ModuleCache)
+        }
+        pub(crate) fn parse_and_cache_module_simple<T>(&self, _handler: &T, _protocol: u32, _wasm: &[u8]) -> Result<(), HostError> {
+            Ok(())
+        }
+    }
 
     // An adapter for some API breakage between p21 and p22.
     pub(crate) const fn get_version_pre_release(v: &soroban_env_host::Version) -> u32 {
@@ -1100,62 +1169,44 @@ pub(crate) fn compute_write_fee_per_1kb(
     Ok((hm.compute_write_fee_per_1kb)(bucket_list_size, fee_config))
 }
 
-pub struct SorobanModuleCache {
-    // NB: this host is not directly coupled to the module cache, it is here
-    // only to act as a container for the budget and PRNG attached to it, and to
-    // perform some trivial error translation on errors occurring in the module
-    // cache code. This module cache can be transferred to and used in a
-    // different host.
-    host: p22::soroban_env_host::Host,
-    module_cache: p22::soroban_env_host::ModuleCache,
+// The SorobanModuleCache needs to hold a different protocol-specific cache for
+// each supported protocol version it's going to be used with. It has to hold
+// all these caches _simultaneously_ because it might perform an upgrade from
+// protocol N to protocol N+1 in a single transaction, and needs to be ready for
+// that before it happens.
+//
+// Most of these caches can be empty at any given time, because we're not
+// expecting core to need to replay old protocols, and/or if it does it's during
+// replay and there's no problem stalling while filling a cache with new entries
+// on a per-ledger basis as they are replayed.
+//
+// But for the current protocol version we need to have a cache ready to execute
+// anything thrown at it once it's in sync, so we should prime the
+// current-protocol cache as soon as we start, as well as the next-protocol
+// cache (if it exists) so that we can upgrade without stalling.
+struct SorobanModuleCache {
+    p22_cache: p22::contract::ProtocolSpecificModuleCache,
 }
 
 impl SorobanModuleCache {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        use p22::soroban_env_host::{
-            budget::Budget, storage::Storage, xdr::ContractCostParams, Host, LedgerInfo,
-            ModuleCache,
-        };
-        let budget = Budget::try_from_configs(
-            u64::MAX,
-            u64::MAX,
-            ContractCostParams(vec![].try_into().unwrap()),
-            ContractCostParams(vec![].try_into().unwrap()),
-        )?;
-        let storage = Storage::default();
-        let mut ledger_info = LedgerInfo::default();
-        ledger_info.protocol_version = 22;
-        let host = Host::with_storage_and_budget(storage, budget);
-        host.set_ledger_info(ledger_info)?;
-        host.enable_debug()?;
-        host.set_base_prng_seed([0u8; 32])?;
-        let module_cache = ModuleCache::new_reusable(&host)?;
-        Ok(SorobanModuleCache { host, module_cache })
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            p22_cache: p22::contract::ProtocolSpecificModuleCache::new()?,
+        })
     }
-
-    pub fn compile(&mut self, wasm: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(self
-            .module_cache
-            .parse_and_cache_module_simple(&self.host, wasm)?)
+    pub fn compile(&mut self, ledger_protocol: u32, wasm: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+        match ledger_protocol {
+            22 => self.p22_cache.compile(wasm),
+            // Add other protocols here as needed.
+            _ => Err(Box::new(soroban_curr::contract::CoreHostError::General(
+                "unsupported protocol",
+            ))),
+        }
     }
-
-    // This produces a new `SorobanModuleCache`` with a separate `Host` but a
-    // clone of the underlying `ModuleCache`, which will (since the module cache
-    // is the reusable flavor) actually point to the _same_ underlying
-    // threadsafe map of `Module`s and the same associated `Engine` as those that
-    // `self` currently points to.
-    //
-    // This mainly exists to allow multi-threaded compilation from C++. Since
-    // C++ doesn't have the concepts of Send and Sync, we do not try to describe
-    // the sharing that is or isn't safe using them (which is good because it
-    // would be hard to describe correctly -- neither Host nor ModuleCache can
-    // be Send or Sync directly in Rust but we are, practically speaking,
-    // arranging for both of them to be both here: using a threadsafe reusable
-    // cache and constructing a disjoint/unshared host.)
     pub fn shallow_clone(&self) -> Result<Box<Self>, Box<dyn std::error::Error>> {
-        let mut new = Self::new()?;
-        new.module_cache = self.module_cache.clone();
-        Ok(Box::new(new))
+        Ok(Box::new(Self {
+            p22_cache: self.p22_cache.shallow_clone()?,
+        }))
     }
 }
 

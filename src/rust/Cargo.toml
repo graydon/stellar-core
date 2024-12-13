@@ -107,6 +107,10 @@ rev = "0497816694bef2b103494c8c61b7c8a06a72c7d3"
 
 [features]
 
+default = ["wasmi", "wasmtime"]
+wasmi = []
+wasmtime = []
+
 tracy = ["dep:tracy-client"]
 
 # The "next" feature enables not-yet-released features that (a) break protocol

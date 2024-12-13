@@ -207,6 +207,6 @@ class LedgerManagerImpl : public LedgerManager
 
     SorobanMetrics& getSorobanMetrics() override;
     rust_bridge::SorobanModuleCache& getModuleCache() override;
-    void compileAllContractsInLedger() override;
+    void compileAllContractsInLedger(uint32_t minLedgerVersion) override;
 };
 }
