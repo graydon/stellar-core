@@ -10,7 +10,7 @@ use crate::{
         InvokeHostFunctionOutput, RustBuf, SorobanVersionInfo, XDRFileHash,
     },
 };
-use log::{debug, trace, warn, error};
+use log::{debug, error, trace, warn};
 use std::{fmt::Display, io::Cursor, panic, rc::Rc, time::Instant};
 
 // This module (contract) is bound to _two separate locations_ in the module
@@ -30,12 +30,12 @@ pub(crate) use super::soroban_env_host::{
         self, ContractCostParams, ContractEvent, ContractEventBody, ContractEventType,
         ContractEventV0, DiagnosticEvent, ExtensionPoint, LedgerEntry, LedgerEntryData,
         LedgerEntryExt, Limits, ReadXdr, ScError, ScErrorCode, ScErrorType, ScSymbol, ScVal,
-        TransactionEnvelope, TtlEntry, WriteXdr, XDR_FILES_SHA256
+        TransactionEnvelope, TtlEntry, WriteXdr, XDR_FILES_SHA256,
     },
-    HostError, LedgerInfo, VERSION, Val
+    HostError, LedgerInfo, Val, VERSION,
 };
+use super::{ErrorHandler, ModuleCache};
 use std::error::Error;
-use super::{ModuleCache, ErrorHandler};
 
 impl TryFrom<&CxxLedgerInfo> for LedgerInfo {
     type Error = Box<dyn Error>;
@@ -639,12 +639,14 @@ pub(crate) fn can_parse_transaction(xdr: &CxxBuf, depth_limit: u32) -> bool {
 
 #[allow(dead_code)]
 #[derive(Clone)]
-struct CompilationContext {
+struct CoreCompilationContext {
     unlimited_budget: Budget,
 }
 
+impl super::soroban_env_host::CompilationContext for CoreCompilationContext {}
+
 #[allow(dead_code)]
-impl CompilationContext {
+impl CoreCompilationContext {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let unlimited_budget = Budget::try_from_configs(
             u64::MAX,
@@ -652,29 +654,30 @@ impl CompilationContext {
             ContractCostParams(vec![].try_into().unwrap()),
             ContractCostParams(vec![].try_into().unwrap()),
         )?;
-        Ok(CompilationContext { unlimited_budget })
+        Ok(CoreCompilationContext { unlimited_budget })
     }
 }
 
-impl AsBudget for CompilationContext {
+impl AsBudget for CoreCompilationContext {
     fn as_budget(&self) -> &Budget {
         &self.unlimited_budget
     }
 }
 
-impl ErrorHandler for CompilationContext {
+impl ErrorHandler for CoreCompilationContext {
     fn map_err<T, E>(&self, res: Result<T, E>) -> Result<T, HostError>
     where
         super::soroban_env_host::Error: From<E>,
-        E: core::fmt::Debug {
-            match res {
-                Ok(t) => Ok(t),
-                Err(e) => {
-                    error!("compiling module: {:?}", e);
-                    Err(HostError::from(e))
-                }
+        E: core::fmt::Debug,
+    {
+        match res {
+            Ok(t) => Ok(t),
+            Err(e) => {
+                error!("compiling module: {:?}", e);
+                Err(HostError::from(e))
             }
         }
+    }
 
     //#[cfg(feature = "wasmtime")]
     fn map_wasmtime_error<T>(&self, r: Result<T, super::wasmtime::Error>) -> Result<T, HostError> {
@@ -684,7 +687,9 @@ impl ErrorHandler for CompilationContext {
                 Ok(hosterror) => Err(hosterror),
                 Err(e) => {
                     error!("compiling module: {:?}", e);
-                    let e = if let Some(trap) = e.root_cause().downcast_ref::<super::wasmtime::Trap>() {
+                    let e = if let Some(trap) =
+                        e.root_cause().downcast_ref::<super::wasmtime::Trap>()
+                    {
                         HostError::from(super::soroban_env_host::Error::from(*trap))
                     } else {
                         HostError::from(super::soroban_env_host::Error::from_type_and_code(
@@ -696,7 +701,6 @@ impl ErrorHandler for CompilationContext {
                 }
             },
         }
-
     }
     fn error(&self, error: super::soroban_env_host::Error, msg: &str, _args: &[Val]) -> HostError {
         error!("compiling module: {:?}: {}", error, msg);
@@ -706,26 +710,31 @@ impl ErrorHandler for CompilationContext {
 
 #[allow(dead_code)]
 pub(crate) struct ProtocolSpecificModuleCache {
-    compilation_context: CompilationContext,
+    compilation_context: CoreCompilationContext,
     pub(crate) module_cache: ModuleCache,
 }
 
 #[allow(dead_code)]
 impl ProtocolSpecificModuleCache {
     pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let compilation_context = CompilationContext::new()?;
+        let compilation_context = CoreCompilationContext::new()?;
         let module_cache = ModuleCache::new_reusable(&compilation_context)?;
-        Ok(ProtocolSpecificModuleCache { compilation_context, module_cache })
+        Ok(ProtocolSpecificModuleCache {
+            compilation_context,
+            module_cache,
+        })
     }
 
     pub(crate) fn compile(&mut self, wasm: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(self
-            .module_cache
-            .parse_and_cache_module_simple(&self.compilation_context, get_max_proto(), wasm)?)
+        Ok(self.module_cache.parse_and_cache_module_simple(
+            &self.compilation_context,
+            get_max_proto(),
+            wasm,
+        )?)
     }
 
     // This produces a new `SorobanModuleCache` with a separate
-    // `CompilationContext` but a clone of the underlying `ModuleCache`, which
+    // `CoreCompilationContext` but a clone of the underlying `ModuleCache`, which
     // will (since the module cache is the reusable flavor) actually point to
     // the _same_ underlying threadsafe map of `Module`s and the same associated
     // `Engine` as those that `self` currently points to.
