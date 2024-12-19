@@ -268,7 +268,11 @@ mod rust_bridge {
         type SorobanModuleCache;
 
         fn new_module_cache() -> Result<Box<SorobanModuleCache>>;
-        fn compile(self: &mut SorobanModuleCache, ledger_protocol: u32, source: &[u8]) -> Result<()>;
+        fn compile(
+            self: &mut SorobanModuleCache,
+            ledger_protocol: u32,
+            source: &[u8],
+        ) -> Result<()>;
         fn shallow_clone(self: &SorobanModuleCache) -> Result<Box<SorobanModuleCache>>;
     }
 
@@ -544,7 +548,7 @@ mod p22 {
     // these imports).
     #[cfg(feature = "wasmtime")]
     pub(crate) use soroban_env_host::wasmtime;
-    pub(crate) use soroban_env_host::{ModuleCache, ErrorHandler}; 
+    pub(crate) use soroban_env_host::{CompilationContext, ErrorHandler, ModuleCache};
 
     // An adapter for some API breakage between p21 and p22.
     pub(crate) const fn get_version_pre_release(v: &soroban_env_host::Version) -> u32 {
@@ -598,14 +602,20 @@ mod p21 {
     pub(crate) mod contract;
     use super::SorobanModuleCache;
     use soroban_env_host::{
-        budget::Budget,
+        budget::{AsBudget, Budget},
         e2e_invoke::{self, InvokeHostFunctionResult},
         xdr::DiagnosticEvent,
-        HostError, LedgerInfo, TraceHook, Val, Error
+        Error, HostError, LedgerInfo, TraceHook, Val,
     };
 
     // Some stub definitions to handle API additions for the
     // reusable module cache and optional wasmtime engine.
+
+    #[allow(dead_code)]
+    const INTERNAL_ERROR: Error = Error::from_type_and_code(
+        soroban_env_host::xdr::ScErrorType::Context,
+        soroban_env_host::xdr::ScErrorCode::InternalError,
+    );
 
     #[allow(dead_code)]
     #[cfg(feature = "wasmtime")]
@@ -613,7 +623,7 @@ mod p21 {
         #[derive(Debug)]
         pub(crate) struct Error;
         impl Error {
-            pub(crate) fn downcast<T>(self) -> Result<T,Self> {
+            pub(crate) fn downcast<T>(self) -> Result<T, Self> {
                 Err(self)
             }
             pub(crate) fn downcast_ref<T>(&self) -> Option<&T> {
@@ -628,18 +638,12 @@ mod p21 {
         pub(crate) struct Trap;
         impl From<self::Error> for super::soroban_env_host::Error {
             fn from(_: self::Error) -> Self {
-                super::soroban_env_host::Error::from_type_and_code(
-                    super::soroban_env_host::xdr::ScErrorType::Context,
-                    super::soroban_env_host::xdr::ScErrorCode::InternalError,
-                )
+                super::INTERNAL_ERROR
             }
         }
         impl From<self::Trap> for super::soroban_env_host::Error {
             fn from(_: self::Trap) -> Self {
-                super::soroban_env_host::Error::from_type_and_code(
-                    super::soroban_env_host::xdr::ScErrorType::Context,
-                    super::soroban_env_host::xdr::ScErrorCode::InternalError,
-                )
+                super::INTERNAL_ERROR
             }
         }
     }
@@ -651,20 +655,27 @@ mod p21 {
         fn map_err<T, E>(&self, res: Result<T, E>) -> Result<T, HostError>
         where
             Error: From<E>,
-            E: core::fmt::Debug;    
+            E: core::fmt::Debug;
         #[cfg(feature = "wasmtime")]
         fn map_wasmtime_error<T>(&self, r: Result<T, wasmtime::Error>) -> Result<T, HostError>;
         fn error(&self, error: Error, msg: &str, args: &[Val]) -> HostError;
     }
     #[allow(dead_code)]
     impl ModuleCache {
-        pub(crate) fn new_reusable<T>(_handler: T) -> Result<Self,HostError> {
-            Ok(ModuleCache)
+        pub(crate) fn new_reusable<T>(_handler: T) -> Result<Self, HostError> {
+            Err(INTERNAL_ERROR.into())
         }
-        pub(crate) fn parse_and_cache_module_simple<T>(&self, _handler: &T, _protocol: u32, _wasm: &[u8]) -> Result<(), HostError> {
-            Ok(())
+        pub(crate) fn parse_and_cache_module_simple<T>(
+            &self,
+            _handler: &T,
+            _protocol: u32,
+            _wasm: &[u8],
+        ) -> Result<(), HostError> {
+            Err(INTERNAL_ERROR.into())
         }
     }
+    #[allow(dead_code)]
+    pub(crate) trait CompilationContext: ErrorHandler + AsBudget {}
 
     // An adapter for some API breakage between p21 and p22.
     pub(crate) const fn get_version_pre_release(v: &soroban_env_host::Version) -> u32 {
@@ -1194,7 +1205,11 @@ impl SorobanModuleCache {
             p22_cache: p22::contract::ProtocolSpecificModuleCache::new()?,
         })
     }
-    pub fn compile(&mut self, ledger_protocol: u32, wasm: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn compile(
+        &mut self,
+        ledger_protocol: u32,
+        wasm: &[u8],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match ledger_protocol {
             22 => self.p22_cache.compile(wasm),
             // Add other protocols here as needed.

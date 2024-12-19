@@ -643,7 +643,7 @@ struct CoreCompilationContext {
     unlimited_budget: Budget,
 }
 
-impl super::soroban_env_host::CompilationContext for CoreCompilationContext {}
+impl super::CompilationContext for CoreCompilationContext {}
 
 #[allow(dead_code)]
 impl CoreCompilationContext {
