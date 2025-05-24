@@ -1786,6 +1786,197 @@ LedgerManagerImpl::prefetchTransactionData(AbstractLedgerTxnParent& ltx,
     }
 }
 
+static inline uint32_t&
+ttl(LedgerEntry& le)
+{
+    return le.data.ttl().liveUntilLedgerSeq;
+}
+
+static inline uint32_t const&
+ttl(LedgerEntry const& le)
+{
+    return le.data.ttl().liveUntilLedgerSeq;
+}
+
+static inline uint32_t&
+ttl(std::optional<LedgerEntry>& le)
+{
+    return ttl(le.value());
+}
+
+static inline uint32_t const&
+ttl(std::optional<LedgerEntry> const& le)
+{
+    return ttl(le.value());
+}
+
+// For every soroban LE in `txBundle`s RW footprint, ensure we've flushed any
+// buffered RO TTL bumps stored in `roTTLBumps` to the `entryMap`.
+//
+// We do so because this tx that does an RW access to the LE:
+//
+//   - _Will_ be clustered with all other RO and RW txs touching the LE, so we
+//     don't need to worry about other clusters touching this LE or bumping its
+//     TTL in parallel. This LE and its TTL are sequentialized in this cluster.
+//
+//   - _Might_ be clustered with an earlier tx that did an RO TTL bump of the
+//     LE, which could have changed the cost of the LE write happening in this
+//     tx. We do have to worry about that!
+//
+// So: for correct accounting of the write happening in this tx, we have to
+// flush any pending RO TTL bumps that interfere with its RW footprint.
+static void
+flushRoTTLBumpsRequiredByTx(std::unique_ptr<ThreadEntryMap>& entryMap,
+                            UnorderedMap<LedgerKey, uint32_t>& roTTLBumps,
+                            TxBundle const& txBundle)
+{
+    auto const& readWrite =
+        txBundle.getTx()->sorobanResources().footprint.readWrite;
+
+    for (auto const& lk : readWrite)
+    {
+        if (!isSorobanEntry(lk))
+        {
+            continue;
+        }
+
+        auto const& ttlKey = getTTLKey(lk);
+        auto b = roTTLBumps.find(ttlKey);
+        if (b != roTTLBumps.end())
+        {
+            // "Commit" max RO bump now that the key is in a
+            // readWrite set
+            auto e = entryMap->find(ttlKey);
+            if (e != entryMap->end())
+            {
+                releaseAssert(e->second.mLedgerEntry);
+                releaseAssert(ttl(e->second.mLedgerEntry) <= b->second);
+
+                ttl(e->second.mLedgerEntry) = b->second;
+
+                // Mark as dirty so this entry gets written.
+                e->second.isDirty = true;
+            }
+            roTTLBumps.erase(b);
+        }
+    }
+}
+
+// Ensure that for each remaining RO TTL bump in `roTTLBumps`, the
+// TTL entry is present in the `entryMap` and is >= the bump TTL.
+static void
+flushResidualRoTTLBumps(std::unique_ptr<ThreadEntryMap>& entryMap,
+                        UnorderedMap<LedgerKey, uint32_t> const& roTTLBumps)
+{
+    for (auto const& [lk, ttlBump] : roTTLBumps)
+    {
+        auto it = entryMap->find(lk);
+        // The entry in entryMap should always exist. If the entry was deleted,
+        // then we would've erased the TTL key from roTTLBumps.
+        releaseAssert(it != entryMap->end() && it->second.mLedgerEntry);
+        if (ttl(it->second.mLedgerEntry) < ttlBump)
+        {
+            ttl(it->second.mLedgerEntry) = ttlBump;
+            it->second.isDirty = true;
+        }
+    }
+}
+
+// Construct a map of all the TTL keys associated with all soroban
+// (code-or-data) keys named in the footprint of the `txBundle`, along with a
+// boolean indicating whether they're RO TTL keys. When false, they're RW.
+static UnorderedMap<LedgerKey, bool>
+buildRoTTLMap(TxBundle const& txBundle)
+{
+    UnorderedMap<LedgerKey, bool> isReadOnlyTTLMap;
+    for (auto const& ro :
+         txBundle.getTx()->sorobanResources().footprint.readOnly)
+    {
+        if (!isSorobanEntry(ro))
+        {
+            continue;
+        }
+        isReadOnlyTTLMap.emplace(getTTLKey(ro), true);
+    }
+    for (auto const& rw :
+         txBundle.getTx()->sorobanResources().footprint.readWrite)
+    {
+        if (!isSorobanEntry(rw))
+        {
+            continue;
+        }
+        isReadOnlyTTLMap.emplace(getTTLKey(rw), false);
+    }
+}
+
+// Look up a key in the RO TTL map built above. If the key is either not a TTL,
+// or not RO, return false.
+static bool
+isRoTTLKey(UnorderedMap<LedgerKey, bool> const& rmap, LedgerKey const& lk)
+{
+    auto it = rmap.find(lk);
+    releaseAssert(lk.type() == TTL || it == rmap.end());
+    return lk.type() == TTL && it->second;
+}
+
+// Accumulate into the buffer of `roTTLBumps` the max of any existing entry and
+// the provided `updatedLE`, which must be a non-nullopt TTL LE.
+void
+updateMaxOfRoTTLBump(UnorderedMap<LedgerKey, uint32_t>& roTTLBumps,
+                     LedgerKey const& lk,
+                     std::optional<LedgerEntry> const& updatedLe)
+{
+    auto [it, emplaced] = roTTLBumps.emplace(ttl(updatedLe));
+    if (!emplaced)
+    {
+        it->second = std::max(it->second, ttl(updatedLe));
+    }
+}
+
+// Writes the entries in `res` back to the `entryMap`, `roTTLBumps` and
+// `threadRestoredKeys` variables that are accumulating the state of
+// the transaction cluster.
+static void
+recordModifiedAndRestoredEntries(std::unique_ptr<ThreadEntryMap>& entryMap,
+                                 UnorderedMap<LedgerKey, uint32_t>& roTTLBumps,
+                                 RestoredKeys& threadRestoredKeys,
+                                 TxBundle const& txBundle,
+                                 ParallelTxReturnVal const& res)
+{
+    releaseAssert(res.getSuccess());
+    auto rmap = buildRoTTLMap(txBundle);
+
+    // now apply the entry changes to entryMap
+    for (auto const& [lk, updatedLe] : res.getModifiedEntryMap())
+    {
+        auto it = entryMap->find(lk);
+        releaseAssert(it != entryMap->end());
+
+        if (isRoTTLKey(rmap, lk) && it->second.mLedgerEntry && updatedLe)
+        {
+            releaseAssert(ttl(updatedLe) > ttl(it->second.mLedgerEntry));
+            updateMaxOfRoTTLBump(roTTLBumps, lk, updatedLe);
+        }
+        else
+        {
+            // A entry deletion will be marked by a nullopt le.
+            // Set the dirty bit so it'll be written to ltx later.
+            it->second = {updatedLe, true};
+        }
+    }
+
+    for (auto const& key : res.getRestoredKeys().hotArchive)
+    {
+        auto [_, inserted] = threadRestoredKeys.hotArchive.emplace(key);
+        releaseAssert(inserted);
+    }
+    for (auto const& key : res.getRestoredKeys().liveBucketList)
+    {
+        auto [_, inserted] = threadRestoredKeys.liveBucketList.emplace(key);
+        releaseAssert(inserted);
+    }
+}
+
 std::pair<RestoredKeys, std::unique_ptr<ThreadEntryMap>>
 LedgerManagerImpl::applyThread(
     AppConnector& app, std::unique_ptr<ThreadEntryMap> entryMap,
@@ -1794,9 +1985,9 @@ LedgerManagerImpl::applyThread(
     std::shared_ptr<ParallelLedgerInfo const> ledgerInfo,
     Hash sorobanBasePrngSeed)
 {
-    // RO extensions should only be observed when the entry is modified, so
-    // we accumulate the RO extensions until we need to apply them.
-    UnorderedMap<LedgerKey, uint32_t> readOnlyTtlExtensions;
+    // RO TTL bumps should only be observed when the entry is modified, so
+    // we accumulate the RO TTL bumps until we need to apply them.
+    UnorderedMap<LedgerKey, uint32_t> roTTLBumps;
 
     RestoredKeys threadRestoredKeys;
     for (auto const& txBundle : cluster)
@@ -1809,37 +2000,7 @@ LedgerManagerImpl::applyThread(
         txSubSeedSha.add(xdr::xdr_to_opaque(txBundle.getTxNum()));
         Hash txSubSeed = txSubSeedSha.finish();
 
-        auto const& readWrite =
-            txBundle.getTx()->sorobanResources().footprint.readWrite;
-        for (auto const& lk : readWrite)
-        {
-            if (!isSorobanEntry(lk))
-            {
-                continue;
-            }
-
-            auto const& ttlKey = getTTLKey(lk);
-            auto extIt = readOnlyTtlExtensions.find(ttlKey);
-            if (extIt != readOnlyTtlExtensions.end())
-            {
-                // "Commit" max RO bump now that the key is in a
-                // readWrite set
-                auto it = entryMap->find(ttlKey);
-                if (it != entryMap->end())
-                {
-                    releaseAssert(it->second.mLedgerEntry);
-                    releaseAssert(it->second.mLedgerEntry->data.ttl()
-                                      .liveUntilLedgerSeq <= extIt->second);
-
-                    it->second.mLedgerEntry->data.ttl().liveUntilLedgerSeq =
-                        extIt->second;
-
-                    // Mark as dirty so this entry gets written.
-                    it->second.isDirty = true;
-                }
-                readOnlyTtlExtensions.erase(extIt);
-            }
-        }
+        flushRoTTLBumpsRequiredByTx(entryMap, roTTLBumps, txBundle);
 
         auto res = txBundle.getTx()->parallelApply(
             app, *entryMap, config, sorobanConfig, *ledgerInfo,
@@ -1848,78 +2009,8 @@ LedgerManagerImpl::applyThread(
 
         if (res.getSuccess())
         {
-            UnorderedMap<LedgerKey, bool> isReadOnlyTTLMap;
-            for (auto const& ro :
-                 txBundle.getTx()->sorobanResources().footprint.readOnly)
-            {
-                if (!isSorobanEntry(ro))
-                {
-                    continue;
-                }
-                isReadOnlyTTLMap.emplace(getTTLKey(ro), true);
-            }
-            for (auto const& rw :
-                 txBundle.getTx()->sorobanResources().footprint.readWrite)
-            {
-                if (!isSorobanEntry(rw))
-                {
-                    continue;
-                }
-                isReadOnlyTTLMap.emplace(getTTLKey(rw), false);
-            }
-
-            // now apply the entry changes to entryMap
-            for (auto const& entry : res.getModifiedEntryMap())
-            {
-                auto const& lk = entry.first;
-                auto const& updatedLe = entry.second;
-
-                auto it = entryMap->find(lk);
-                releaseAssert(it != entryMap->end());
-
-                auto isReadOnlyTTLIt = isReadOnlyTTLMap.find(lk);
-                releaseAssert(lk.type() != TTL ||
-                              isReadOnlyTTLIt != isReadOnlyTTLMap.end());
-
-                if (lk.type() == TTL && it->second.mLedgerEntry && updatedLe &&
-                    isReadOnlyTTLIt->second /*isReadOnly*/)
-                {
-                    releaseAssert(
-                        updatedLe->data.ttl().liveUntilLedgerSeq >
-                        it->second.mLedgerEntry->data.ttl().liveUntilLedgerSeq);
-
-                    auto ttlIt = readOnlyTtlExtensions.find(lk);
-                    if (ttlIt != readOnlyTtlExtensions.end())
-                    {
-                        ttlIt->second =
-                            std::max(ttlIt->second,
-                                     updatedLe->data.ttl().liveUntilLedgerSeq);
-                    }
-                    else
-                    {
-                        readOnlyTtlExtensions.emplace(
-                            lk, updatedLe->data.ttl().liveUntilLedgerSeq);
-                    }
-                }
-                else
-                {
-                    // A entry deletion will be marked by a nullopt le.
-                    // Set the dirty bit so it'll be written to ltx later.
-                    it->second = {updatedLe, true};
-                }
-            }
-
-            for (auto const& key : res.getRestoredKeys().hotArchive)
-            {
-                auto [_, inserted] = threadRestoredKeys.hotArchive.emplace(key);
-                releaseAssert(inserted);
-            }
-            for (auto const& key : res.getRestoredKeys().liveBucketList)
-            {
-                auto [_, inserted] =
-                    threadRestoredKeys.liveBucketList.emplace(key);
-                releaseAssert(inserted);
-            }
+            recordModifiedAndRestoredEntries(entryMap, roTTLBumps,
+                                             threadRestoredKeys, txBundle, res);
         }
         else
         {
@@ -1927,23 +2018,7 @@ LedgerManagerImpl::applyThread(
         }
     }
 
-    for (auto const& kvp : readOnlyTtlExtensions)
-    {
-        auto const& lk = kvp.first;
-        auto const& ttlExtension = kvp.second;
-
-        auto it = entryMap->find(lk);
-        // The entry in entryMap should always exist. If the entry was deleted,
-        // then we would've erased the TTL key from readOnlyTtlExtensions.
-        releaseAssert(it != entryMap->end() && it->second.mLedgerEntry);
-        if (it->second.mLedgerEntry->data.ttl().liveUntilLedgerSeq <
-            ttlExtension)
-        {
-            it->second.mLedgerEntry->data.ttl().liveUntilLedgerSeq =
-                ttlExtension;
-            it->second.isDirty = true;
-        }
-    }
+    flushResidualRoTTLBumps(entryMap, roTTLBumps);
 
     return {threadRestoredKeys, std::move(entryMap)};
 }
@@ -2691,5 +2766,4 @@ LedgerManagerImpl::ApplyState::addAnyContractsToModuleCache(
         }
     }
 }
-
 }
