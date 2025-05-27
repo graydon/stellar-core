@@ -2032,28 +2032,21 @@ getParallelLedgerInfo(AppConnector& app, AbstractLedgerTxn& ltx)
         app.getNetworkID());
 }
 
-void
-LedgerManagerImpl::applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
-                                     ApplyStage const& stage,
-                                     Hash const& sorobanBasePrngSeed)
+std::pair<std::vector<RestoredKeys>,
+          std::vector<std::unique_ptr<ThreadEntryMap>>>
+LedgerManagerImpl::applySorobanStageClustersInParallel(
+    AppConnector& app, AbstractLedgerTxn& ltx, ApplyStage const& stage,
+    Hash const& sorobanBasePrngSeed, Config const& config,
+    SorobanNetworkConfig const& sorobanConfig,
+    std::shared_ptr<ParallelLedgerInfo const> ledgerInfo)
 {
-    for (auto const& txBundle : stage)
-    {
-        // This can mark a tx as failed due to validation.
-        // Make sure results are checked.
-        txBundle.getTx()->preParallelApply(app, ltx,
-                                           txBundle.getEffects().getMeta(),
-                                           txBundle.getResPayload());
-    }
-
-    auto const& config = app.getConfig();
-    auto const& sorobanConfig = getSorobanNetworkConfigForApply();
+    std::vector<RestoredKeys> threadRestoredKeys;
+    std::vector<std::unique_ptr<ThreadEntryMap>> entryMapsByCluster;
 
     std::vector<
         std::future<std::pair<RestoredKeys, std::unique_ptr<ThreadEntryMap>>>>
         threadFutures;
 
-    auto ledgerInfo = getParallelLedgerInfo(app, ltx);
     for (size_t i = 0; i < stage.numClusters(); ++i)
     {
         auto const& cluster = stage.getCluster(i);
@@ -2066,8 +2059,6 @@ LedgerManagerImpl::applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
             sorobanConfig, ledgerInfo, sorobanBasePrngSeed));
     }
 
-    std::vector<RestoredKeys> threadRestoredKeys;
-    std::vector<std::unique_ptr<ThreadEntryMap>> entryMapsByCluster;
     for (auto& restoredKeysFutures : threadFutures)
     {
         releaseAssert(restoredKeysFutures.valid());
@@ -2076,8 +2067,13 @@ LedgerManagerImpl::applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
         entryMapsByCluster.emplace_back(std::move(futureResult.second));
     }
     threadFutures.clear();
+    return {std::move(threadRestoredKeys), std::move(entryMapsByCluster)};
+}
 
-    LedgerTxn ltxInner(ltx);
+void
+LedgerManagerImpl::addAllRestoredKeysToLedgerTxn(
+    std::vector<RestoredKeys> const& threadRestoredKeys, LedgerTxn& ltxInner)
+{
     for (auto const& restoredKeys : threadRestoredKeys)
     {
         // We don't need to add the live bucket list restoration keys
@@ -2095,6 +2091,12 @@ LedgerManagerImpl::applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
             }
         }
     }
+}
+void
+LedgerManagerImpl::checkAllTxBundleInvariantsAndCallProcessPostApply(
+    AppConnector& app, ApplyStage const& stage, Config const& config,
+    std::shared_ptr<const ParallelLedgerInfo>& ledgerInfo, LedgerTxn& ltxInner)
+{
     for (auto const& txBundle : stage)
     {
         // First check the invariants
@@ -2141,9 +2143,12 @@ LedgerManagerImpl::applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
                                            txBundle.getEffects().getMeta(),
                                            txBundle.getResPayload());
     }
-
-    auto isInReadWriteSet = getReadWriteKeysForStage(stage);
-
+}
+void
+LedgerManagerImpl::writeDirtyMapEntriesToLedgerTxn(
+    std::vector<std::unique_ptr<ThreadEntryMap>> const& entryMapsByCluster,
+    LedgerTxn& ltxInner, std::unordered_set<LedgerKey> const& isInReadWriteSet)
+{
     for (auto const& threadEntryMap : entryMapsByCluster)
     {
         for (auto const& entry : *threadEntryMap)
@@ -2195,6 +2200,42 @@ LedgerManagerImpl::applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
             }
         }
     }
+}
+
+void
+LedgerManagerImpl::applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
+                                     ApplyStage const& stage,
+                                     Hash const& sorobanBasePrngSeed)
+{
+    for (auto const& txBundle : stage)
+    {
+        // This can mark a tx as failed due to validation.
+        // Make sure results are checked.
+        txBundle.getTx()->preParallelApply(app, ltx,
+                                           txBundle.getEffects().getMeta(),
+                                           txBundle.getResPayload());
+    }
+
+    auto const& config = app.getConfig();
+    auto const& sorobanConfig = getSorobanNetworkConfigForApply();
+    auto ledgerInfo = getParallelLedgerInfo(app, ltx);
+
+    auto [threadRestoredKeys, entryMapsByCluster] =
+        applySorobanStageClustersInParallel(app, ltx, stage,
+                                            sorobanBasePrngSeed, config,
+                                            sorobanConfig, ledgerInfo);
+
+    LedgerTxn ltxInner(ltx);
+
+    addAllRestoredKeysToLedgerTxn(threadRestoredKeys, ltxInner);
+
+    checkAllTxBundleInvariantsAndCallProcessPostApply(app, stage, config,
+                                                      ledgerInfo, ltxInner);
+
+    auto isInReadWriteSet = getReadWriteKeysForStage(stage);
+
+    writeDirtyMapEntriesToLedgerTxn(entryMapsByCluster, ltxInner,
+                                    isInReadWriteSet);
 
     ltxInner.commit();
 }

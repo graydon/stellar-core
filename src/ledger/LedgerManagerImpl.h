@@ -185,6 +185,25 @@ class LedgerManagerImpl : public LedgerManager
                 std::shared_ptr<ParallelLedgerInfo const> ledgerInfo,
                 Hash sorobanBasePrngSeed);
 
+    std::pair<std::vector<RestoredKeys>,
+              std::vector<std::unique_ptr<ThreadEntryMap>>>
+    applySorobanStageClustersInParallel(
+        AppConnector& app, AbstractLedgerTxn& ltx, ApplyStage const& stage,
+        Hash const& sorobanBasePrngSeed, Config const& config,
+        SorobanNetworkConfig const& sorobanConfig,
+        std::shared_ptr<ParallelLedgerInfo const> ledgerInfo);
+
+    void addAllRestoredKeysToLedgerTxn(
+        std::vector<RestoredKeys> const& threadRestoredKeys,
+        LedgerTxn& ltxInner);
+    void checkAllTxBundleInvariantsAndCallProcessPostApply(
+        AppConnector& app, ApplyStage const& stage, Config const& config,
+        std::shared_ptr<const ParallelLedgerInfo>& ledgerInfo,
+        LedgerTxn& ltxInner);
+    void writeDirtyMapEntriesToLedgerTxn(
+        std::vector<std::unique_ptr<ThreadEntryMap>> const& entryMapsByCluster,
+        LedgerTxn& ltxInner,
+        std::unordered_set<LedgerKey> const& isInReadWriteSet);
     void applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
                            ApplyStage const& stage,
                            Hash const& sorobanBasePrngSeed);
