@@ -176,8 +176,23 @@ class LedgerManagerImpl : public LedgerManager
         uint32_t txIndex, TransactionMetaBuilder& txMetaBuilder,
         TransactionFrameBase const& tx,
         MutableTransactionResultBase const& result,
-        TransactionResultSet& txResultSet, uint64_t& sorobanTxSucceeded,
-        uint64_t& sorobanTxFailed, uint64_t& txSucceeded, uint64_t& txFailed);
+        TransactionResultSet& txResultSet);
+
+    void applyParallelTxSetPhase(
+        const std::vector<MutableTxResultPtr>& mutableTxResults,
+        AbstractLedgerTxn& ltx,
+        const std::unique_ptr<LedgerCloseMetaFrame>& ledgerCloseMeta,
+        int& index, TransactionResultSet& txResultSet,
+        Hash const& sorobanBasePrngSeed, bool enableTxMeta,
+        TxSetPhaseFrame const& phase);
+
+    void applySequentialTxSetPhase(
+        const std::vector<MutableTxResultPtr>& mutableTxResults,
+        AbstractLedgerTxn& ltx,
+        const std::unique_ptr<LedgerCloseMetaFrame>& ledgerCloseMeta,
+        int& index, TransactionResultSet& txResultSet,
+        Hash const& sorobanBasePrngSeed, bool enableTxMeta,
+        TxSetPhaseFrame const& phase);
 
     TransactionResultSet applyTransactions(
         ApplicableTxSetFrame const& txSet,
