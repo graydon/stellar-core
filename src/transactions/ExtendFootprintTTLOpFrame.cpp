@@ -70,7 +70,7 @@ ExtendFootprintTTLOpFrame::doParallelApply(
     ExtendFootprintTTLMetrics metrics(sorobanMetrics);
     auto timeScope = metrics.getExecTimer();
 
-    auto liveSnapshot = app.copySearchableLiveBucketListSnapshot();
+    auto liveSnapshot = ledgerInfo.getLiveSnapshot();
 
     auto const& resources = mParentTx.sorobanResources();
     auto const& footprint = resources.footprint;

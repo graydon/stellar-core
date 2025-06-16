@@ -239,14 +239,15 @@ class ApplyHelperBase
     rust::Vec<CxxBuf> mLedgerEntryCxxBufs;
     rust::Vec<CxxBuf> mTtlEntryCxxBufs;
     HostFunctionMetrics mMetrics;
-    SearchableHotArchiveSnapshotConstPtr mHotArchive;
+    std::optional<SearchableHotArchiveSnapshotConstPtr> mHotArchive;
     DiagnosticEventManager& mDiagnosticEvents;
 
-    ApplyHelperBase(AppConnector& app, Hash const& sorobanBasePrngSeed,
-                    OperationResult& res,
-                    std::optional<RefundableFeeTracker>& refundableFeeTracker,
-                    OperationMetaBuilder& opMeta,
-                    InvokeHostFunctionOpFrame const& opFrame)
+    ApplyHelperBase(
+        AppConnector& app, Hash const& sorobanBasePrngSeed,
+        OperationResult& res,
+        std::optional<RefundableFeeTracker>& refundableFeeTracker,
+        OperationMetaBuilder& opMeta, InvokeHostFunctionOpFrame const& opFrame,
+        std::optional<SearchableHotArchiveSnapshotConstPtr> hotArchive)
         : mApp(app)
         , mRes(res)
         , mRefundableFeeTracker(refundableFeeTracker)
@@ -257,7 +258,7 @@ class ApplyHelperBase
         , mSorobanConfig(app.getSorobanNetworkConfigForApply())
         , mAppConfig(app.getConfig())
         , mMetrics(app.getSorobanMetrics())
-        , mHotArchive(app.copySearchableHotArchiveBucketListSnapshot())
+        , mHotArchive(hotArchive)
         , mDiagnosticEvents(mOpMeta.getDiagnosticEventManager())
     {
         mMetrics.mDeclaredCpuInsn = mResources.instructions;
@@ -378,12 +379,11 @@ class ApplyHelperBase
                 // If ttlEntryOp doesn't exist, this is a new Soroban entry
                 // Starting in protocol 23, we must check the Hot Archive for
                 // new keys. If a new key is actually archived, fail the op.
-                else if (protocolVersionStartsFrom(
-                             ledgerVersion,
-                             PARALLEL_SOROBAN_PHASE_PROTOCOL_VERSION) &&
-                         isPersistentEntry(lk))
+                // Note: before protocol 23 we will have no hot archive
+                // (this could be factored out to a helper but it's awkward).
+                else if (mHotArchive && isPersistentEntry(lk))
                 {
-                    auto archiveEntry = mHotArchive->load(lk);
+                    auto archiveEntry = mHotArchive.value()->load(lk);
                     if (archiveEntry)
                     {
                         releaseAssertOrThrow(
@@ -872,7 +872,7 @@ class PreV23ApplyHelper : public ApplyHelperBase
                       OperationMetaBuilder& opMeta,
                       InvokeHostFunctionOpFrame const& opFrame)
         : ApplyHelperBase(app, sorobanBasePrngSeed, res, refundableFeeTracker,
-                          opMeta, opFrame)
+                          opMeta, opFrame, /*hotArchive=*/std::nullopt)
         , mLtx(ltx)
     {
     }
@@ -1071,10 +1071,10 @@ class ParallelApplyHelper : public ApplyHelperBase
         std::optional<RefundableFeeTracker>& refundableFeeTracker,
         OperationMetaBuilder& opMeta, InvokeHostFunctionOpFrame const& opFrame)
         : ApplyHelperBase(app, sorobanBasePrngSeed, res, refundableFeeTracker,
-                          opMeta, opFrame)
+                          opMeta, opFrame, ledgerInfo.getHotArchiveSnapshot())
         , mEntryMap(entryMap)
         , mLedgerInfo(ledgerInfo)
-        , mLiveSnapshot(app.copySearchableLiveBucketListSnapshot())
+        , mLiveSnapshot(ledgerInfo.getLiveSnapshot())
     {
         // Initialize the autorestore lookup vector
         auto const& resourceExt = mOpFrame.getResourcesExt();

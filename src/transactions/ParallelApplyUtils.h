@@ -4,6 +4,7 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
+#include "bucket/BucketSnapshotManager.h"
 #include "ledger/LedgerTypeUtils.h"
 #include "transactions/ParallelApplyStage.h"
 #include "transactions/TransactionFrameBase.h"
@@ -17,12 +18,16 @@ class ParallelLedgerInfo
 
   public:
     ParallelLedgerInfo(uint32_t version, uint32_t seq, uint32_t reserve,
-                       TimePoint time, Hash const& id)
+                       TimePoint time, Hash const& id,
+                       SearchableSnapshotConstPtr liveSnapshot,
+                       SearchableHotArchiveSnapshotConstPtr hotArchiveSnapshot)
         : ledgerVersion(version)
         , ledgerSeq(seq)
         , baseReserve(reserve)
         , closeTime(time)
         , networkID(id)
+        , mLiveSnapshot(liveSnapshot)
+        , mHotArchiveSnapshot(hotArchiveSnapshot)
     {
     }
 
@@ -51,6 +56,16 @@ class ParallelLedgerInfo
     {
         return networkID;
     }
+    SearchableSnapshotConstPtr
+    getLiveSnapshot() const
+    {
+        return mLiveSnapshot;
+    }
+    SearchableHotArchiveSnapshotConstPtr
+    getHotArchiveSnapshot() const
+    {
+        return mHotArchiveSnapshot;
+    }
 
   private:
     uint32_t ledgerVersion;
@@ -58,6 +73,8 @@ class ParallelLedgerInfo
     uint32_t baseReserve;
     TimePoint closeTime;
     Hash networkID;
+    SearchableSnapshotConstPtr mLiveSnapshot;
+    SearchableHotArchiveSnapshotConstPtr mHotArchiveSnapshot;
 };
 
 std::unordered_set<LedgerKey> getReadWriteKeysForStage(ApplyStage const& stage);

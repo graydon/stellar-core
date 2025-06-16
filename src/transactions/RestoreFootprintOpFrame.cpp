@@ -72,12 +72,12 @@ RestoreFootprintOpFrame::doParallelApply(
     RestoreFootprintMetrics metrics(sorobanMetrics);
     auto timeScope = metrics.getExecTimer();
 
-    auto liveSnapshot = app.copySearchableLiveBucketListSnapshot();
+    auto liveSnapshot = ledgerInfo.getLiveSnapshot();
 
     auto const& resources = mParentTx.sorobanResources();
     auto const& footprint = resources.footprint;
     auto ledgerSeq = ledgerInfo.getLedgerSeq();
-    auto hotArchive = app.copySearchableHotArchiveBucketListSnapshot();
+    auto hotArchive = ledgerInfo.getHotArchiveSnapshot();
 
     // Keep track of LedgerEntry updates we need to make
     OpModifiedEntryMap opEntryMap;

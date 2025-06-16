@@ -2035,9 +2035,7 @@ LedgerManagerImpl::applyThread(AppConnector& app,
     // we accumulate the RO TTL bumps until we need to apply them.
     UnorderedMap<LedgerKey, uint32_t> roTTLBumps;
 
-    // TODO: copy the snapshot here once and pass it down
-    // TODO: Do the same for the hot archive snapshot?
-    auto liveSnapshot = app.copySearchableLiveBucketListSnapshot();
+    auto liveSnapshot = ledgerInfo.getLiveSnapshot();
 
     RestoredKeys threadRestoredKeys;
     for (auto const& txBundle : cluster)
@@ -2078,8 +2076,13 @@ LedgerManagerImpl::applyThread(AppConnector& app,
 ParallelLedgerInfo
 getParallelLedgerInfo(AppConnector& app, LedgerHeader const& lh)
 {
-    return {lh.ledgerVersion, lh.ledgerSeq, lh.baseReserve,
-            lh.scpValue.closeTime, app.getNetworkID()};
+    return {lh.ledgerVersion,
+            lh.ledgerSeq,
+            lh.baseReserve,
+            lh.scpValue.closeTime,
+            app.getNetworkID(),
+            app.copySearchableLiveBucketListSnapshot(),
+            app.copySearchableHotArchiveBucketListSnapshot()};
 }
 
 std::pair<std::vector<RestoredKeys>,

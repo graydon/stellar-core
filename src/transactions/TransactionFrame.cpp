@@ -1912,7 +1912,7 @@ TransactionFrame::parallelApply(
     bool reportInternalErrOnException = true;
     try
     {
-        auto liveSnapshot = app.copySearchableLiveBucketListSnapshot();
+        auto liveSnapshot = ledgerInfo.getLiveSnapshot();
         // We do not want to increase the internal-error metric count for
         // older ledger versions. The minimum ledger version for which we
         // start internal-error counting is defined in the app config.
