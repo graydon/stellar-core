@@ -2210,6 +2210,9 @@
 	],
 	"ledger entry size limit enforced" : [ "+cR3oq2qY0I=", "+cR3oq2qY0I=" ],
 	"loadgen Wasm executes properly" : [ "+cR3oq2qY0I=" ],
+	"non-fee source account is recipient of payment in both classic and soroban|protocol version 20" : [ "NTGGdj1offM=", "YDNTfJslOvc=", "0lSgIUSYUl4=", "hoRx9d0FZhY=" ],
+	"non-fee source account is recipient of payment in both classic and soroban|protocol version 21" : [ "NTGGdj1offM=", "YDNTfJslOvc=", "0lSgIUSYUl4=", "hoRx9d0FZhY=" ],
+	"non-fee source account is recipient of payment in both classic and soroban|protocol version 22" : [ "NTGGdj1offM=", "uXD8Cnl+z1A=", "geKndLx9Dwk=", "up/hSXkPDJo=" ],
 	"non-fee source account is recipient of payment in both classic and soroban|protocol version 23" : [ "NTGGdj1offM=", "1zYBhd4gn9o=", "bhQTXuBYbDU=", "39fbDE+DTSM=" ],
 	"non-fee source account is recipient of payment in both classic and soroban|protocol version 24" : [ "NTGGdj1offM=", "1zYBhd4gn9o=", "bhQTXuBYbDU=", "39fbDE+DTSM=" ],
 	"overly large soroban values are handled gracefully" : 
@@ -2780,6 +2783,11 @@
 		"gbiLU8cTtcs=",
 		"gbiLU8cTtcs="
 	],
+	"source account account of first tx is in second txs footprint|protocol version 20" : [ "NTGGdj1offM=", "YDNTfJslOvc=", "0lSgIUSYUl4=", "hoRx9d0FZhY=" ],
+	"source account account of first tx is in second txs footprint|protocol version 21" : [ "NTGGdj1offM=", "YDNTfJslOvc=", "0lSgIUSYUl4=", "hoRx9d0FZhY=" ],
+	"source account account of first tx is in second txs footprint|protocol version 22" : [ "NTGGdj1offM=", "uXD8Cnl+z1A=", "geKndLx9Dwk=", "up/hSXkPDJo=" ],
+	"source account account of first tx is in second txs footprint|protocol version 23" : [ "NTGGdj1offM=", "1zYBhd4gn9o=", "bhQTXuBYbDU=", "39fbDE+DTSM=" ],
+	"source account account of first tx is in second txs footprint|protocol version 24" : [ "NTGGdj1offM=", "1zYBhd4gn9o=", "bhQTXuBYbDU=", "39fbDE+DTSM=" ],
 	"state archival operation errors|protocol version 20" : 
 	[
 		"bKDF6V5IzTo=",

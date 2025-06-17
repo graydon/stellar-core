@@ -52,6 +52,9 @@ class TransactionFrame : public TransactionFrameBase
   private:
     uint32_t getSize() const;
 
+    bool
+    maybeAdoptFailedReplayResult(MutableTransactionResultBase& txResult) const;
+
   protected:
 #ifdef BUILD_TESTS
     mutable

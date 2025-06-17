@@ -6521,6 +6521,8 @@ TEST_CASE_VERSIONS(
         checkTx(2, r, txSUCCESS);
 
         REQUIRE(b1.loadSequenceNumber() == b1StartingSeq + 1);
+        REQUIRE(b1.getBalance() ==
+                startingBalance + 10 + 50 - r.results.at(2).result.feeCharged);
     });
 }
 

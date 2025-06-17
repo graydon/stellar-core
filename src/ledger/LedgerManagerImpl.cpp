@@ -2136,7 +2136,7 @@ getParallelLedgerInfo(AppConnector& app, LedgerHeader const& lh)
 std::pair<std::vector<RestoredKeys>,
           std::vector<std::unique_ptr<ThreadEntryMap>>>
 LedgerManagerImpl::applySorobanStageClustersInParallel(
-    AppConnector& app, AbstractLedgerTxn& ltx, ApplyStage const& stage,
+    AppConnector& app, ApplyStage const& stage,
     ThreadEntryMap const& globalEntryMap, Hash const& sorobanBasePrngSeed,
     Config const& config, SorobanNetworkConfig const& sorobanConfig,
     ParallelLedgerInfo const& ledgerInfo)
@@ -2198,7 +2198,7 @@ LedgerManagerImpl::addAllRestoredKeysToLedgerTxn(
 }
 
 void
-LedgerManagerImpl::checkAllTxBundleInvariantsAndCallProcessPostApply(
+LedgerManagerImpl::checkAllTxBundleInvariants(
     AppConnector& app, ApplyStage const& stage, Config const& config,
     ParallelLedgerInfo const& ledgerInfo, AbstractLedgerTxn& ltx)
 {
@@ -2244,7 +2244,7 @@ LedgerManagerImpl::checkAllTxBundleInvariantsAndCallProcessPostApply(
         }
 
         // We don't call processPostApply for post v23 transactions at the
-        // moment because procesPostApply is currently a no-op for those
+        // moment because processPostApply is currently a no-op for those
         // transactions.
 
         txBundle.getEffects().getMeta().maybeSetRefundableFeeMeta(
@@ -2377,14 +2377,13 @@ LedgerManagerImpl::applySorobanStage(AppConnector& app, AbstractLedgerTxn& ltx,
     auto ledgerInfo = getParallelLedgerInfo(app, ltx.loadHeader().current());
 
     auto [threadRestoredKeys, entryMapsByCluster] =
-        applySorobanStageClustersInParallel(app, ltx, stage, globalEntryMap,
+        applySorobanStageClustersInParallel(app, stage, globalEntryMap,
                                             sorobanBasePrngSeed, config,
                                             sorobanConfig, ledgerInfo);
 
     addAllRestoredKeysToLedgerTxn(threadRestoredKeys, ltx);
 
-    checkAllTxBundleInvariantsAndCallProcessPostApply(app, stage, config,
-                                                      ledgerInfo, ltx);
+    checkAllTxBundleInvariants(app, stage, config, ledgerInfo, ltx);
 
     auto isInReadWriteSet = getReadWriteKeysForStage(stage);
 
