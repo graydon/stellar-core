@@ -115,7 +115,7 @@ export CCACHE_DIR=$HOME/.ccache
 export CCACHE_COMPRESS=true
 export CCACHE_COMPRESSLEVEL=9
 # cache size should be large enough for a full build
-export CCACHE_MAXSIZE=500M
+export CCACHE_MAXSIZE=800M
 export CCACHE_CPP2=true
 
 # periodically check to see if caches are old and purge them if so
@@ -156,8 +156,8 @@ time make -j$(($NPROCS - 1))
 
 ccache -s
 ### incrementally purge old content from cargo source cache and target directory
-cargo cache trim --limit 100M
-cargo sweep --maxsize 500MB
+# cargo cache trim --limit 100M # cargo now manages its cache itself
+cargo sweep --maxsize 800MB
 
 if [ $WITH_TESTS -eq 0 ] ; then
     echo "Build done, skipping tests"
