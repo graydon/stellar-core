@@ -16,13 +16,13 @@ jobs:
   complete:
     if: always()
     needs: [fmt, cargo-deny, rust-check-git-rev-deps, build]
-    runs-on: jammy-32-stellar-core
+    runs-on: namespace-profile-jammy-32-stellar-core
     steps:
     - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
       run: exit 1
 
   fmt:
-    runs-on: jammy-32-stellar-core
+    runs-on: namespace-profile-jammy-32-stellar-core
     steps:
     - uses: actions/checkout@v4
     - run: rustup component add rustfmt
@@ -30,7 +30,7 @@ jobs:
     - run: cargo fmt --all --check
 
   cargo-deny:
-    runs-on: jammy-32-stellar-core
+    runs-on: namespace-profile-jammy-32-stellar-core
     strategy:
       matrix:
         checks:
@@ -48,13 +48,13 @@ jobs:
         arguments:
 
   rust-check-git-rev-deps:
-    runs-on: jammy-32-stellar-core
+    runs-on: namespace-profile-jammy-32-stellar-core
     steps:
     - uses: actions/checkout@v4
     - uses: stellar/actions/rust-check-git-rev-deps@main
 
   build:
-    runs-on: jammy-32-stellar-core
+    runs-on: namespace-profile-jammy-32-stellar-core
     env:
       CACHED_PATHS: |
         ~/.ccache
