@@ -10,7 +10,6 @@ on:
       - testnet
       - acceptance-test-pass
 
-
 jobs:
 
   complete:
