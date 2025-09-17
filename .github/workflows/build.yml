@@ -82,7 +82,10 @@ jobs:
         uses: namespacelabs/nscloud-cache-action@v1
         with:
           path: ${{ env.CACHED_PATHS }}
-      
+
+      - name: install rustup
+        run: ./install-rust.sh
+
       - name: install rustup components
         run: rustup component add rustfmt
 
