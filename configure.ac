@@ -230,6 +230,29 @@ AS_IF([test "x$enable_ccache" = "xyes"], [
   esac
 ])
 
+AC_ARG_ENABLE([sccache],
+              AS_HELP_STRING([--enable-ccache], [build with sccache]))
+AS_IF([test "x$enable_sccache" = "xyes"], [
+  AC_CHECK_PROGS([SCCACHE], [sccache])
+  AS_IF([test -z "$SCCACHE"], [
+    AC_MSG_ERROR([sccache enabled but not found])
+  ])
+  case "$CC" in
+  *sccache\ *)
+      ;;
+  *)
+      CC="sccache ${CC}"
+      ;;
+  esac
+  case "$CXX" in
+    *sccache\ *)
+      ;;
+    *)
+      CXX="sccache ${CXX}"
+      ;;
+  esac
+])
+
 # Permit user to enable AFL instrumentation
 AC_ARG_ENABLE([afl],
               AS_HELP_STRING([--enable-afl],
