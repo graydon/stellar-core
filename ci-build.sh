@@ -68,6 +68,9 @@ NPROCS=$(getconf _NPROCESSORS_ONLN)
 echo "Found $NPROCS processors"
 date
 
+mkdir -p "build-${CC}-${PROTOCOL}"
+cd "build-${CC}-${PROTOCOL}"
+
 # Try to ensure we're using the real g++ and clang++ versions we want
 mkdir bin
 
@@ -111,7 +114,7 @@ export ASAN_OPTIONS="quarantine_size_mb=100:malloc_context_size=4:detect_leaks=0
 echo "config_flags = $config_flags"
 
 #### ccache config
-export CCACHE_DIR=$HOME/.ccache
+export CCACHE_DIR=$(pwd)/.ccache
 export CCACHE_COMPRESS=true
 export CCACHE_COMPRESSLEVEL=9
 # cache size should be large enough for a full build
@@ -130,8 +133,8 @@ ccache -p
 
 ccache -s
 date
-time ./autogen.sh
-time ./configure $config_flags
+time (cd .. && ./autogen.sh)
+time ../configure $config_flags
 if [ -z "${SKIP_FORMAT_CHECK}" ]; then
     make format
     d=`git diff | wc -l`

@@ -2262,9 +2262,14 @@ TEST_CASE("txset nomination", "[txset]")
         }
         namespace fs = std::filesystem;
         fs::path resultsPath = "testdata/txset/" + testName;
-        fs::create_directories(resultsPath.parent_path());
+        char* srcdir = getenv("top_srcdir");
+        if (srcdir)
+        {
+            resultsPath = fs::path(srcdir) / "src" / resultsPath;
+        }
         if (getenv("GENERATE_TEST_TXSETS"))
         {
+            fs::create_directories(resultsPath.parent_path());
             std::ofstream resultsStream(resultsPath);
             for (auto const& result : testResults)
             {

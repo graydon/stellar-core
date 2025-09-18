@@ -55,11 +55,6 @@ jobs:
 
   build:
     runs-on: namespace-profile-jammy-32-stellar-core
-    env:
-      CACHED_PATHS: |
-        ~/.ccache
-        ~/.cargo
-        target
     strategy:
       fail-fast: false
       matrix:
@@ -82,7 +77,9 @@ jobs:
       - name: Configure Namespace cache volume
         uses: namespacelabs/nscloud-cache-action@v1
         with:
-          path: ${{ env.CACHED_PATHS }}
+          path: |
+            ~/.cargo
+            build-${{matrix.toolchain}}-${{matrix.protocol}}
 
       - name: install rustup
         run: ./install-rust.sh
