@@ -160,7 +160,7 @@ time make -j$(($NPROCS - 1))
 ccache -s
 ### incrementally purge old content from cargo source cache and target directory
 # cargo cache trim --limit 100M # cargo now manages its cache itself
-cargo sweep --maxsize 800MB
+(cd .. && CARGO_TARGET_DIRECTORY="build-${CC}-${PROTOCOL}/target" cargo sweep --maxsize 800MB)
 
 if [ $WITH_TESTS -eq 0 ] ; then
     echo "Build done, skipping tests"
