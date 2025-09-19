@@ -19,6 +19,8 @@ struct TransactionMeta;
 Config const& getTestConfig(int instanceNumber = 0,
                             Config::TestDbMode mode = Config::TESTDB_DEFAULT);
 
+std::filesystem::path getTestDataPath(std::filesystem::path rel);
+
 void cleanupTmpDirs();
 
 // Records or checks a TxMetadata value against a persistent record

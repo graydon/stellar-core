@@ -337,6 +337,19 @@ getTestConfig(int instanceNumber, Config::TestDbMode mode)
     return *cfgs[instanceNumber];
 }
 
+std::filesystem::path
+getTestDataPath(std::filesystem::path rel)
+{
+    namespace fs = std::filesystem;
+    fs::path testdata("testdata");
+    char* srcdir = getenv("top_srcdir");
+    if (srcdir)
+    {
+        testdata = fs::path(srcdir) / "src" / testdata;
+    }
+    return testdata / rel;
+}
+
 int
 runTest(CommandLineArgs const& args)
 {

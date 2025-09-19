@@ -173,13 +173,7 @@ TEST_CASE("application major version numbers", "[applicationutils]")
 TEST_CASE("standalone quorum intersection check", "[applicationutils]")
 {
     Config cfg = getTestConfig();
-    namespace fs = std::filesystem;
-    fs::path JSON_ROOT = "testdata/check-quorum-intersection-json";
-    char* srcdir = getenv("top_srcdir");
-    if (srcdir)
-    {
-        JSON_ROOT = fs::path(srcdir) / "src" / JSON_ROOT;
-    }
+    auto JSON_ROOT = getTestDataPath("check-quorum-intersection-json");
 
     SECTION("enjoys quorum intersection")
     {
