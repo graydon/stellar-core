@@ -129,6 +129,7 @@ CARGO=cargo +$(RUST_TOOLCHAIN_CHANNEL)
 # to tests since they can't take command-line arguments.
 export RUST_TOOLCHAIN_CHANNEL
 export top_srcdir
+export top_builddir
 
 RUST_BUILD_DIR=$(top_builddir)/src/rust
 RUST_BIN_DIR=$(RUST_BUILD_DIR)/bin
