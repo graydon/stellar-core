@@ -2260,7 +2260,7 @@ TEST_CASE("txset nomination", "[txset]")
         {
             runIteration();
         }
-        auto resultsPath = getTestDataPath(testName);
+        auto resultsPath = getSrcTestDataPath("txset/" + testName);
         if (getenv("GENERATE_TEST_TXSETS"))
         {
             std::filesystem::create_directories(resultsPath.parent_path());

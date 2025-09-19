@@ -515,7 +515,7 @@ TEST_CASE_VERSIONS("meta stream contains reasonable meta", "[ledgerclosemeta]")
 
             if (ledgerSeq == targetSeq)
             {
-                auto refJsonPath = getTestDataPath(fmt::format(
+                auto refJsonPath = getSrcTestDataPath(fmt::format(
                     FMT_STRING("ledger-close-meta{}-v{}-protocol-{}{}.json"),
                     enableClassicEvents ? "-enable-classic-events" : "",
                     lcm.v(), cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION,

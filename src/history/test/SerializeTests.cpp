@@ -20,7 +20,7 @@ TEST_CASE("Serialization round trip", "[history]")
         "stellar-history.testnet.6714239.networkPassphrase.v2.json"};
     for (size_t i = 0; i < testFiles.size(); i++)
     {
-        auto testFilePath = getTestDataPath(testFiles[i]);
+        auto testFilePath = getBuildTestDataPath(testFiles[i]);
         SECTION("Serialize " + testFilePath.string())
         {
             std::ifstream in(testFilePath);

@@ -338,7 +338,7 @@ getTestConfig(int instanceNumber, Config::TestDbMode mode)
 }
 
 std::filesystem::path
-getTestDataPath(std::filesystem::path rel)
+getSrcTestDataPath(std::filesystem::path rel)
 {
     namespace fs = std::filesystem;
     fs::path testdata("testdata");
@@ -346,6 +346,19 @@ getTestDataPath(std::filesystem::path rel)
     if (srcdir)
     {
         testdata = fs::path(srcdir) / "src" / testdata;
+    }
+    return testdata / rel;
+}
+
+std::filesystem::path
+getBuildTestDataPath(std::filesystem::path rel)
+{
+    namespace fs = std::filesystem;
+    fs::path testdata("testdata");
+    char* builddir = getenv("top_builddir");
+    if (builddir)
+    {
+        testdata = fs::path(builddir) / "src" / testdata;
     }
     return testdata / rel;
 }

@@ -173,7 +173,7 @@ TEST_CASE("application major version numbers", "[applicationutils]")
 TEST_CASE("standalone quorum intersection check", "[applicationutils]")
 {
     Config cfg = getTestConfig();
-    auto JSON_ROOT = getTestDataPath("check-quorum-intersection-json");
+    auto JSON_ROOT = getSrcTestDataPath("check-quorum-intersection-json");
 
     SECTION("enjoys quorum intersection")
     {
