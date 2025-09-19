@@ -54,7 +54,7 @@ jobs:
     - uses: stellar/actions/rust-check-git-rev-deps@main
 
   build:
-    runs-on: namespace-profile-jammy-32-stellar-core
+    runs-on: namespace-profile-jammy-32-stellar-core;overrides.cache-tag=cache-${{ matrix.toolchain }}-${{ matrix.protocol }}
     strategy:
       fail-fast: false
       matrix:
