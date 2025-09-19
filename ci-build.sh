@@ -72,7 +72,7 @@ mkdir -p "build-${CC}-${PROTOCOL}"
 cd "build-${CC}-${PROTOCOL}"
 
 # Try to ensure we're using the real g++ and clang++ versions we want
-mkdir bin
+mkdir -p bin
 
 export PATH=`pwd`/bin:$PATH
 echo "PATH is $PATH"
