@@ -147,7 +147,7 @@ TEST_CASE("resolve node id", "[config]")
 TEST_CASE("load validators config", "[config]")
 {
     Config c;
-    c.load(getSrcTestDataPath("stellar-core_example_validators.cfg"));
+    c.load(getBuildTestDataPath("stellar-core_example_validators.cfg"));
     auto actualS = c.toString(c.QUORUM_SET);
     std::string expected = R"({
    "t" : 4,
