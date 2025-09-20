@@ -120,7 +120,6 @@ if [ -d "$CCACHE_DIR" ] ; then
 fi
 
 ccache -p
-
 ccache -s
 date
 time (cd .. && ./autogen.sh)
