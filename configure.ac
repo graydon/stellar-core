@@ -5,7 +5,7 @@
 # under the Apache License, Version 2.0. See the COPYING file at the root
 # of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
-AC_PREREQ([2.68])
+AC_PREREQ([2.71])
 AC_INIT([stellar-core],[0.1],[],[],[http://www.stellar.org])
 # tar-ustar is required for long file names when libsodium is bundled
 AM_INIT_AUTOMAKE([-Wall -Wextra -Wconversion subdir-objects tar-ustar silent-rules])
@@ -226,6 +226,29 @@ AS_IF([test "x$enable_ccache" = "xyes"], [
       ;;
     *)
       CXX="ccache ${CXX}"
+      ;;
+  esac
+])
+
+AC_ARG_ENABLE([sccache],
+              AS_HELP_STRING([--enable-ccache], [build with sccache]))
+AS_IF([test "x$enable_sccache" = "xyes"], [
+  AC_CHECK_PROGS([SCCACHE], [sccache])
+  AS_IF([test -z "$SCCACHE"], [
+    AC_MSG_ERROR([sccache enabled but not found])
+  ])
+  case "$CC" in
+  *sccache\ *)
+      ;;
+  *)
+      CC="sccache ${CC}"
+      ;;
+  esac
+  case "$CXX" in
+    *sccache\ *)
+      ;;
+    *)
+      CXX="sccache ${CXX}"
       ;;
   esac
 ])

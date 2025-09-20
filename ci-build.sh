@@ -26,14 +26,6 @@ while [[ -n "$1" ]]; do
             export TEMP_POSTGRES=1
             echo Using temp database
             ;;
-    "--check-test-tx-meta")
-            if [[ -z "${PROTOCOL}" ]]; then
-                echo 'must specify --protocol before --check-test-tx-meta'
-                exit 1
-            fi
-            export TEST_SPEC='[tx]'
-            export STELLAR_CORE_TEST_PARAMS="--ll fatal -r simple --all-versions --rng-seed 12345 --check-test-tx-meta ${PWD}/test-tx-meta-baseline-${PROTOCOL}"
-            ;;
     "--protocol")
             PROTOCOL="$1"
             shift
@@ -61,15 +53,16 @@ while [[ -n "$1" ]]; do
 
 done
 
-echo $TRAVIS_PULL_REQUEST
-
 NPROCS=$(getconf _NPROCESSORS_ONLN)
 
 echo "Found $NPROCS processors"
 date
 
+mkdir -p "build-${CC}-${PROTOCOL}"
+cd "build-${CC}-${PROTOCOL}"
+
 # Try to ensure we're using the real g++ and clang++ versions we want
-mkdir bin
+mkdir -p bin
 
 export PATH=`pwd`/bin:$PATH
 echo "PATH is $PATH"
@@ -80,19 +73,19 @@ if test $CXX = 'clang++'; then
     # Use CLANG_VERSION environment variable if set, otherwise default to 12
     CLANG_VER=${CLANG_VERSION:-12}
     which clang-${CLANG_VER}
-    ln -s `which clang-${CLANG_VER}` bin/clang
+    ln -sf `which clang-${CLANG_VER}` bin/clang
     which clang++-${CLANG_VER}
-    ln -s `which clang++-${CLANG_VER}` bin/clang++
+    ln -sf `which clang++-${CLANG_VER}` bin/clang++
     which llvm-symbolizer-${CLANG_VER}
-    ln -s `which llvm-symbolizer-${CLANG_VER}` bin/llvm-symbolizer
+    ln -sf `which llvm-symbolizer-${CLANG_VER}` bin/llvm-symbolizer
     clang -v
     llvm-symbolizer --version || true
 elif test $CXX = 'g++'; then
     RUN_PARTITIONS=$(seq $NPROCS $((2*NPROCS-1)))
     which gcc-10
-    ln -s `which gcc-10` bin/gcc
+    ln -sf `which gcc-10` bin/gcc
     which g++-10
-    ln -s `which g++-10` bin/g++
+    ln -sf `which g++-10` bin/g++
     which g++
     g++ -v
 fi
@@ -111,11 +104,11 @@ export ASAN_OPTIONS="quarantine_size_mb=100:malloc_context_size=4:detect_leaks=0
 echo "config_flags = $config_flags"
 
 #### ccache config
-export CCACHE_DIR=$HOME/.ccache
+export CCACHE_DIR=$(pwd)/.ccache
 export CCACHE_COMPRESS=true
 export CCACHE_COMPRESSLEVEL=9
 # cache size should be large enough for a full build
-export CCACHE_MAXSIZE=500M
+export CCACHE_MAXSIZE=800M
 export CCACHE_CPP2=true
 
 # periodically check to see if caches are old and purge them if so
@@ -127,11 +120,10 @@ if [ -d "$CCACHE_DIR" ] ; then
 fi
 
 ccache -p
-
 ccache -s
 date
-time ./autogen.sh
-time ./configure $config_flags
+time (cd .. && ./autogen.sh)
+time ../configure $config_flags
 if [ -z "${SKIP_FORMAT_CHECK}" ]; then
     make format
     d=`git diff | wc -l`
@@ -156,8 +148,8 @@ time make -j$(($NPROCS - 1))
 
 ccache -s
 ### incrementally purge old content from cargo source cache and target directory
-cargo cache trim --limit 100M
-cargo sweep --maxsize 500MB
+# cargo cache trim --limit 100M # cargo now manages its cache itself
+(cd .. && CARGO_TARGET_DIR="build-${CC}-${PROTOCOL}/target" cargo sweep --maxsize 800MB)
 
 if [ $WITH_TESTS -eq 0 ] ; then
     echo "Build done, skipping tests"
@@ -182,7 +174,12 @@ export NUM_PARTITIONS=$((NPROCS*2))
 export RUN_PARTITIONS
 export RND_SEED=$(($(date +%s) / 86400))  # Convert to days since epoch
 echo "Using RND_SEED: $RND_SEED"
-ulimit -n 256
+ulimit -n 4096
+time make check
+
+echo Running fixed check-test-tx-meta tests
+export TEST_SPEC='[tx]'
+export STELLAR_CORE_TEST_PARAMS="--ll fatal -r simple --all-versions --rng-seed 12345 --check-test-tx-meta ${PWD}/../test-tx-meta-baseline-${PROTOCOL}"
 time make check
 
 echo All done
