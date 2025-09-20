@@ -71,8 +71,7 @@ jobs:
 
   build:
     runs-on:
-      - namespace-profile-jammy-32-stellar-core
-      - nscloud-cache-tag-cache-${{ matrix.toolchain }}-${{ matrix.protocol }}
+      - namespace-profile-jammy-32-stellar-core;overrides.cache-tag=config-${{ matrix.toolchain }}-${{ matrix.protocol }}
     strategy:
       fail-fast: false
       matrix:
