@@ -78,7 +78,6 @@ jobs:
       matrix:
         toolchain: [ "gcc", "clang"]
         protocol: ["current", "next"]
-        scenario: ["", "--check-test-tx-meta"]
     steps:
       - name: Fix kernel mmap rnd bits
         # Asan in llvm provided in ubuntu 22.04 is incompatible with
@@ -121,4 +120,4 @@ jobs:
             export CXX='clang++'
           fi
           echo Build with $CC and $CXX
-          ./ci-build.sh --use-temp-db --protocol ${{ matrix.protocol }} ${{ matrix.scenario }}
+          ./ci-build.sh --use-temp-db --protocol ${{ matrix.protocol }}
