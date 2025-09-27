@@ -69,7 +69,7 @@ echo "Found $NPROCS processors"
 date
 
 # Try to ensure we're using the real g++ and clang++ versions we want
-mkdir bin
+mkdir -p bin
 
 export PATH=`pwd`/bin:$PATH
 echo "PATH is $PATH"
@@ -80,19 +80,19 @@ if test $CXX = 'clang++'; then
     # Use CLANG_VERSION environment variable if set, otherwise default to 12
     CLANG_VER=${CLANG_VERSION:-12}
     which clang-${CLANG_VER}
-    ln -s `which clang-${CLANG_VER}` bin/clang
+    ln -sf `which clang-${CLANG_VER}` bin/clang
     which clang++-${CLANG_VER}
-    ln -s `which clang++-${CLANG_VER}` bin/clang++
+    ln -sf `which clang++-${CLANG_VER}` bin/clang++
     which llvm-symbolizer-${CLANG_VER}
-    ln -s `which llvm-symbolizer-${CLANG_VER}` bin/llvm-symbolizer
+    ln -sf `which llvm-symbolizer-${CLANG_VER}` bin/llvm-symbolizer
     clang -v
     llvm-symbolizer --version || true
 elif test $CXX = 'g++'; then
     RUN_PARTITIONS=$(seq $NPROCS $((2*NPROCS-1)))
     which gcc-10
-    ln -s `which gcc-10` bin/gcc
+    ln -sf `which gcc-10` bin/gcc
     which g++-10
-    ln -s `which g++-10` bin/g++
+    ln -sf `which g++-10` bin/g++
     which g++
     g++ -v
 fi
