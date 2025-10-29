@@ -6,6 +6,7 @@
 #include "crypto/SecretKey.h"
 #include "crypto/ShortHash.h"
 #include "util/GlobalChecks.h"
+#include "util/RandomEvictionCache.h"
 #include "util/UnorderedMap.h"
 #include <Tracy.hpp>
 #include <algorithm>
@@ -184,10 +185,11 @@ reinitializeAllGlobalStateWithSeedInternal(unsigned int seed)
 {
     lastGlobalSeed = seed;
     PubKeyUtils::clearVerifySigCache();
-    PubKeyUtils::maybeSeedVerifySigCache(seed);
+    PubKeyUtils::seedVerifySigCache(seed);
     srand(seed);
     getGlobalRandomEngine().seed(seed);
     randHash::initialize();
+    randomEvictionCacheSeed = seed;
 }
 
 void

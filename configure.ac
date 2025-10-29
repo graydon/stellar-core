@@ -5,7 +5,7 @@
 # under the Apache License, Version 2.0. See the COPYING file at the root
 # of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
-AC_PREREQ([2.68])
+AC_PREREQ([2.71])
 AC_INIT([stellar-core],[0.1],[],[],[http://www.stellar.org])
 # tar-ustar is required for long file names when libsodium is bundled
 AM_INIT_AUTOMAKE([-Wall -Wextra -Wconversion subdir-objects tar-ustar silent-rules])
@@ -230,6 +230,29 @@ AS_IF([test "x$enable_ccache" = "xyes"], [
   esac
 ])
 
+AC_ARG_ENABLE([sccache],
+              AS_HELP_STRING([--enable-ccache], [build with sccache]))
+AS_IF([test "x$enable_sccache" = "xyes"], [
+  AC_CHECK_PROGS([SCCACHE], [sccache])
+  AS_IF([test -z "$SCCACHE"], [
+    AC_MSG_ERROR([sccache enabled but not found])
+  ])
+  case "$CC" in
+  *sccache\ *)
+      ;;
+  *)
+      CC="sccache ${CC}"
+      ;;
+  esac
+  case "$CXX" in
+    *sccache\ *)
+      ;;
+    *)
+      CXX="sccache ${CXX}"
+      ;;
+  esac
+])
+
 # Permit user to enable AFL instrumentation
 AC_ARG_ENABLE([afl],
               AS_HELP_STRING([--enable-afl],
@@ -261,30 +284,7 @@ AS_IF([test "x$enable_afl" = "xyes"], [
 ])
 AM_CONDITIONAL([USE_AFL_FUZZ], [test "x$enable_afl" == "xyes"])
 
-# check to see if we need to append -lstdc++fs or -lc++fs to access
-# functionality from <filesystem> (for some reason this was thought
-# a good idea in gcc 8 and clang 8)
-AC_MSG_CHECKING([to see if <filesystem> works without any extra libs])
-AC_RUN_IFELSE([AC_LANG_PROGRAM([[#include <filesystem>]],
-	      [[return std::filesystem::exists(std::filesystem::path("hello"));]])],
-              [AC_MSG_RESULT([yes]); FS_WORKS=yes],
-              [AC_MSG_RESULT([no]); FS_WORKS=no])
-for testlib in -lstdc++fs -lc++fs; do
-    if test "$FS_WORKS" = "no"; then
-        fs_save_LIBS="$LIBS"
-        LIBS="$testlib $LIBS"
-        AC_MSG_CHECKING([to see if <filesystem> works with $testlib])
-        AC_RUN_IFELSE([AC_LANG_PROGRAM([[#include <filesystem>]],
-		      [[return std::filesystem::exists(std::filesystem::path("hello"));]])],
-                  [AC_MSG_RESULT([yes]); FS_WORKS=yes],
-                  [AC_MSG_RESULT([no]); FS_WORKS=no; LIBS="$fs_save_LIBS"])
-    fi
-done
-if test "$FS_WORKS" = "no"; then
-   AC_MSG_ERROR([C++17 <filesystem> does not work with any known linker flags])
-fi
-
-# prefer 10 as it's the one we use
+# prefer 12 as it's the one we use
 AC_CHECK_PROGS(CLANG_FORMAT, [clang-format-12 clang-format])
 AM_CONDITIONAL([USE_CLANG_FORMAT], [test "x$CLANG_FORMAT" != "x"])
 
