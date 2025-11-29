@@ -223,14 +223,91 @@ calculateOfferValue(int32_t priceN, int32_t priceD, int64_t maxSend,
     uint128_t receiveValue = bigMultiply(maxReceive, priceD);
     return std::min({sendValue, receiveValue});
 }
-
-// exchangeV10 is a system for crossing offers that provides guarantees
-// regarding the direction and magnitude of rounding errors:
+// ExchangeV10 is the core mathematical engine that determines how much of two
+// assets can be swapped between two parties given a specific price and a set of
+// constraints.
+//
+// Think of it as calculating the intersection of two parties' limitations to
+// find the "biggest possible trade" that is legal for both sides.
+//
+// The "Wheat" and "Sheep" Analogy
+// -------------------------------
+// The code uses "Wheat" and "Sheep" as generic names for the two assets being
+// traded to avoid confusion (like "buying" vs "selling" which depends on your
+// perspective).
+// * Wheat: The asset sitting in the order book (the "Maker" side).
+// * Sheep: The asset coming in from the transaction (the "Taker" side).
+//
+// The price
+// ----------
+// The price is expressed as "Sheep per Wheat", meaning how many units of
+// Sheep are needed to buy one unit of Wheat. If the price is greater than 1
+// (price.n > price.d), then it takes multiple Sheep for 1 wheat, in other words
+// Wheat is more valuable than Sheep. If the price is less than 1 (price.n <
+// price.d), then Sheep is more valuable than Wheat.
+//
+// The 4 Maximum Values
+// --------------------
+// A trade is constrained by four independent limits—two for each party. The
+// trade cannot exceed *any* of these.
+//
+// 1. maxWheatSend (Maker's Selling Limit):
+//    * The Maker cannot sell more Wheat than they actually have in their
+//      balance.
+//    * They also cannot sell more than the amount listed in their Offer.
+//
+// 2. maxSheepReceive (Maker's Buying Limit):
+//    * The Maker cannot receive more Sheep than their trustline limit allows
+//      (or INT64_MAX for native currency).
+//
+// 3. maxSheepSend (Taker's Selling Limit):
+//    * The Taker (you) cannot spend more Sheep than you have.
+//    * In a Path Payment, this is also limited by your destMin or sendMax.
+//
+// 4. maxWheatReceive (Taker's Buying Limit):
+//    * The Taker (you) cannot receive more Wheat than your trustline limit
+//      allows.
+//
+// What It Does
+// ------------
+// The function solves for two variables: wheatReceived and sheepSent.
+//
+// It effectively calculates:
+//
+// 1. Value of the maker's Wheat Offer in the book (in fractional Sheep,
+//    specifically units of "1/price.d Sheep", like if price = 3/2 that's 3
+//    Sheep per 2 Wheat, so price.d=2, the unit is "1/2 Sheep", and we express 1
+//    wheat as having a value of 3 of these half-Sheep units, keeping everything
+//    in integers).
+//      wheatValue = min(maxWheatSend * price.n, maxSheepReceive * price.d)
+//    (Limited by how much Wheat they have AND how much Sheep they can hold)
+//
+// 2. Value of the taker's new Sheep Offer (in fractional Sheep again):
+//      sheepValue = min(maxSheepSend * price.d, maxWheatReceive * price.n)
+//    (Limited by how much Sheep you have AND how much Wheat you can hold)
+//
+// 3. The Intersection: It compares these two values.
+//    * If WheatValue > SheepValue: The Maker has more to offer than you can
+//      take/afford. Wheat Stays in the book (partially filled). You trade based
+//      on *your* limits (SheepValue).
+//    * If SheepValue >= WheatValue: You have enough to buy everything they are
+//      offering. Wheat is Taken (fully filled). You trade based on *their*
+//      limits (WheatValue).
+//
+// Finally, it converts the resulting value back into exact integer amounts of
+// Wheat and Sheep, applying the rounding rules (round) to ensure the correct
+// party is favored by the inevitable tiny integer division errors.
+//
+// Unlike previous exchange functions. ExchangeV10 provides guarantees regarding
+// the direction and magnitude of rounding errors:
+//
 // - When considering two crossing offers subject to a variety of limits,
 //   exchangeV10 has a consistent approach to determining which offer is larger.
 //   The smaller offer is always removed from the book.
+//
 // - When two offers cross, the rounding error will favor the offer that remains
 //   in the book.
+//
 // - The rounding error will not favor either party by more than 1% (except in
 //   the case of path payment, where the rounding error can favor the offer in
 //   the book by an arbitrary amount). If the rounding error would exceed 1%,
