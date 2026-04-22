@@ -53,3 +53,7 @@
 [submodule "lib/gperftools"]
 	path = lib/gperftools
 	url = https://github.com/gperftools/gperftools.git
+[submodule "rs-stellar-xdr"]
+	path = rs-stellar-xdr
+	url = https://github.com/graydon/rs-stellar-xdr.git
+	branch = LazyXdr4

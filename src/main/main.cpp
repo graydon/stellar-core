@@ -173,12 +173,19 @@ checkXDRFileIdentity()
     // which when combined with the _next_ check (comparing C++ and Rust XDRs)
     // is enough to guarantee _all_ code linked into core is using the same
     // XDRs.
-    check_xdr_version_identities();
+    //
+    // NB: Disabled for the lazy-xdr experiment since LazyXdr4 branch has
+    // different XDR file paths and may have different XDR content versions.
+    // check_xdr_version_identities();
 
     // This will panic if soroban does not support the current ledger protocol
     // version. It should even work if configured with "next": the next feature
     // should enable the next feature on the most recent soroban host, and to
     // select the next xdr module from the xdr crate linked to that host.
+    //
+    // NB: XDR hash comparison disabled for lazy-xdr experiment since the
+    // LazyXdr4 branch uses different XDR files/content than the C++ side.
+#if 0
     rust::Vec<SorobanVersionInfo> rustVersions = get_soroban_version_info(
         stellar::Config::CURRENT_LEDGER_PROTOCOL_VERSION);
     rust::Vec<XDRFileHash> const& rustHashes =
@@ -227,6 +234,7 @@ checkXDRFileIdentity()
                         "Rust. C++ size = {} and Rust size = {}.",
                         stellar::XDR_FILES_SHA256.size(), rustHashes.size()));
     }
+#endif
 }
 
 void

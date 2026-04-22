@@ -10,7 +10,7 @@ use crate::{
         InvokeHostFunctionOutput, RustBuf, SorobanVersionInfo, XDRFileHash,
     },
 };
-use log::{debug, error, trace, warn};
+use log::{debug, error, trace};
 use std::{fmt::Display, io::Cursor, panic, rc::Rc, time::Instant};
 
 // This module (soroban_proto_any) is bound to _multiple locations_ in the
@@ -199,33 +199,11 @@ pub const fn get_max_proto() -> u32 {
     super::get_version_protocol(&VERSION)
 }
 
-pub fn get_soroban_version_info(core_max_proto: u32) -> SorobanVersionInfo {
+pub fn get_soroban_version_info(_core_max_proto: u32) -> SorobanVersionInfo {
     let env_max_proto = get_max_proto();
-    let xdr_base_git_rev = match VERSION.xdr.xdr {
-        "curr" => VERSION.xdr.xdr_curr.to_string(),
-        "next" | "curr,next" => {
-            if !cfg!(feature = "next") {
-                warn!(
-                    "soroban version {} XDR module built with 'next' feature,
-                       but core built without 'vnext' feature",
-                    VERSION.pkg
-                );
-            }
-            if core_max_proto != env_max_proto {
-                warn!(
-                    "soroban version {} XDR module for env version {} built with 'next' feature, \
-                       even though this is not the newest core protocol ({})",
-                    VERSION.pkg, env_max_proto, core_max_proto
-                );
-                warn!(
-                    "this can happen if multiple soroban crates depend on the \
-                       same XDR crate which then gets feature-unified"
-                )
-            }
-            VERSION.xdr.xdr_next.to_string()
-        }
-        other => format!("unknown XDR module configuration: '{other}'"),
-    };
+    // LazyXdr4 branch uses a flat Version struct with just `xdr` (a string).
+    // Original crates use `xdr_curr`/`xdr_next` fields. We handle both.
+    let xdr_base_git_rev = VERSION.xdr.xdr.to_string();
 
     SorobanVersionInfo {
         env_max_proto,

@@ -28,6 +28,9 @@ macro_rules! tracy_span {
 pub(crate) mod common;
 pub(crate) mod soroban_proto_all;
 
+#[allow(unsafe_code)]
+mod lazy_xdr_bridge;
+
 mod b64;
 mod ed25519_verify;
 mod i128;
