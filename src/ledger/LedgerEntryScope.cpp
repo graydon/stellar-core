@@ -4,7 +4,7 @@
 
 #include "ledger/LedgerEntryScope.h"
 #include "ledger/LedgerHashUtils.h"
-#include "rust/LazyXdrBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/types.h"
 #include "xdr/Stellar-ledger-entries.h"
 #include <cstddef>
@@ -16,14 +16,16 @@
 // LedgerEntryScopeID
 /////////////////////////////////////
 
-template <stellar::StaticLedgerEntryScope S>
+namespace stellar
+{
+template <StaticLedgerEntryScope S>
 std::ostream&
-operator<<(std::ostream& os, stellar::LedgerEntryScopeID<S> const& obj)
+operator<<(std::ostream& os, LedgerEntryScopeID<S> const& obj)
 {
     switch (S)
     {
 #define STATIC_SCOPE_MACRO(SCOPE_NAME) \
-    case stellar::StaticLedgerEntryScope::SCOPE_NAME: \
+    case StaticLedgerEntryScope::SCOPE_NAME: \
         os << #SCOPE_NAME; \
         break;
         FOREACH_STATIC_LEDGER_ENTRY_SCOPE(STATIC_SCOPE_MACRO)
@@ -34,6 +36,7 @@ operator<<(std::ostream& os, stellar::LedgerEntryScopeID<S> const& obj)
         os << " @ Ledger " << obj.mLedger;
     return os;
 }
+} // namespace stellar
 
 namespace fmt
 {

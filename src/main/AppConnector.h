@@ -8,7 +8,7 @@
 #include "ledger/ImmutableLedgerView.h"
 #include "main/Application.h"
 #include "main/Config.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 
 namespace stellar
 {

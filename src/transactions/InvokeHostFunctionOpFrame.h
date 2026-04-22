@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/OperationFrame.h"
 #include "xdr/Stellar-transaction.h"
 

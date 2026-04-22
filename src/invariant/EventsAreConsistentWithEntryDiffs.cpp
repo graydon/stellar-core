@@ -9,7 +9,7 @@
 #include "ledger/P23HotArchiveBug.h"
 #include "main/AppConnector.h"
 #include "main/Application.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/EventManager.h"
 #include "util/GlobalChecks.h"
 #include <fmt/format.h>

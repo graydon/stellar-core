@@ -10,7 +10,7 @@
 #include "ledger/LedgerTxnHeader.h"
 #include "ledger/LedgerTypeUtils.h"
 #include "ledger/TrustLineWrapper.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/MutableTransactionResult.h"
 #include "transactions/OfferExchange.h"
 #include "transactions/SponsorshipUtils.h"

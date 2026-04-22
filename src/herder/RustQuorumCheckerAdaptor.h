@@ -7,7 +7,7 @@
 #include "herder/QuorumTracker.h"
 #include "main/Config.h"
 #include "process/ProcessManager.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/MetricsRegistry.h"
 #include <optional>
 

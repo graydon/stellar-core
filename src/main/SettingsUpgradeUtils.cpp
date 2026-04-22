@@ -1,6 +1,6 @@
 #include "main/SettingsUpgradeUtils.h"
 #include "crypto/SHA.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/TransactionUtils.h"
 #include <xdrpp/autocheck.h>
 

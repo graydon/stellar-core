@@ -5,7 +5,7 @@
 #include "ledger/SharedModuleCacheCompiler.h"
 #include "crypto/Hex.h"
 #include "crypto/SHA.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/Logging.h"
 #include "xdr/Stellar-ledger-entries.h"
 #include <chrono>

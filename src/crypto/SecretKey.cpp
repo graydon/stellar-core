@@ -11,7 +11,7 @@
 #include "crypto/Random.h"
 #include "crypto/StrKey.h"
 #include "main/Config.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/SignatureUtils.h"
 #include "util/GlobalChecks.h"
 #include "util/HashOfHash.h"

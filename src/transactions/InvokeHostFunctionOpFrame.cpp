@@ -27,7 +27,7 @@
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTypeUtils.h"
 #include "ledger/P23HotArchiveBug.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/InvokeHostFunctionOpFrame.h"
 #include "transactions/MutableTransactionResult.h"
 #include "transactions/ParallelApplyUtils.h"

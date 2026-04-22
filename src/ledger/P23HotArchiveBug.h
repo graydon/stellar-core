@@ -7,7 +7,7 @@
 #include <optional>
 #include <vector>
 
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/UnorderedMap.h"
 #include "util/UnorderedSet.h"
 

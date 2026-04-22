@@ -5,7 +5,7 @@
 #include "ledger/LedgerTypeUtils.h"
 #include "crypto/SHA.h"
 #include "ledger/NetworkConfig.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/GlobalChecks.h"
 #include "util/types.h"
 #include "xdr/Stellar-types.h"

@@ -13,7 +13,7 @@
 #include "ledger/SharedModuleCacheCompiler.h"
 #include "ledger/SorobanMetrics.h"
 #include "main/ApplicationImpl.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/ParallelApplyStage.h"
 #include "transactions/ParallelApplyUtils.h"
 #include "transactions/TransactionFrame.h"

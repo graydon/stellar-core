@@ -5,7 +5,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "xdr/Stellar-ledger-entries.h"
-#include "rust/LazyXdrBridge.h"
+#include "rust/MergedBridge.h"
 #include <cstdint>
 #include <functional>
 #include <iosfwd>

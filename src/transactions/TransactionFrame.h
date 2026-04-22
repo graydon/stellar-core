@@ -8,7 +8,7 @@
 #include "ledger/NetworkConfig.h"
 #include "main/Config.h"
 #include "overlay/StellarXDR.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/TransactionFrameBase.h"
 #include "util/GlobalChecks.h"
 #include "util/types.h"

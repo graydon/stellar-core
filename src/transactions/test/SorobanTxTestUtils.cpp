@@ -5,7 +5,7 @@
 #include "SorobanTxTestUtils.h"
 #include "ledger/ImmutableLedgerView.h"
 #include "ledger/LedgerTypeUtils.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "test/Catch2.h"
 #include "test/TestAccount.h"
 #include "test/TestUtils.h"

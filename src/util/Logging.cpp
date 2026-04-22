@@ -16,7 +16,7 @@
 #include <spdlog/spdlog.h>
 #endif
 
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 
 namespace stellar
 {

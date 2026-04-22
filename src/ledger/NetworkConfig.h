@@ -6,7 +6,7 @@
 
 #include "ledger/LedgerTxn.h"
 #include "main/Config.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/TxResource.h"
 #include <cstdint>
 #include <deque>

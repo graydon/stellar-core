@@ -9,7 +9,7 @@
 #include "herder/QuorumIntersectionChecker.h"
 #include "medida/meter.h"
 #include "process/ProcessManager.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "scp/LocalNode.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Logging.h"

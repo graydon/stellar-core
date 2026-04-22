@@ -3,7 +3,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "util/Backtrace.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/GlobalChecks.h"
 #include <cstdio>
 #include <cstdlib>

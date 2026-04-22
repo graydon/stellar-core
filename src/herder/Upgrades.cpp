@@ -18,7 +18,7 @@
 #include "ledger/NetworkConfig.h"
 #include "ledger/TrustLineWrapper.h"
 #include "main/Config.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/OfferExchange.h"
 #include "transactions/SponsorshipUtils.h"
 #include "transactions/TransactionUtils.h"

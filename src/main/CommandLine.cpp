@@ -31,7 +31,7 @@
 #include "main/StellarCoreVersion.h"
 #include "main/dumpxdr.h"
 #include "overlay/OverlayManager.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "scp/QuorumSetUtils.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Logging.h"

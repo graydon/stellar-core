@@ -5,7 +5,7 @@
 #pragma once
 
 #include "ledger/ImmutableLedgerView.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/NonCopyable.h"
 #include "xdrpp/types.h"
 

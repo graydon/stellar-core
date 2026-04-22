@@ -32,7 +32,7 @@
 #include "main/Application.h"
 #include "main/Config.h"
 #include "main/ErrorMessages.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/MutableTransactionResult.h"
 #include "transactions/OperationFrame.h"
 #include "transactions/ParallelApplyUtils.h"

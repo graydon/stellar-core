@@ -10,7 +10,7 @@
 #include "ledger/LedgerCloseMetaFrame.h"
 #include "ledger/NetworkConfig.h"
 #include "main/ApplicationImpl.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "transactions/TransactionMeta.h"
 #include <memory>
 

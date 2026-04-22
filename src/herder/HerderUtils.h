@@ -5,7 +5,7 @@
 #pragma once
 
 #include "herder/QuorumIntersectionChecker.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "xdr/Stellar-types.h"
 #include "xdrpp/marshal.h"
 #include <vector>

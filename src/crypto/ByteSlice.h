@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include <cstdint>
 #include <string>
 #include <vector>

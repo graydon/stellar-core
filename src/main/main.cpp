@@ -8,7 +8,7 @@
 #include "main/CommandLine.h"
 #include "main/Config.h"
 #include "main/StellarCoreVersion.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "util/Backtrace.h"
 #include "util/FileSystemException.h"
 #include "util/Logging.h"

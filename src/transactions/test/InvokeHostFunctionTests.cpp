@@ -25,7 +25,7 @@
 #include "main/Application.h"
 #include "main/CommandHandler.h"
 #include "main/SettingsUpgradeUtils.h"
-#include "rust/RustBridge.h"
+#include "rust/MergedBridge.h"
 #include "test/Catch2.h"
 #include "test/TestAccount.h"
 #include "test/TestUtils.h"
