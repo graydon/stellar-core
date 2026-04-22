@@ -29,6 +29,49 @@ I know this is a lot! You're going to have to make a written plan for it and pro
 
 ## Research Summary
 
+### CXX Bridge Constraints (discovered during implementation)
+
+CXX 1.0.97 has a key limitation: it **cannot** handle `Vec<Box<OpaqueType>>`
+in bridge signatures. This means you can't pass e.g.
+`Vec<Box<LazyLedgerEntry>>` across the bridge. The solution is
+**boxed-opaque-vector-of-opaque-handle wrapper types** (`VecW` wrappers):
+
+```rust
+// CXX CANNOT handle this:
+//   fn foo(entries: &Vec<Box<LazyLedgerEntryW>>) -> ...
+
+// Instead, define a wrapper:
+pub struct LazyLedgerEntryVecW(Vec<stellar_xdr::LazyLedgerEntry>);
+
+// With methods accessible via CXX:
+impl LazyLedgerEntryVecW {
+    fn push(&mut self, h: Box<LazyLedgerEntryW>) { self.0.push(h.0); }
+    fn len(&self) -> usize { self.0.len() }
+    fn get(&self, i: usize) -> Box<LazyLedgerEntryW> { ... }
+}
+
+// And pass as Box<LazyLedgerEntryVecW> across the bridge:
+fn foo(entries: &LazyLedgerEntryVecW) -> ...
+```
+
+The code generator in `rs-stellar-xdr` (cxx_bridge.rs.jinja) already emits
+these VecW wrappers automatically for every bridge type. The five bridge
+types are: `ScVal`, `LedgerEntry`, `LedgerKey`, `HostFunction`,
+`SorobanAuthorizationEntry`. Each gets both a `LazyFooW` wrapper (for
+single handles) and a `LazyFooVecW` wrapper (for collections).
+
+### Progress Status
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1. Dependency Wiring | ✅ Done | LazyXdr4 stellar-xdr wired in |
+| 2. Build System / CXX Bridge | ✅ Done | Code gen, Makefile rules, VecW wrappers, snake_case |
+| 3a-c. Rust Bridge Layer (types) | 🔧 In Progress | Types defined; need invoke_host_function_lazy() |
+| 5. C++ Parallel Framework | ❌ Not Started | **Creates lazy handles at phase entry** |
+| 3+5. Integration (OpFrame→bridge) | ❌ Not Started | OpFrame passes pre-existing handles through |
+| 4. Soroban Host Modifications | ❌ Not Started | |
+| 6. End-to-End Test | ❌ Not Started | |
+
 ### Current Architecture (how data flows today)
 
 **C++ → Rust (entry):**
@@ -109,7 +152,7 @@ Provides:
 
 ---
 
-### Phase 1: Dependency Wiring
+### Phase 1: Dependency Wiring ✅ COMPLETE
 
 **Goal**: Wire up the LazyXdr4 stellar-xdr crate as the XDR dependency for
 p26 soroban and for the main stellar-core Rust crate.
@@ -133,7 +176,7 @@ p26 soroban and for the main stellar-core Rust crate.
 - `src/rust/Cargo.toml`
 - `src/rust/soroban/p26/Cargo.lock`
 
-### Phase 2: Build System — CXX Bridge for Lazy Types
+### Phase 2: Build System — CXX Bridge for Lazy Types ✅ COMPLETE
 
 **Goal**: Generate a second cxx bridge module from the LazyXdr4-generated types
 so that C++ can hold and manipulate `Box<LazyLedgerEntry>`, `Box<LazyLedgerKey>`,
@@ -165,62 +208,99 @@ and returns lazy XDR handles directly — no CxxBuf intermediary. The C++ side
 holds `rust::Box<LazyLedgerEntry>` etc. throughout the parallel phase and
 passes vectors of those opaque handle boxes straight into this function.
 
-**Steps:**
-1. New bridge function in `bridge.rs`:
-   ```rust
-   fn invoke_host_function_lazy(
-       config_max_protocol: u32,
-       enable_diagnostics: bool,
-       instruction_limit: u32,
-       hf: &Box<LazyHostFunction>,                    // contains LazyScVal args
-       resources_buf: CxxBuf,                          // SorobanResources — small, ok eager
-       source_account_buf: &CxxBuf,
-       auth_entries: &Vec<Box<LazySorobanAuthorizationEntry>>,  // opaque handles
-       ledger_info: CxxLedgerInfo,
-       ledger_entries: &Vec<Box<LazyLedgerEntry>>,     // opaque handles from C++
-       ttl_entries: &Vec<Box<LazyLedgerEntry>>,        // opaque handles from C++
-       base_prng_seed: &CxxBuf,
-       rent_fee_configuration: CxxRentFeeConfiguration,
-       module_cache: &SorobanModuleCache,
-   ) -> Result<InvokeHostFunctionOutputLazy>
-   ```
-   `LazyHostFunction` is important because it contains the `LazyScVal` args
-   passed as contract invocation arguments — these may be large and are
-   reused across re-invocations. Auth entries similarly contain ScVals and
-   are reused/shared between transactions.
-2. New output type `InvokeHostFunctionOutputLazy`:
-   ```rust
-   struct InvokeHostFunctionOutputLazy {
-       success: bool,
-       is_internal_error: bool,
-       diagnostic_events: Vec<RustBuf>,                // small, ok as bytes
-       cpu_insns: u64,
-       mem_bytes: u64,
-       time_nsecs: u64,
-       result_value: Box<LazyScVal>,                   // opaque handle
-       modified_ledger_entries: Vec<Box<LazyLedgerEntry>>,  // opaque handles
-       contract_events: Vec<RustBuf>,                  // small, ok as bytes
-       rent_fee: i64,
-   }
-   ```
-   Handles come back as `Box<LazyFoo>` — C++ holds them directly, no
-   deserialization needed. C++ can re-form `rust::Vec<rust::Box<LazyLedgerEntry>>`
-   to pass into the next transaction or store in the parallel state maps.
-3. In `soroban_proto_any.rs` (p26 only): new function that takes the lazy
-   handles directly, passes them into the modified host, and returns lazy
-   handles for output.
-4. **Protocol dispatch on C++ side**, not in `soroban_proto_all.rs`:
-   - C++ checks protocol version
-   - If p26+: calls `invoke_host_function_lazy()` passing the lazy handles
-     it already holds
-   - If older: extracts backing bytes from lazy handles via
-     `lazy_xdr_bytes()` → forms CxxBuf → calls old `invoke_host_function()`
+**STATUS**: Mid-way through. The lazy XDR bridge types and code generator
+are complete and building (see Phase 2 status). The remaining work is to
+wire these types into the actual invocation path.
+
+#### What's been done in Phase 3 so far:
+
+1. **CXX VecW wrapper pattern established**: CXX 1.0.97 cannot handle
+   `Vec<Box<OpaqueType>>` directly in bridge signatures. We solved this by
+   defining special-purpose vector wrapper types (`LazyScValVecW`,
+   `LazyLedgerEntryVecW`, `LazyLedgerKeyVecW`, `LazyHostFunctionVecW`,
+   `LazySorobanAuthorizationEntryVecW`) that wrap `Vec<LazyFoo>` internally
+   and expose `push/pop/len/get` methods across the bridge. These are
+   passed as `Box<LazyFooVecW>` across the bridge boundary. The code
+   generator in `rs-stellar-xdr` emits all of these automatically for the
+   bridge types listed in `LAZY_XDR_BRIDGE_TYPES`.
+
+2. **Snake_case naming**: All bridge functions use snake_case naming
+   (e.g. `new_lazy_sc_val()`, `lazy_ledger_entry_xdr_bytes()`,
+   `lazy_sc_val_as_contract_instance()`). The generator uses heck's
+   `to_snake_case()` via a `lazy_snake_name` field.
+
+3. **LedgerEntryScope.h/cpp**: Already includes `LazyXdrBridge.h` and has
+   template declarations for `LazyScopedLedgerEntry<S>` /
+   `LazyScopedLedgerEntryOpt<S>` that wrap `rust::Box<LazyLedgerEntry>`.
+   Methods like `scopeAdoptLazyEntry()`, `scopeReadLazyEntry()` exist.
+
+#### What remains in Phase 3:
+
+**IMPORTANT**: Phase 3 is about wiring the Rust bridge function and its
+types. It is NOT about constructing lazy handles — that happens earlier, in
+Phase 5, when entries first enter the parallel execution phase. By the time
+`invoke_host_function_lazy()` is called, the C++ side already holds lazy
+handles that were created at parallel-phase setup and have been flowing
+through the parallel state maps untouched. Phase 3 just defines the bridge
+function that accepts those pre-existing handles.
+
+**Step 3a**: Add `invoke_host_function_lazy()` to `bridge.rs`.
+
+Because CXX cannot handle `Vec<Box<Opaque>>`, the lazy invocation function
+uses boxed VecW wrapper types for all vector-of-opaque parameters:
+
+```rust
+fn invoke_host_function_lazy(
+    config_max_protocol: u32,
+    enable_diagnostics: bool,
+    instruction_limit: u32,
+    hf: &LazyHostFunctionW,                               // single opaque handle
+    resources_buf: CxxBuf,                                 // SorobanResources — small, ok eager
+    restored_rw_entry_indices: &Vec<u32>,
+    source_account_buf: &CxxBuf,
+    auth_entries: &LazySorobanAuthorizationEntryVecW,      // VecW wrapper (not Vec<Box<>>)
+    ledger_info: CxxLedgerInfo,
+    ledger_entries: &LazyLedgerEntryVecW,                  // VecW wrapper
+    ttl_entries: &LazyLedgerEntryVecW,                     // VecW wrapper
+    base_prng_seed: &CxxBuf,
+    rent_fee_configuration: CxxRentFeeConfiguration,
+    module_cache: &SorobanModuleCache,
+) -> Result<InvokeHostFunctionOutputLazy>
+```
+
+**Step 3b**: Define `InvokeHostFunctionOutputLazy` output type.
+
+Similarly, output vectors use VecW wrappers:
+```rust
+struct InvokeHostFunctionOutputLazy {
+    success: bool,
+    is_internal_error: bool,
+    diagnostic_events: Vec<RustBuf>,                       // small, ok as bytes
+    cpu_insns: u64,
+    mem_bytes: u64,
+    time_nsecs: u64,
+    cpu_insns_excluding_vm_instantiation: u64,
+    time_nsecs_excluding_vm_instantiation: u64,
+    result_value: Box<LazyScValW>,                         // opaque handle
+    modified_ledger_entries: Box<LazyLedgerEntryVecW>,     // VecW wrapper
+    contract_events: Vec<RustBuf>,                         // small, ok as bytes
+    rent_fee: i64,
+}
+```
+C++ accesses `modified_ledger_entries` via `->len()` / `->get(i)`.
+
+**Step 3c**: Implement the Rust-side dispatch.
+
+In `soroban_proto_any.rs` (p26 only): new function that unwraps the VecW
+wrappers → extracts the inner `Vec<LazyFoo>` types → passes them into the
+modified host → wraps the output back into VecW wrappers for return.
 
 **Files to modify:**
-- `src/rust/src/bridge.rs`
-- `src/rust/src/soroban_invoke.rs`
-- `src/rust/src/soroban_proto_any.rs` (p26 version)
-- `src/rust/src/soroban_proto_all.rs` (new p26-specific entry)
+- `src/rust/src/bridge.rs` — new lazy bridge function declaration
+- `src/rust/src/lazy_xdr_bridge.rs` — may need additional imports/re-exports
+- `src/rust/src/soroban_invoke.rs` — new lazy invocation path
+- `src/rust/src/soroban_proto_any.rs` (p26 version) — impl for lazy path
+- `src/rust/src/soroban_proto_all.rs` — new p26-specific lazy entry
 
 ### Phase 4: Soroban Host (p26) — Eliminate HostObject, Use Lazy Everywhere
 
@@ -291,33 +371,69 @@ primary representation in the entire parallel execution framework. C++ never
 unpacks these into C++ XDR structs during the parallel phase — it just holds
 the opaque boxes and passes them around.
 
+**CRITICAL DESIGN POINT**: Lazy handles are created ONCE, at the boundary
+where entries first enter the parallel execution phase (from bucket list /
+LedgerTxn / InMemorySorobanState). After that point, no more
+serialization or deserialization happens until final commit. The handles
+propagate through:
+
+```
+Entry loading (XDR bytes → lazy handle)          ← ONLY ser/deser point
+  → GlobalParallelApplyLedgerState maps          (holds lazy handles)
+    → ThreadParallelApplyLedgerState maps        (holds lazy handles)
+      → TxParallelApplyLedgerState maps          (holds lazy handles)
+        → InvokeHostFunctionOpFrame              (receives lazy handles from maps)
+          → invoke_host_function_lazy()          (passes handles straight through)
+            → soroban host Storage               (holds lazy handles internally)
+          ← returns modified lazy handles
+        ← stores modified handles back into maps
+      ← merges handles back up
+    ← merges handles back up
+  → Final commit (lazy handle → XDR bytes → C++ LedgerEntry) ← ONLY deser point
+```
+
+The key insight: InvokeHostFunctionOpFrame does NOT construct lazy handles.
+It receives them from the parallel state maps, assembles a VecW wrapper,
+and passes the wrapper straight through to `invoke_host_function_lazy()`.
+Modified entries come back as lazy handles and go straight back into the
+maps. No XDR bytes are touched.
+
 **Steps:**
 1. **Entry maps**: Change the entry type in the parallel state hierarchy:
    - `ParallelApplyEntryMap` currently holds `LedgerEntry` (C++ XDR struct)
-   - Change to hold `rust::Box<LazyLedgerEntry>` (or a thin C++ wrapper)
+   - Change to hold `rust::Box<LazyLedgerEntry>` (or a thin C++ wrapper
+     like the `LazyScopedLedgerEntry<S>` already defined in LedgerEntryScope)
    - The wrapper owns the `rust::Box` and provides move semantics
    - Similarly for LedgerKey: hold `rust::Box<LazyLedgerKey>`
-2. **Entry loading**: When entries first enter the parallel phase (from
-   `ApplyLedgerView` or `InMemorySorobanState`):
+2. **Entry loading (the ONE point where lazy handles are created)**:
+   When entries first enter the parallel phase (from `ApplyLedgerView` or
+   `InMemorySorobanState`):
    - Serialize to XDR bytes (as today when loading from bucket list)
-   - Call `lazy_ledger_entry_from_bytes(bytes)` → get `rust::Box<LazyLedgerEntry>`
-   - This is the **only** point where lazy handles are formed
-   - From here on, the handle is reused across transactions in the same
-     cluster/stage — no re-serializing or re-wrapping
-3. **Entry writing**: When committing changes back to `AbstractLedgerTxn`
-   (at the end of the parallel phase):
-   - Call `lazy_xdr_bytes(handle)` to extract the backing `&[u8]`
-   - Deserialize to C++ XDR struct for the LedgerTxn write (only at final commit)
-   - This is the **only** point where C++ XDR structs are formed from lazy data
-4. **InvokeHostFunctionOpFrame** changes:
+   - Call `new_lazy_ledger_entry(bytes)` → get `rust::Box<LazyLedgerEntry>`
+   - This is the **ONLY** point where lazy handles are formed from raw bytes
+   - From here on, the handle is reused across all transactions in the same
+     cluster/stage — no re-serializing or re-wrapping ever
+3. **InvokeHostFunctionOpFrame** changes:
    - `invokeHostFunction()` receives lazy handles from the entry maps
-   - Assembles `rust::Vec<rust::Box<LazyLedgerEntry>>` from the map entries
-   - Protocol check: if p26+, pass vector of handles directly to
+     (NOT XDR bytes, NOT C++ LedgerEntry structs — just the handles)
+   - Builds `Box<LazyLedgerEntryVecW>` via `new_lazy_ledger_entry_vec()`
+     and pushes pre-existing handles into it (cheap clone of Arc)
+   - Similarly builds VecW wrappers for auth entries, host function, etc.
+   - Protocol check: if p26+, pass VecW wrappers directly to
      `invoke_host_function_lazy()` — handles go straight through to host
-   - If older: for each handle, call `lazy_xdr_bytes()` → form `CxxBuf` →
-     call old `invoke_host_function()` (temporary copy, back-compat only)
-   - Output (p26+): receives `Vec<Box<LazyLedgerEntry>>` back — stores
-     handles directly into the entry maps for the next transaction
+   - If older: for each handle, call `lazy_ledger_entry_xdr_bytes()` →
+     form `CxxBuf` → call old `invoke_host_function()` (temporary copy,
+     back-compat only — this is the ONLY case where bytes are extracted
+     during the parallel phase)
+   - Output (p26+): receives `Box<LazyLedgerEntryVecW>` back — iterates
+     via `.len()` / `.get(i)` and stores handles directly into the entry
+     maps. These handles then flow to the next transaction untouched.
+4. **Entry writing (the ONE point where lazy handles are decoded)**:
+   When committing changes back to `AbstractLedgerTxn` (at the end of
+   the parallel phase):
+   - Call `lazy_ledger_entry_xdr_bytes(handle)` to extract the backing `&[u8]`
+   - Deserialize to C++ XDR struct for the LedgerTxn write
+   - This is the **ONLY** point where C++ XDR structs are formed from lazy data
 5. **TTL entries**: Same treatment — `rust::Box<LazyLedgerEntry>` for TTL entries
    (TTL entries are just LedgerEntry with TtlEntry data, same lazy type)
 
@@ -355,21 +471,28 @@ test running end-to-end with the lazy XDR path, and compare performance.
 ## Execution Order
 
 ```
-Phase 1 (Dep Wiring)
-  → Phase 2 (Build System / Bridge)
-     → Phase 3 (Rust Bridge Layer)
-        → Phase 4 (Host Gutting — parallel with Phase 5)
-        → Phase 5 (C++ Parallel Framework — parallel with Phase 4)
-           → Phase 6 (End-to-End Test)
+Phase 1 (Dep Wiring) ✅
+  → Phase 2 (Build System / Bridge) ✅
+     → Phase 3a-c (Rust Bridge Layer — define types & function) 🔧
+     → Phase 5 (C++ Parallel Framework — lazy handles originate here)
+        → Phase 3 + 5 integration (InvokeHostFunctionOpFrame passes
+           pre-existing handles through to invoke_host_function_lazy)
+     → Phase 4 (Host Gutting — parallel with above)
+        → Phase 6 (End-to-End Test)
 ```
 
-**Recommended order**: 1 → 2 → 3 → 4+5 (interleaved) → 6
+**Recommended order**: 1 → 2 → 3a-c + 5 (interleaved) → 4 → 6
 
-Start with dependency wiring and build system since everything else depends
-on having the lazy types available. Then the Rust bridge layer. Then the two
-big pieces (host modifications + C++ framework) can be done somewhat in
-parallel since they're on opposite sides of the bridge. Finally wire up an
-end-to-end test.
+Phase 3 (Rust bridge function) and Phase 5 (C++ parallel framework) are
+**co-dependent**: the bridge function defines the types that the framework
+passes, and the framework is what creates and holds the handles that flow
+into the bridge function. They should be developed together.
+
+The key invariant: **lazy handles are created once at parallel-phase entry
+(Phase 5 step 2) and decoded once at parallel-phase exit (Phase 5 step 4).
+Everything in between — the parallel state maps, InvokeHostFunctionOpFrame,
+the Rust bridge, and the soroban host — just passes handles around without
+touching XDR bytes.**
 
 ---
 
