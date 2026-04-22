@@ -26,7 +26,7 @@ ed25519-dalek = "2.1.1"
 
 # LazyXdr types from the LazyXdr4 branch of rs-stellar-xdr, used for the
 # lazy XDR experiment. These types cross the cxx bridge as opaque handles.
-stellar-xdr = { path = "../../rs-stellar-xdr", default-features = false, features = ["std"] }
+stellar-xdr = { path = "rs-stellar-xdr", default-features = false, features = ["std"] }
 
 # NB: tracy is quite particular about version compatibility. There must only be
 # one _implementation_ of the C++ tracy symbols in the final binary (brought in

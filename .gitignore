@@ -112,6 +112,9 @@ min-testcases/
 /target
 **/target/
 /ra-target
+/src/rust/src/lazy_xdr_bridge.rs
+/src/rust/LazyXdrBridge.cpp
+/src/rust/LazyXdrBridge.h
 /src/rust/RustBridge.cpp
 /src/rust/RustBridge.h
 /src/rust/.crates.toml

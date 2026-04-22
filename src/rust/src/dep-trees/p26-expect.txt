@@ -255,7 +255,7 @@ soroban-env-host v26.0.0 (src/rust/soroban/p26/soroban-env-host)
 │   │   │   ├── serde v1.0.228 (*)
 │   │   │   ├── serde_core v1.0.228 (*)
 │   │   │   └── zmij v1.0.21
-│   │   ├── stellar-xdr v26.0.0 (rs-stellar-xdr)
+│   │   ├── stellar-xdr v26.0.0 (src/rust/rs-stellar-xdr)
 │   │   │   ├── escape-bytes v0.1.1
 │   │   │   ├── ethnum v1.5.3
 │   │   │   ├── hex v0.4.3
@@ -282,7 +282,7 @@ soroban-env-host v26.0.0 (src/rust/soroban/p26/soroban-env-host)
 │   │   └── wasmparser-nostd v0.100.2
 │   │       └── indexmap-nostd v0.4.0
 │   ├── static_assertions v1.1.0
-│   ├── stellar-xdr v26.0.0 (rs-stellar-xdr)
+│   ├── stellar-xdr v26.0.0 (src/rust/rs-stellar-xdr)
 │   │   ├── base64 v0.22.1
 │   │   ├── escape-bytes v0.1.1
 │   │   ├── ethnum v1.5.3

@@ -5,6 +5,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "xdr/Stellar-ledger-entries.h"
+#include "rust/LazyXdrBridge.h"
 #include <cstdint>
 #include <functional>
 #include <iosfwd>
@@ -238,6 +239,8 @@ static_assert(
 
 template <StaticLedgerEntryScope T> class LedgerEntryScope;
 template <StaticLedgerEntryScope S> class ScopedLedgerEntryOpt;
+template <StaticLedgerEntryScope S> class LazyScopedLedgerEntry;
+template <StaticLedgerEntryScope S> class LazyScopedLedgerEntryOpt;
 
 template <StaticLedgerEntryScope S> class ScopedLedgerEntry
 {
@@ -388,6 +391,48 @@ template <StaticLedgerEntryScope S> class LedgerEntryScope
     OptionalEntryT
     scopeAdoptEntryOpt(std::optional<LedgerEntry> const& entry) const;
 
+    // Adopt a lazy entry (Rust-side handle) into this scope.
+    using LazyEntryT = LazyScopedLedgerEntry<S>;
+    using LazyOptionalEntryT = LazyScopedLedgerEntryOpt<S>;
+
+    LazyEntryT scopeAdoptLazyEntry(
+        rust::Box<stellar::lazy_xdr::LazyLedgerEntry> entry) const;
+    LazyOptionalEntryT scopeAdoptLazyEntryOpt(
+        std::unique_ptr<rust::Box<stellar::lazy_xdr::LazyLedgerEntry>> entry)
+        const;
+
+    // Read a lazy entry in this scope.
+    stellar::lazy_xdr::LazyLedgerEntry const&
+    scopeReadLazyEntry(LazyEntryT const& w) const;
+    stellar::lazy_xdr::LazyLedgerEntry const*
+    scopeReadLazyOptionalEntry(LazyOptionalEntryT const& w) const;
+
+    template <StaticLedgerEntryScope OtherScope>
+    LazyEntryT
+    scopeAdoptLazyEntryFrom(LazyScopedLedgerEntry<OtherScope>&& entry,
+                            LedgerEntryScope<OtherScope> const& scope) const
+    {
+        static_assert(
+            IsValidScopeAdoption<S, OtherScope>::value,
+            "Invalid scope adoption: this transition is not allowed. "
+            "Check FOR_EACH_VALID_SCOPE_ADOPTION in LedgerEntryScope.h "
+            "for the list of valid transitions.");
+        return scopeAdoptLazyEntryFromImpl(std::move(entry), scope);
+    }
+
+    template <StaticLedgerEntryScope OtherScope>
+    LazyOptionalEntryT
+    scopeAdoptLazyEntryOptFrom(LazyScopedLedgerEntryOpt<OtherScope>&& entry,
+                               LedgerEntryScope<OtherScope> const& scope) const
+    {
+        static_assert(
+            IsValidScopeAdoption<S, OtherScope>::value,
+            "Invalid scope adoption: this transition is not allowed. "
+            "Check FOR_EACH_VALID_SCOPE_ADOPTION in LedgerEntryScope.h "
+            "for the list of valid transitions.");
+        return scopeAdoptLazyEntryOptFromImpl(std::move(entry), scope);
+    }
+
     template <StaticLedgerEntryScope OtherScope>
     EntryT
     scopeAdoptEntryFrom(ScopedLedgerEntry<OtherScope> const& entry,
@@ -424,6 +469,18 @@ template <StaticLedgerEntryScope S> class LedgerEntryScope
     OptionalEntryT
     scopeAdoptEntryOptFromImpl(ScopedLedgerEntryOpt<OtherScope> const& entry,
                                LedgerEntryScope<OtherScope> const& scope) const;
+
+    template <StaticLedgerEntryScope OtherScope>
+    LazyEntryT
+    scopeAdoptLazyEntryFromImpl(
+        LazyScopedLedgerEntry<OtherScope>&& entry,
+        LedgerEntryScope<OtherScope> const& scope) const;
+
+    template <StaticLedgerEntryScope OtherScope>
+    LazyOptionalEntryT
+    scopeAdoptLazyEntryOptFromImpl(
+        LazyScopedLedgerEntryOpt<OtherScope>&& entry,
+        LedgerEntryScope<OtherScope> const& scope) const;
 };
 
 template <StaticLedgerEntryScope S> class DeactivateScopeGuard
@@ -435,12 +492,121 @@ template <StaticLedgerEntryScope S> class DeactivateScopeGuard
     ~DeactivateScopeGuard();
 };
 
+// LazyScopedLedgerEntry wraps a rust::Box<LazyLedgerEntry> -- an opaque
+// Rust-side handle to serialized XDR bytes -- with the same scope tracking as
+// ScopedLedgerEntry. The entry data lives on the Rust heap and is never copied
+// to C++; only the handle (a pointer) is moved around. The raw XDR bytes can
+// be accessed zero-copy via lazy_ledger_entry_xdr_bytes().
+//
+// Unlike ScopedLedgerEntry, this type is move-only (rust::Box is not copyable).
+// Use lazy_ledger_entry_clone() to create explicit copies when needed.
+template <StaticLedgerEntryScope S> class LazyScopedLedgerEntry
+{
+    static constexpr StaticLedgerEntryScope staticScope = S;
+    using ScopeIdT = LedgerEntryScopeID<S>;
+
+    rust::Box<stellar::lazy_xdr::LazyLedgerEntry> mEntry;
+
+    friend class LedgerEntryScope<S>;
+    friend class LazyScopedLedgerEntryOpt<S>;
+#define FRIEND_MACRO(SCOPE) \
+    friend class LedgerEntryScope<StaticLedgerEntryScope::SCOPE>;
+    FOREACH_STATIC_LEDGER_ENTRY_SCOPE(FRIEND_MACRO)
+#undef FRIEND_MACRO
+
+    LazyScopedLedgerEntry(ScopeIdT scopeID,
+                          rust::Box<stellar::lazy_xdr::LazyLedgerEntry> entry);
+
+  public:
+    LedgerEntryScopeID<S> const mScopeID;
+
+    LazyScopedLedgerEntry() = delete;
+
+    // Move-only: rust::Box is not copyable.
+    LazyScopedLedgerEntry(LazyScopedLedgerEntry&&) = default;
+    LazyScopedLedgerEntry& operator=(LazyScopedLedgerEntry&&);
+
+    LazyScopedLedgerEntry(LazyScopedLedgerEntry const&) = delete;
+    LazyScopedLedgerEntry& operator=(LazyScopedLedgerEntry const&) = delete;
+
+    // Read the lazy handle in a given scope (checks scope ID and activation).
+    stellar::lazy_xdr::LazyLedgerEntry const&
+    readInScope(LedgerEntryScope<S> const& scope) const;
+
+    // Create an explicit clone of this entry (allocates a new Rust-side copy).
+    LazyScopedLedgerEntry clone() const;
+};
+
+// Optional variant: wraps an optional rust::Box<LazyLedgerEntry> with scope
+// tracking. Analogous to ScopedLedgerEntryOpt but for lazy entries.
+template <StaticLedgerEntryScope S> class LazyScopedLedgerEntryOpt
+{
+    static constexpr StaticLedgerEntryScope staticScope = S;
+    using ScopeIdT = LedgerEntryScopeID<S>;
+
+    // We use a unique_ptr wrapping the rust::Box to make it nullable/optional.
+    // rust::Box itself cannot be null.
+    std::unique_ptr<rust::Box<stellar::lazy_xdr::LazyLedgerEntry>> mEntry;
+
+    friend class LedgerEntryScope<S>;
+#define FRIEND_MACRO(SCOPE) \
+    friend class LedgerEntryScope<StaticLedgerEntryScope::SCOPE>;
+    FOREACH_STATIC_LEDGER_ENTRY_SCOPE(FRIEND_MACRO)
+#undef FRIEND_MACRO
+
+    LazyScopedLedgerEntryOpt(
+        ScopeIdT scopeID,
+        std::unique_ptr<rust::Box<stellar::lazy_xdr::LazyLedgerEntry>> entry);
+
+  public:
+    LedgerEntryScopeID<S> const mScopeID;
+
+    LazyScopedLedgerEntryOpt() = delete;
+
+    // Move-only.
+    LazyScopedLedgerEntryOpt(LazyScopedLedgerEntryOpt&&) = default;
+    LazyScopedLedgerEntryOpt& operator=(LazyScopedLedgerEntryOpt&&);
+
+    LazyScopedLedgerEntryOpt(LazyScopedLedgerEntryOpt const&) = delete;
+    LazyScopedLedgerEntryOpt& operator=(LazyScopedLedgerEntryOpt const&) =
+        delete;
+
+    // Construct from a non-optional lazy entry (implicit conversion).
+    LazyScopedLedgerEntryOpt(LazyScopedLedgerEntry<S>&& entry);
+
+    bool hasValue() const;
+
+    // Read the lazy handle in a given scope. Throws if empty.
+    stellar::lazy_xdr::LazyLedgerEntry const&
+    readInScope(LedgerEntryScope<S> const& scope) const;
+
+    // Read as optional pointer; returns nullptr if empty.
+    stellar::lazy_xdr::LazyLedgerEntry const*
+    readOptInScope(LedgerEntryScope<S> const& scope) const;
+
+    // Create an explicit clone of this entry (allocates a new Rust-side copy).
+    // Returns nullopt-equivalent if this is empty.
+    LazyScopedLedgerEntryOpt clone() const;
+};
+
+// Type aliases for lazy scoped entries.
+#define LAZY_SCOPE_ALIAS(SCOPE) \
+    using Lazy##SCOPE##LedgerEntry = \
+        LazyScopedLedgerEntry<StaticLedgerEntryScope::SCOPE>; \
+    using Lazy##SCOPE##LedgerEntryOpt = \
+        LazyScopedLedgerEntryOpt<StaticLedgerEntryScope::SCOPE>;
+FOREACH_STATIC_LEDGER_ENTRY_SCOPE(LAZY_SCOPE_ALIAS)
+#undef LAZY_SCOPE_ALIAS
+
 #define DECLARE_EXTERN_TEMPLATES(SCOPE) \
     extern template class LedgerEntryScopeID<StaticLedgerEntryScope::SCOPE>; \
     extern template class LedgerEntryScope<StaticLedgerEntryScope::SCOPE>; \
     extern template class ScopedLedgerEntry<StaticLedgerEntryScope::SCOPE>; \
     extern template class ScopedLedgerEntryOpt<StaticLedgerEntryScope::SCOPE>; \
-    extern template class DeactivateScopeGuard<StaticLedgerEntryScope::SCOPE>;
+    extern template class DeactivateScopeGuard<StaticLedgerEntryScope::SCOPE>; \
+    extern template class LazyScopedLedgerEntry<StaticLedgerEntryScope::SCOPE>; \
+    extern template class LazyScopedLedgerEntryOpt< \
+        StaticLedgerEntryScope::SCOPE>;
 FOREACH_STATIC_LEDGER_ENTRY_SCOPE(DECLARE_EXTERN_TEMPLATES)
 
 #undef DECLARE_EXTERN_TEMPLATES

@@ -1,5 +1,12 @@
 # Lazy XDR Rewrite Plan
 
+> **AGENT SELF-INSTRUCTION**: Every time you resume work on this task, or
+> whenever your context has been compacted, RE-READ this file in full:
+> `/workspaces/stellar-core/LAZY-XDR-PLAN.md`. Do not rely on summaries.
+> The plan contains critical design decisions that must not be lost. If you
+> find yourself unsure about the approach, STOP and re-read this file before
+> proceeding.
+
 ## Original Request from user (as written)
 
 I want you to start working on a fairly involved rewrite of the way we work with XDR data types in this repository specifically those flowing to and from soroban, and access routines inside the soroban host.
