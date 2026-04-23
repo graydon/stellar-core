@@ -6,8 +6,10 @@ use crate::{
     log::partition::TX,
     rust_bridge::{
         CxxBuf, CxxFeeConfiguration, CxxLedgerEntryRentChange, CxxLedgerInfo,
-        CxxRentFeeConfiguration, CxxRentWriteFeeConfiguration, CxxTransactionResources, FeePair,
-        InvokeHostFunctionOutput, RustBuf, SorobanVersionInfo, XDRFileHash,
+        CxxLedgerInfoLazy, CxxRentFeeConfiguration, CxxRentFeeConfigurationLazy,
+        CxxRentWriteFeeConfiguration, CxxTransactionResources, FeePair,
+        InvokeHostFunctionOutput,
+        RustBuf, SorobanVersionInfo, XDRFileHash,
     },
 };
 use log::{debug, error, trace};
@@ -43,7 +45,7 @@ use std::{fmt::Display, io::Cursor, panic, rc::Rc, time::Instant};
 // outer adaptor modules.
 pub(crate) use super::soroban_env_host::{
     budget::{AsBudget, Budget},
-    e2e_invoke::{extract_rent_changes, LedgerEntryChange},
+    e2e_invoke::{extract_rent_changes, InvokeHostFunctionResult, LedgerEntryChange},
     fees::{
         compute_rent_fee as host_compute_rent_fee,
         compute_transaction_resource_fee as host_compute_transaction_resource_fee,
@@ -99,6 +101,22 @@ impl From<&CxxLedgerEntryRentChange> for LedgerEntryRentChange {
 impl From<&CxxRentFeeConfiguration> for RentFeeConfiguration {
     fn from(value: &CxxRentFeeConfiguration) -> Self {
         super::convert_rent_fee_configuration(value)
+    }
+}
+
+impl From<&CxxRentFeeConfigurationLazy> for RentFeeConfiguration {
+    fn from(value: &CxxRentFeeConfigurationLazy) -> Self {
+        // Delegate to the per-protocol convert_rent_fee_configuration, which
+        // handles field mapping differences across protocol versions (e.g.
+        // p21/p22 lack fee_per_rent_1kb).
+        let cxx = CxxRentFeeConfiguration {
+            fee_per_write_1kb: value.fee_per_write_1kb,
+            fee_per_rent_1kb: value.fee_per_rent_1kb,
+            fee_per_write_entry: value.fee_per_write_entry,
+            persistent_rent_rate_denominator: value.persistent_rent_rate_denominator,
+            temporary_rent_rate_denominator: value.temporary_rent_rate_denominator,
+        };
+        super::convert_rent_fee_configuration(&cxx)
     }
 }
 
@@ -625,6 +643,244 @@ pub(crate) fn can_parse_transaction(xdr: &CxxBuf, depth_limit: u32) -> bool {
         },
     ));
     res.is_ok()
+}
+
+/// Lazy invocation path: accepts lazy XDR handles and passes them through
+/// to the per-protocol adaptor which calls e2e_invoke::invoke_host_function_lazy.
+pub(crate) fn invoke_host_function_lazy(
+    enable_diagnostics: bool,
+    instruction_limit: u32,
+    hf: &crate::lazy_xdr::LazyHostFunction,
+    resources: &crate::lazy_xdr::LazySorobanResources,
+    restored_rw_entry_indices: &[u32],
+    source_account: &[u8],
+    auth_entries: &[crate::lazy_xdr::LazySorobanAuthorizationEntry],
+    ledger_info: &CxxLedgerInfoLazy,
+    ledger_entries: &[crate::lazy_xdr::LazyLedgerEntry],
+    ttl_entries: &[crate::lazy_xdr::LazyTtlEntry],
+    base_prng_seed: &[u8],
+    rent_fee_configuration: &CxxRentFeeConfigurationLazy,
+    module_cache: &crate::SorobanModuleCache,
+) -> Result<InvokeHostFunctionOutput, Box<dyn std::error::Error>> {
+    let res = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        invoke_host_function_lazy_or_maybe_panic(
+            enable_diagnostics,
+            instruction_limit,
+            hf,
+            resources,
+            restored_rw_entry_indices,
+            source_account,
+            auth_entries,
+            ledger_info,
+            ledger_entries,
+            ttl_entries,
+            base_prng_seed,
+            rent_fee_configuration,
+            module_cache,
+        )
+    }));
+    match res {
+        Err(r) => {
+            if let Some(s) = r.downcast_ref::<String>() {
+                Err(CoreHostError::General(format!("contract host panicked: {s}")).into())
+            } else if let Some(s) = r.downcast_ref::<&'static str>() {
+                Err(CoreHostError::General(format!("contract host panicked: {s}")).into())
+            } else {
+                Err(CoreHostError::General("contract host panicked".into()).into())
+            }
+        }
+        Ok(r) => r,
+    }
+}
+
+fn invoke_host_function_lazy_or_maybe_panic(
+    enable_diagnostics: bool,
+    instruction_limit: u32,
+    hf: &crate::lazy_xdr::LazyHostFunction,
+    resources: &crate::lazy_xdr::LazySorobanResources,
+    restored_rw_entry_indices: &[u32],
+    source_account: &[u8],
+    auth_entries: &[crate::lazy_xdr::LazySorobanAuthorizationEntry],
+    ledger_info: &CxxLedgerInfoLazy,
+    ledger_entries: &[crate::lazy_xdr::LazyLedgerEntry],
+    ttl_entries: &[crate::lazy_xdr::LazyTtlEntry],
+    base_prng_seed: &[u8],
+    rent_fee_configuration: &CxxRentFeeConfigurationLazy,
+    module_cache: &crate::SorobanModuleCache,
+) -> Result<InvokeHostFunctionOutput, Box<dyn std::error::Error>> {
+    #[cfg(feature = "tracy")]
+    let client = tracy_client::Client::start();
+    let _span0 = tracy_span!("invoke_host_function_lazy_or_maybe_panic");
+
+    let protocol_version = ledger_info.protocol_version;
+
+    fn non_metered_xdr_from_slice<T: ReadXdr>(buf: &[u8]) -> Result<T, HostError> {
+        Ok(T::read_xdr(&mut xdr::Limited::new(
+            Cursor::new(buf),
+            Limits {
+                depth: MARSHALLING_STACK_LIMIT,
+                len: buf.len(),
+            },
+        ))
+        .map_err(|_| (ScErrorType::Value, ScErrorCode::InternalError))?)
+    }
+
+    let budget = Budget::try_from_configs(
+        instruction_limit as u64,
+        ledger_info.memory_limit as u64,
+        non_metered_xdr_from_slice::<ContractCostParams>(&ledger_info.cpu_cost_params)?,
+        non_metered_xdr_from_slice::<ContractCostParams>(&ledger_info.mem_cost_params)?,
+    )?;
+
+    let host_ledger_info = LedgerInfo {
+        protocol_version: ledger_info.protocol_version,
+        sequence_number: ledger_info.sequence_number,
+        timestamp: ledger_info.timestamp,
+        network_id: ledger_info.network_id.clone().try_into().map_err(|_| {
+            Box::new(CoreHostError::General("network ID has wrong size".into()))
+        })?,
+        base_reserve: ledger_info.base_reserve,
+        min_temp_entry_ttl: ledger_info.min_temp_entry_ttl,
+        min_persistent_entry_ttl: ledger_info.min_persistent_entry_ttl,
+        max_entry_ttl: ledger_info.max_entry_ttl,
+    };
+
+    let mut diagnostic_events = vec![];
+    let ledger_seq_num = ledger_info.sequence_number;
+    let trace_hook: Option<super::soroban_env_host::TraceHook> =
+        if crate::log::is_tx_tracing_enabled() {
+            Some(make_trace_hook_fn())
+        } else {
+            None
+        };
+    let (res, time_nsecs) = {
+        let _span1 = tracy_span!("e2e_invoke::invoke_function (lazy)");
+        let start_time = Instant::now();
+
+        let res = super::invoke_host_function_lazy_with_handles(
+            &budget,
+            enable_diagnostics,
+            hf,
+            resources,
+            restored_rw_entry_indices,
+            source_account,
+            auth_entries,
+            host_ledger_info,
+            ledger_entries,
+            ttl_entries,
+            base_prng_seed,
+            &mut diagnostic_events,
+            trace_hook,
+            module_cache,
+        );
+        let stop_time = Instant::now();
+        let time_nsecs = stop_time.duration_since(start_time).as_nanos() as u64;
+        (res, time_nsecs)
+    };
+
+    // Unconditionally log diagnostic events.
+    log_diagnostic_events(&diagnostic_events);
+
+    let cpu_insns = budget.get_cpu_insns_consumed()?;
+    let mem_bytes = budget.get_mem_bytes_consumed()?;
+    let cpu_insns_excluding_vm_instantiation = cpu_insns.saturating_sub(
+        budget
+            .get_tracker(xdr::ContractCostType::VmInstantiation)?
+            .cpu,
+    );
+    let time_nsecs_excluding_vm_instantiation =
+        time_nsecs.saturating_sub(budget.get_time(xdr::ContractCostType::VmInstantiation)?);
+    #[cfg(feature = "tracy")]
+    {
+        client.plot(
+            tracy_client::plot_name!("soroban budget cpu"),
+            cpu_insns as f64,
+        );
+        client.plot(
+            tracy_client::plot_name!("soroban budget mem"),
+            mem_bytes as f64,
+        );
+    }
+
+    let err = match res {
+        Ok(res) => match res.encoded_invoke_result {
+            Ok(result_value) => {
+                let rent_changes = extract_rent_changes(&res.ledger_changes);
+                let rent_fee = host_compute_rent_fee(
+                    &rent_changes,
+                    &rent_fee_configuration.into(),
+                    ledger_seq_num,
+                );
+                let modified_ledger_entries = extract_ledger_effects(res.ledger_changes)?;
+                return Ok(InvokeHostFunctionOutput {
+                    success: true,
+                    is_internal_error: false,
+                    diagnostic_events: encode_diagnostic_events(&diagnostic_events),
+                    cpu_insns,
+                    mem_bytes,
+                    time_nsecs,
+                    cpu_insns_excluding_vm_instantiation,
+                    time_nsecs_excluding_vm_instantiation,
+                    result_value: result_value.into(),
+                    modified_ledger_entries,
+                    contract_events: res
+                        .encoded_contract_events
+                        .into_iter()
+                        .map(RustBuf::from)
+                        .collect(),
+                    rent_fee,
+                });
+            }
+            Err(e) => e,
+        },
+        Err(e) => e,
+    };
+
+    if enable_diagnostics {
+        diagnostic_events.push(DiagnosticEvent {
+            in_successful_contract_call: false,
+            event: ContractEvent {
+                ext: ExtensionPoint::V0,
+                contract_id: None,
+                type_: ContractEventType::Diagnostic,
+                body: ContractEventBody::V0(ContractEventV0 {
+                    topics: vec![
+                        ScVal::Symbol(ScSymbol("host_fn_failed".try_into().unwrap_or_default())),
+                        ScVal::Error(
+                            err.error
+                                .try_into()
+                                .unwrap_or(ScError::Context(ScErrorCode::InternalError)),
+                        ),
+                    ]
+                    .try_into()
+                    .unwrap_or_default(),
+                    data: ScVal::Void,
+                }),
+            },
+        })
+    }
+
+    let is_internal_error = if protocol_version < 22 {
+        err.error.is_code(ScErrorCode::InternalError)
+    } else {
+        err.error.is_code(ScErrorCode::InternalError) && !err.error.is_type(ScErrorType::Contract)
+    };
+
+    debug!(target: TX, "lazy invocation failed: {}", err);
+    return Ok(InvokeHostFunctionOutput {
+        success: false,
+        is_internal_error,
+        diagnostic_events: encode_diagnostic_events(&diagnostic_events),
+        cpu_insns,
+        mem_bytes,
+        time_nsecs,
+        cpu_insns_excluding_vm_instantiation,
+        time_nsecs_excluding_vm_instantiation,
+        result_value: vec![].into(),
+        modified_ledger_entries: vec![],
+        contract_events: vec![],
+        rent_fee: 0,
+    });
 }
 
 #[allow(dead_code)]

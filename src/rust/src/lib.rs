@@ -28,6 +28,11 @@ macro_rules! tracy_span {
 pub(crate) mod common;
 pub(crate) mod soroban_proto_all;
 
+// Re-export the xdr module from soroban_curr (p26) as lazy_xdr, so that lazy
+// XDR handle types (LazyHostFunction, LazyLedgerEntry, etc.) used across the
+// crate all resolve to the same crate instance as soroban-env-host-p26.
+pub(crate) use soroban_proto_all::soroban_curr::soroban_env_host::xdr as lazy_xdr;
+
 #[allow(unsafe_code)]
 mod lazy_xdr_bridge;
 
@@ -53,6 +58,9 @@ use rust_bridge::CxxFeeConfiguration;
 use rust_bridge::CxxLedgerEntryRentChange;
 use rust_bridge::CxxLedgerInfo;
 use rust_bridge::CxxRentFeeConfiguration;
+
+use rust_bridge::CxxLedgerInfoLazy;
+use rust_bridge::CxxRentFeeConfigurationLazy;
 
 use rust_bridge::CxxI128;
 use rust_bridge::CxxRentWriteFeeConfiguration;

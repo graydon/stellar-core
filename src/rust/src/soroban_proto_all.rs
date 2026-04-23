@@ -4,6 +4,10 @@ use crate::{
     SorobanModuleCache, SorobanVersionInfo,
 };
 
+// Re-export the p26 xdr module as lazy_xdr for use within this module.
+// Only p26's xdr has lazy handle types; older protocols just pass them through.
+use soroban_curr::soroban_env_host::xdr as lazy_xdr;
+
 #[cfg(feature = "testutils")]
 use crate::RustBuf;
 
@@ -61,7 +65,7 @@ pub(crate) mod p26 {
             CxxFeeConfiguration, CxxRentFeeConfiguration, CxxRentWriteFeeConfiguration,
             CxxTransactionResources,
         },
-        SorobanModuleCache,
+        lazy_xdr, SorobanModuleCache,
     };
     use soroban_env_host::{
         budget::Budget,
@@ -123,6 +127,46 @@ pub(crate) mod p26 {
             encoded_ledger_entries,
             encoded_ttl_entries,
             base_prng_seed,
+            diagnostic_events,
+            trace_hook,
+            Some(module_cache.p26_cache.module_cache.clone()),
+        )
+    }
+
+    pub fn invoke_host_function_lazy_with_handles(
+        budget: &Budget,
+        enable_diagnostics: bool,
+        hf: &lazy_xdr::LazyHostFunction,
+        resources: &lazy_xdr::LazySorobanResources,
+        restored_rw_entry_indices: &[u32],
+        source_account: &[u8],
+        auth_entries: &[lazy_xdr::LazySorobanAuthorizationEntry],
+        ledger_info: LedgerInfo,
+        ledger_entries: &[lazy_xdr::LazyLedgerEntry],
+        ttl_entries: &[lazy_xdr::LazyTtlEntry],
+        base_prng_seed: &[u8],
+        diagnostic_events: &mut Vec<DiagnosticEvent>,
+        trace_hook: Option<TraceHook>,
+        module_cache: &SorobanModuleCache,
+    ) -> Result<InvokeHostFunctionResult, HostError> {
+        let seed: &[u8; 32] = base_prng_seed
+            .try_into()
+            .map_err(|_| HostError::from(soroban_env_host::Error::from_type_and_code(
+                soroban_env_host::xdr::ScErrorType::Value,
+                soroban_env_host::xdr::ScErrorCode::InternalError,
+            )))?;
+        e2e_invoke::invoke_host_function_lazy(
+            budget,
+            enable_diagnostics,
+            hf.clone(),
+            resources.clone(),
+            restored_rw_entry_indices,
+            source_account,
+            auth_entries,
+            ledger_info,
+            ledger_entries,
+            ttl_entries,
+            seed,
             diagnostic_events,
             trace_hook,
             Some(module_cache.p26_cache.module_cache.clone()),
@@ -216,7 +260,7 @@ pub(crate) mod p25 {
             CxxFeeConfiguration, CxxRentFeeConfiguration, CxxRentWriteFeeConfiguration,
             CxxTransactionResources,
         },
-        SorobanModuleCache,
+        lazy_xdr, SorobanModuleCache,
     };
     use soroban_env_host::{
         budget::Budget,
@@ -282,6 +326,28 @@ pub(crate) mod p25 {
             trace_hook,
             Some(module_cache.p25_cache.module_cache.clone()),
         )
+    }
+
+    pub fn invoke_host_function_lazy_with_handles(
+        _budget: &Budget,
+        _enable_diagnostics: bool,
+        _hf: &lazy_xdr::LazyHostFunction,
+        _resources: &lazy_xdr::LazySorobanResources,
+        _restored_rw_entry_indices: &[u32],
+        _source_account: &[u8],
+        _auth_entries: &[lazy_xdr::LazySorobanAuthorizationEntry],
+        _ledger_info: LedgerInfo,
+        _ledger_entries: &[lazy_xdr::LazyLedgerEntry],
+        _ttl_entries: &[lazy_xdr::LazyTtlEntry],
+        _base_prng_seed: &[u8],
+        _diagnostic_events: &mut Vec<DiagnosticEvent>,
+        _trace_hook: Option<TraceHook>,
+        _module_cache: &SorobanModuleCache,
+    ) -> Result<InvokeHostFunctionResult, HostError> {
+        Err(HostError::from(soroban_env_host::Error::from_type_and_code(
+            soroban_env_host::xdr::ScErrorType::Context,
+            soroban_env_host::xdr::ScErrorCode::InternalError,
+        )))
     }
 
     pub(crate) fn wasm_module_memory_cost_wrapper(
@@ -371,7 +437,7 @@ pub(crate) mod p24 {
             CxxFeeConfiguration, CxxRentFeeConfiguration, CxxRentWriteFeeConfiguration,
             CxxTransactionResources,
         },
-        SorobanModuleCache,
+        lazy_xdr, SorobanModuleCache,
     };
     use soroban_env_host::{
         budget::Budget,
@@ -437,6 +503,28 @@ pub(crate) mod p24 {
             trace_hook,
             Some(module_cache.p24_cache.module_cache.clone()),
         )
+    }
+
+    pub fn invoke_host_function_lazy_with_handles(
+        _budget: &Budget,
+        _enable_diagnostics: bool,
+        _hf: &lazy_xdr::LazyHostFunction,
+        _resources: &lazy_xdr::LazySorobanResources,
+        _restored_rw_entry_indices: &[u32],
+        _source_account: &[u8],
+        _auth_entries: &[lazy_xdr::LazySorobanAuthorizationEntry],
+        _ledger_info: LedgerInfo,
+        _ledger_entries: &[lazy_xdr::LazyLedgerEntry],
+        _ttl_entries: &[lazy_xdr::LazyTtlEntry],
+        _base_prng_seed: &[u8],
+        _diagnostic_events: &mut Vec<DiagnosticEvent>,
+        _trace_hook: Option<TraceHook>,
+        _module_cache: &SorobanModuleCache,
+    ) -> Result<InvokeHostFunctionResult, HostError> {
+        Err(HostError::from(soroban_env_host::Error::from_type_and_code(
+            soroban_env_host::xdr::ScErrorType::Context,
+            soroban_env_host::xdr::ScErrorCode::InternalError,
+        )))
     }
 
     pub(crate) fn wasm_module_memory_cost_wrapper(
@@ -526,7 +614,7 @@ pub(crate) mod p23 {
             CxxFeeConfiguration, CxxRentFeeConfiguration, CxxRentWriteFeeConfiguration,
             CxxTransactionResources,
         },
-        SorobanModuleCache,
+        lazy_xdr, SorobanModuleCache,
     };
     use soroban_env_host::{
         budget::Budget,
@@ -592,6 +680,28 @@ pub(crate) mod p23 {
             trace_hook,
             Some(module_cache.p23_cache.module_cache.clone()),
         )
+    }
+
+    pub fn invoke_host_function_lazy_with_handles(
+        _budget: &Budget,
+        _enable_diagnostics: bool,
+        _hf: &lazy_xdr::LazyHostFunction,
+        _resources: &lazy_xdr::LazySorobanResources,
+        _restored_rw_entry_indices: &[u32],
+        _source_account: &[u8],
+        _auth_entries: &[lazy_xdr::LazySorobanAuthorizationEntry],
+        _ledger_info: LedgerInfo,
+        _ledger_entries: &[lazy_xdr::LazyLedgerEntry],
+        _ttl_entries: &[lazy_xdr::LazyTtlEntry],
+        _base_prng_seed: &[u8],
+        _diagnostic_events: &mut Vec<DiagnosticEvent>,
+        _trace_hook: Option<TraceHook>,
+        _module_cache: &SorobanModuleCache,
+    ) -> Result<InvokeHostFunctionResult, HostError> {
+        Err(HostError::from(soroban_env_host::Error::from_type_and_code(
+            soroban_env_host::xdr::ScErrorType::Context,
+            soroban_env_host::xdr::ScErrorCode::InternalError,
+        )))
     }
 
     pub(crate) fn wasm_module_memory_cost_wrapper(
@@ -683,7 +793,7 @@ pub(crate) mod p22 {
             CxxFeeConfiguration, CxxRentFeeConfiguration, CxxRentWriteFeeConfiguration,
             CxxTransactionResources,
         },
-        SorobanModuleCache,
+        lazy_xdr, SorobanModuleCache,
     };
     use soroban_env_host::{
         budget::{AsBudget, Budget},
@@ -786,6 +896,25 @@ pub(crate) mod p22 {
         )
     }
 
+    pub fn invoke_host_function_lazy_with_handles(
+        _budget: &Budget,
+        _enable_diagnostics: bool,
+        _hf: &lazy_xdr::LazyHostFunction,
+        _resources: &lazy_xdr::LazySorobanResources,
+        _restored_rw_entry_indices: &[u32],
+        _source_account: &[u8],
+        _auth_entries: &[lazy_xdr::LazySorobanAuthorizationEntry],
+        _ledger_info: LedgerInfo,
+        _ledger_entries: &[lazy_xdr::LazyLedgerEntry],
+        _ttl_entries: &[lazy_xdr::LazyTtlEntry],
+        _base_prng_seed: &[u8],
+        _diagnostic_events: &mut Vec<DiagnosticEvent>,
+        _trace_hook: Option<TraceHook>,
+        _module_cache: &SorobanModuleCache,
+    ) -> Result<InvokeHostFunctionResult, HostError> {
+        Err(INTERNAL_ERROR.into())
+    }
+
     pub(crate) fn wasm_module_memory_cost_wrapper(
         _budget: &Budget,
         _contract_code_entry: &ContractCodeEntry,
@@ -872,7 +1001,7 @@ pub(crate) mod p21 {
             CxxFeeConfiguration, CxxRentFeeConfiguration, CxxRentWriteFeeConfiguration,
             CxxTransactionResources,
         },
-        SorobanModuleCache,
+        lazy_xdr, SorobanModuleCache,
     };
     use soroban_env_host::{
         budget::{AsBudget, Budget},
@@ -973,6 +1102,25 @@ pub(crate) mod p21 {
             diagnostic_events,
             trace_hook,
         )
+    }
+
+    pub fn invoke_host_function_lazy_with_handles(
+        _budget: &Budget,
+        _enable_diagnostics: bool,
+        _hf: &lazy_xdr::LazyHostFunction,
+        _resources: &lazy_xdr::LazySorobanResources,
+        _restored_rw_entry_indices: &[u32],
+        _source_account: &[u8],
+        _auth_entries: &[lazy_xdr::LazySorobanAuthorizationEntry],
+        _ledger_info: LedgerInfo,
+        _ledger_entries: &[lazy_xdr::LazyLedgerEntry],
+        _ttl_entries: &[lazy_xdr::LazyTtlEntry],
+        _base_prng_seed: &[u8],
+        _diagnostic_events: &mut Vec<DiagnosticEvent>,
+        _trace_hook: Option<TraceHook>,
+        _module_cache: &SorobanModuleCache,
+    ) -> Result<InvokeHostFunctionResult, HostError> {
+        Err(INTERNAL_ERROR.into())
     }
 
     pub(crate) fn wasm_module_memory_cost_wrapper(
@@ -1154,6 +1302,25 @@ pub(crate) struct HostModule {
     )
         -> Result<u32, Box<dyn std::error::Error>>,
     pub(crate) can_parse_transaction: fn(&CxxBuf, depth_limit: u32) -> bool,
+    pub(crate) invoke_host_function_lazy:
+        fn(
+            enable_diagnostics: bool,
+            instruction_limit: u32,
+            hf: &lazy_xdr::LazyHostFunction,
+            resources: &lazy_xdr::LazySorobanResources,
+            restored_rw_entry_indices: &[u32],
+            source_account: &[u8],
+            auth_entries: &[lazy_xdr::LazySorobanAuthorizationEntry],
+            ledger_info: &crate::rust_bridge::CxxLedgerInfoLazy,
+            ledger_entries: &[lazy_xdr::LazyLedgerEntry],
+            ttl_entries: &[lazy_xdr::LazyTtlEntry],
+            base_prng_seed: &[u8],
+            rent_fee_configuration: &crate::rust_bridge::CxxRentFeeConfigurationLazy,
+            module_cache: &SorobanModuleCache,
+        ) -> Result<
+            InvokeHostFunctionOutput,
+            Box<dyn std::error::Error>,
+        >,
     #[cfg(feature = "testutils")]
     pub(crate) rustbuf_containing_scval_to_string: fn(&RustBuf) -> String,
     #[cfg(feature = "testutils")]
@@ -1174,6 +1341,7 @@ macro_rules! proto_versioned_functions_for_module {
             contract_code_memory_size_for_rent:
                 $module::soroban_proto_any::contract_code_memory_size_for_rent,
             can_parse_transaction: $module::soroban_proto_any::can_parse_transaction,
+            invoke_host_function_lazy: $module::soroban_proto_any::invoke_host_function_lazy,
             #[cfg(feature = "testutils")]
             rustbuf_containing_scval_to_string:
                 $module::soroban_proto_any::rustbuf_containing_scval_to_string,
