@@ -393,6 +393,25 @@ class InvokeHostFunctionApplyHelper : virtual LedgerAccessHelper
         return true;
     }
 
+    // Stores a ledger entry (and optional TTL entry) for later invocation.
+    // Returns the serialized entry size for validation. Base implementation
+    // serializes to CxxBuf vecs (used by the non-parallel path).
+    virtual uint32_t
+    storeEntryForInvocation(LedgerEntry const& le,
+                            std::optional<TTLEntry> const& ttl)
+    {
+        auto leBuf = toCxxBuf(le);
+        uint32_t entrySize = static_cast<uint32_t>(leBuf.data->size());
+
+        auto ttlBuf =
+            ttl ? toCxxBuf(*ttl)
+                : CxxBuf{std::make_unique<std::vector<uint8_t>>()};
+
+        mLedgerEntryCxxBufs.emplace_back(std::move(leBuf));
+        mTtlEntryCxxBufs.emplace_back(std::move(ttlBuf));
+        return entrySize;
+    }
+
     // Checks and meters the given keys. Returns false
     // if the operation should fail and populates
     // result code and diagnostic events. Returns true
@@ -491,20 +510,8 @@ class InvokeHostFunctionApplyHelper : virtual LedgerAccessHelper
                 auto entryOpt = getLedgerEntryOpt(lk);
                 if (entryOpt)
                 {
-                    auto leBuf = toCxxBuf(*entryOpt);
-                    entrySize = static_cast<uint32_t>(leBuf.data->size());
-
-                    // For entry types that don't have an ttlEntry (i.e.
-                    // Accounts), the rust host expects an "empty" CxxBuf such
-                    // that the buffer has a non-null pointer that points to an
-                    // empty byte vector
-                    auto ttlBuf =
-                        ttlEntry
-                            ? toCxxBuf(*ttlEntry)
-                            : CxxBuf{std::make_unique<std::vector<uint8_t>>()};
-
-                    mLedgerEntryCxxBufs.emplace_back(std::move(leBuf));
-                    mTtlEntryCxxBufs.emplace_back(std::move(ttlBuf));
+                    entrySize =
+                        storeEntryForInvocation(*entryOpt, ttlEntry);
                 }
                 else if (isSorobanEntry(lk))
                 {
@@ -1046,6 +1053,12 @@ class InvokeHostFunctionParallelApplyHelper
     // Reference to thread state for accessing cached lazy handles.
     ThreadParallelApplyLedgerState const& mThreadStateForLazy;
 
+    // Pre-built lazy entry vecs populated by storeEntryForInvocation().
+    // Used directly by invokeHostFunction() instead of converting from
+    // CxxBuf vecs, avoiding double serialization.
+    rust::Box<stellar::lazy_xdr::LazyLedgerEntryVec> mLazyLedgerEntries;
+    rust::Box<stellar::lazy_xdr::LazyTtlEntryVec> mLazyTtlEntries;
+
     // Bitmap to track which entries in the read-write footprint are
     // marked for autorestore based on readWrite footprint ordering. If
     // true, the entry is marked for autorestore.
@@ -1067,8 +1080,7 @@ class InvokeHostFunctionParallelApplyHelper
             // In the auto restore case, we need to restore the entry and meter
             // disk reads. The host will take care of rent fees, and write fees
             // will be metered after the host returns.
-            auto leBuf = toCxxBuf(le);
-            auto entrySize = static_cast<uint32>(leBuf.data->size());
+            auto entrySize = static_cast<uint32>(xdr::xdr_size(le));
             auto keySize = static_cast<uint32>(xdr::xdr_size(lk));
 
             if (!validateContractLedgerEntry(lk, entrySize, mSorobanConfig,
@@ -1125,10 +1137,10 @@ class InvokeHostFunctionParallelApplyHelper
                 mTxState.addLiveBucketlistRestore(lk, le, ttlKey, ttlEntry);
             }
 
-            // Finally, add the entries to the Cxx buffer as if they were live.
-            mLedgerEntryCxxBufs.emplace_back(std::move(leBuf));
-            auto ttlBuf = toCxxBuf(ttlEntry.data.ttl());
-            mTtlEntryCxxBufs.emplace_back(std::move(ttlBuf));
+            // Store the restored entries for invocation (builds lazy
+            // handles directly in the parallel path).
+            storeEntryForInvocation(
+                le, std::make_optional(ttlEntry.data.ttl()));
             mAutoRestoredRwEntryIndices.push_back(index);
 
             // Validate restored entry against Protocol 23 corruption data if
@@ -1178,6 +1190,50 @@ class InvokeHostFunctionParallelApplyHelper
         return false;
     }
 
+    // Override to build lazy handles directly instead of CxxBuf vecs.
+    // For entries with cached lazy handles (loaded during thread setup),
+    // this does an O(1) Arc clone. For entries without a cached handle
+    // (e.g. restored entries), this serializes once to a lazy handle.
+    uint32_t
+    storeEntryForInvocation(LedgerEntry const& le,
+                            std::optional<TTLEntry> const& ttl) override
+    {
+        uint32_t entrySize = static_cast<uint32_t>(xdr::xdr_size(le));
+
+        // Check for a cached lazy handle from the thread state.
+        auto lk = LedgerEntryKey(le);
+        auto* cached = mThreadStateForLazy.getLazyEntryHandle(lk);
+        if (cached)
+        {
+            // O(1) Arc clone of the cached handle.
+            mLazyLedgerEntries->push(
+                stellar::lazy_xdr::clone_lazy_ledger_entry(**cached));
+        }
+        else
+        {
+            // No cached handle — serialize fresh to lazy handle.
+            auto bytes = xdr::xdr_to_opaque(le);
+            mLazyLedgerEntries->push(
+                stellar::lazy_xdr::new_lazy_ledger_entry(
+                    rust::Slice<const uint8_t>(bytes.data(), bytes.size())));
+        }
+
+        if (ttl)
+        {
+            auto ttlBytes = xdr::xdr_to_opaque(*ttl);
+            mLazyTtlEntries->push(stellar::lazy_xdr::new_lazy_ttl_entry(
+                rust::Slice<const uint8_t>(ttlBytes.data(),
+                                           ttlBytes.size())));
+        }
+        else
+        {
+            mLazyTtlEntries->push(
+                stellar::lazy_xdr::new_empty_lazy_ttl_entry());
+        }
+
+        return entrySize;
+    }
+
     bool
     previouslyRestoredFromHotArchive(LedgerKey const& lk) override
     {
@@ -1223,6 +1279,8 @@ class InvokeHostFunctionParallelApplyHelper
               threadState.getSnapshot(), threadState.getModuleCache())
         , ParallelLedgerAccessHelper(threadState, ledgerInfo)
         , mThreadStateForLazy(threadState)
+        , mLazyLedgerEntries(stellar::lazy_xdr::new_lazy_ledger_entry_vec())
+        , mLazyTtlEntries(stellar::lazy_xdr::new_lazy_ttl_entry_vec())
     {
         ZoneScoped;
         // Initialize the autorestore lookup vector
@@ -1248,56 +1306,14 @@ class InvokeHostFunctionParallelApplyHelper
         }
     }
 
-    // Override invokeHostFunction to use the lazy XDR path. Instead of
-    // passing serialized CxxBuf vectors, this builds lazy handles from
-    // the thread state's cached lazy entries and calls
-    // invoke_host_function_lazy().
+    // Override invokeHostFunction to use the lazy XDR path. The lazy
+    // ledger entry and TTL entry vecs were already built by
+    // storeEntryForInvocation() during addReads(), so we just use them
+    // directly here.
     bool
     invokeHostFunction(InvokeHostFunctionOutput& out) override
     {
         ZoneScoped;
-
-        // Build lazy ledger entry and TTL entry vecs from the CxxBuf vecs
-        // that addReads() already populated. For entries with cached lazy
-        // handles in the thread state, use those (Arc clone = O(1)).
-        // For entries without a cached handle (e.g. restored entries),
-        // create a lazy handle from the CxxBuf bytes.
-        auto lazyLedgerEntries =
-            stellar::lazy_xdr::new_lazy_ledger_entry_vec();
-        auto lazyTtlEntries = stellar::lazy_xdr::new_lazy_ttl_entry_vec();
-
-        // The CxxBuf vecs and lazy vecs must have the same length.
-        // addReads() pushes to CxxBuf vecs for validation and this method
-        // builds matching lazy vecs.
-        for (size_t i = 0; i < mLedgerEntryCxxBufs.size(); ++i)
-        {
-            auto const& leBuf = mLedgerEntryCxxBufs[i];
-            // Try to find a cached lazy handle from the thread state by
-            // deserializing the CxxBuf to get the key. But that defeats the
-            // purpose. Instead, we just create lazy handles from the CxxBuf
-            // bytes. The real optimization is that addReads() could skip
-            // toCxxBuf() when a cached lazy handle is available, but that
-            // requires refactoring addReads() which is a larger change.
-            auto leHandle = stellar::lazy_xdr::new_lazy_ledger_entry(
-                rust::Slice<const uint8_t>(leBuf.data->data(),
-                                           leBuf.data->size()));
-            lazyLedgerEntries->push(std::move(leHandle));
-
-            auto const& ttlBuf = mTtlEntryCxxBufs[i];
-            if (ttlBuf.data && !ttlBuf.data->empty())
-            {
-                auto ttlHandle = stellar::lazy_xdr::new_lazy_ttl_entry(
-                    rust::Slice<const uint8_t>(ttlBuf.data->data(),
-                                               ttlBuf.data->size()));
-                lazyTtlEntries->push(std::move(ttlHandle));
-            }
-            else
-            {
-                // Non-soroban entry without TTL — push empty sentinel.
-                lazyTtlEntries->push(
-                    stellar::lazy_xdr::new_empty_lazy_ttl_entry());
-            }
-        }
 
         // Build lazy host function.
         auto hfBytes =
@@ -1357,8 +1373,8 @@ class InvokeHostFunctionParallelApplyHelper
                 mResources.instructions, *lazyHf, *lazyResources,
                 mAutoRestoredRwEntryIndices,
                 rust::Slice<const uint8_t>(srcBytes.data(), srcBytes.size()),
-                *lazyAuthEntries, lazyLedgerInfo, *lazyLedgerEntries,
-                *lazyTtlEntries, prngSeed, lazyRentCfg, *mModuleCache);
+                *lazyAuthEntries, lazyLedgerInfo, *mLazyLedgerEntries,
+                *mLazyTtlEntries, prngSeed, lazyRentCfg, *mModuleCache);
             mMetrics.mCpuInsn = out.cpu_insns;
             mMetrics.mMemByte = out.mem_bytes;
             mMetrics.mInvokeTimeNsecs = out.time_nsecs;

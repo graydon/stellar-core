@@ -4,7 +4,7 @@
 extern crate alloc;
 use alloc::sync::Arc;
 use crate::lazy_xdr;
-use crate::lazy_xdr_bridge::LazyTtlEntryW;
+use crate::lazy_xdr_bridge::{LazyLedgerEntryW, LazyTtlEntryW};
 
 /// Create an empty lazy TTL entry (zero-length handle) used as a sentinel
 /// for non-soroban entries without TTL data. The Rust lazy invoke path
@@ -13,4 +13,15 @@ pub(crate) fn new_empty_lazy_ttl_entry() -> Box<LazyTtlEntryW> {
     let empty_arc: Arc<[u8]> = Arc::from(&[][..]);
     let handle = lazy_xdr::LazyHandle::from_arc(empty_arc, 0, 0);
     Box::new(LazyTtlEntryW(lazy_xdr::LazyTtlEntry::from(handle)))
+}
+
+/// Clone a lazy ledger entry handle. This is an Arc::clone (atomic ref
+/// count bump) — O(1), no data is copied.
+pub(crate) fn clone_lazy_ledger_entry(src: &LazyLedgerEntryW) -> Box<LazyLedgerEntryW> {
+    Box::new(LazyLedgerEntryW(src.0.clone()))
+}
+
+/// Clone a lazy TTL entry handle. O(1) Arc::clone.
+pub(crate) fn clone_lazy_ttl_entry(src: &LazyTtlEntryW) -> Box<LazyTtlEntryW> {
+    Box::new(LazyTtlEntryW(src.0.clone()))
 }

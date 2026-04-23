@@ -138,7 +138,7 @@ RUST_BUILD_DIR=$(top_builddir)/src/rust
 RUST_BIN_DIR=$(RUST_BUILD_DIR)/bin
 RUST_TARGET_DIR=$(top_builddir)/target
 RUST_CXXBRIDGE=$(RUST_BIN_DIR)/cxxbridge
-RUST_PROFILE ?= release
+RUST_PROFILE=release
 
 check-rust-profile: Makefile
 	@case "$(RUST_PROFILE)" in \

@@ -407,6 +407,12 @@ pub(crate) mod rust_bridge {
         /// Create an empty lazy TTL entry (zero-length handle) used as a
         /// sentinel for non-soroban entries without TTL data.
         fn new_empty_lazy_ttl_entry() -> Box<LazyTtlEntryW>;
+
+        /// Clone a lazy ledger entry handle (O(1) Arc::clone).
+        fn clone_lazy_ledger_entry(src: &LazyLedgerEntryW) -> Box<LazyLedgerEntryW>;
+
+        /// Clone a lazy TTL entry handle (O(1) Arc::clone).
+        fn clone_lazy_ttl_entry(src: &LazyTtlEntryW) -> Box<LazyTtlEntryW>;
     }
 
     // And the extern "C++" block declares C++ stuff we're going to import to
