@@ -35,6 +35,7 @@ pub(crate) use soroban_proto_all::soroban_curr::soroban_env_host::xdr as lazy_xd
 
 #[allow(unsafe_code)]
 mod lazy_xdr_bridge;
+mod lazy_xdr_helpers;
 
 mod b64;
 mod ed25519_verify;

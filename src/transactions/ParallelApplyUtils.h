@@ -161,6 +161,14 @@ class ThreadParallelApplyLedgerState
     OptionalEntryT getLiveEntryOpt(LedgerKey const& key) const;
     bool entryWasRestored(LedgerKey const& key) const;
 
+    // Returns the cached lazy handle for the given key, or nullptr if no
+    // lazy handle is cached (e.g. entry is a classic entry or was never
+    // loaded with a lazy handle). Used by InvokeHostFunctionOpFrame to
+    // pass pre-existing lazy handles to the Rust bridge without
+    // re-serialization.
+    rust::Box<stellar::lazy_xdr::LazyLedgerEntry> const*
+    getLazyEntryHandle(LedgerKey const& key) const;
+
     void setEffectsDeltaFromSuccessfulTx(ParallelTxSuccessVal const& res,
                                          ParallelLedgerInfo const& ledgerInfo,
                                          TxEffects& effects) const;

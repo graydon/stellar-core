@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <memory>
 #include <optional>
 
 #include "ledger/ImmutableLedgerView.h"
@@ -59,22 +60,34 @@ template <StaticLedgerEntryScope S> struct ParallelApplyEntry
     // it due to hitting read limits.
     ScopedLedgerEntryOpt<S> mLedgerEntry;
     bool mIsDirty;
+
+    // Cached lazy XDR handle for this entry. When populated, provides a
+    // Rust-side opaque handle wrapping the serialized XDR bytes of the
+    // entry, enabling O(1) Arc-clone sharing instead of repeated XDR
+    // serialization when passing entries to the Rust bridge. The
+    // shared_ptr allows cheap sharing across scope levels.
+    std::shared_ptr<rust::Box<stellar::lazy_xdr::LazyLedgerEntry>> mLazyEntry;
+
     static ParallelApplyEntry
-    clean(ScopedLedgerEntryOpt<S> const& e)
+    clean(ScopedLedgerEntryOpt<S> const& e,
+          std::shared_ptr<rust::Box<stellar::lazy_xdr::LazyLedgerEntry>> lazy =
+              nullptr)
     {
-        return ParallelApplyEntry{e, false};
+        return ParallelApplyEntry{e, false, std::move(lazy)};
     }
     static ParallelApplyEntry
-    dirty(ScopedLedgerEntryOpt<S> const& e)
+    dirty(ScopedLedgerEntryOpt<S> const& e,
+          std::shared_ptr<rust::Box<stellar::lazy_xdr::LazyLedgerEntry>> lazy =
+              nullptr)
     {
-        return ParallelApplyEntry{e, true};
+        return ParallelApplyEntry{e, true, std::move(lazy)};
     }
     template <StaticLedgerEntryScope S2>
     ParallelApplyEntry<S2>
     rescope(LedgerEntryScope<S> const& s1, LedgerEntryScope<S2> const& s2) const
     {
         auto adoptedEntry = s2.scopeAdoptEntryOptFrom(mLedgerEntry, s1);
-        return ParallelApplyEntry<S2>{adoptedEntry, mIsDirty};
+        return ParallelApplyEntry<S2>{adoptedEntry, mIsDirty, mLazyEntry};
     }
 };
 using GlobalParallelApplyEntry =

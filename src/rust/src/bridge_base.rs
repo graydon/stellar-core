@@ -401,6 +401,14 @@ pub(crate) mod rust_bridge {
 
     // LAZY-DEFINES-GO-HERE
 
+    // Hand-written lazy XDR bridge functions (not auto-generated).
+    #[namespace = "stellar::lazy_xdr"]
+    extern "Rust" {
+        /// Create an empty lazy TTL entry (zero-length handle) used as a
+        /// sentinel for non-soroban entries without TTL data.
+        fn new_empty_lazy_ttl_entry() -> Box<LazyTtlEntryW>;
+    }
+
     // And the extern "C++" block declares C++ stuff we're going to import to
     // Rust.
     #[namespace = "stellar"]
@@ -442,3 +450,4 @@ use crate::soroban_module_cache::*;
 use crate::soroban_proto_all::*;
 use crate::soroban_test_wasm::*;
 use crate::lazy_xdr_bridge::{self, *};
+use crate::lazy_xdr_helpers::*;

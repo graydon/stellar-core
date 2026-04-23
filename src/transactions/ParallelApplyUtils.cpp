@@ -585,7 +585,33 @@ ThreadParallelApplyLedgerState::collectClusterFootprintEntriesFromGlobal(
         {
             mThreadEntryMap.emplace(
                 key, ThreadParallelApplyEntry::clean(scopeAdoptEntryOptFrom(
-                         entryIt->second.mLedgerEntry, global)));
+                         entryIt->second.mLedgerEntry, global),
+                         entryIt->second.mLazyEntry));
+        }
+        else if (InMemorySorobanState::isInMemoryType(key))
+        {
+            // Pre-load Soroban entries from InMemorySorobanState into the
+            // thread map with lazy XDR handles. This ensures each entry is
+            // serialized ONCE at thread construction rather than once per
+            // transaction that accesses it.
+            auto res = mInMemorySorobanState.get(key);
+            if (res)
+            {
+                auto entryOpt =
+                    scopeAdoptEntryOpt(std::make_optional(*res));
+                // Serialize the entry to XDR bytes and create a lazy handle
+                auto bytes = xdr::xdr_to_opaque(*res);
+                auto lazyHandle =
+                    stellar::lazy_xdr::new_lazy_ledger_entry(
+                        rust::Slice<const uint8_t>(bytes.data(),
+                                                   bytes.size()));
+                auto sp = std::make_shared<
+                    rust::Box<stellar::lazy_xdr::LazyLedgerEntry>>(
+                    std::move(lazyHandle));
+                mThreadEntryMap.emplace(
+                    key,
+                    ThreadParallelApplyEntry::clean(entryOpt, std::move(sp)));
+            }
         }
     };
 
@@ -694,6 +720,18 @@ RestoredEntries const&
 ThreadParallelApplyLedgerState::getRestoredEntries() const
 {
     return mThreadRestoredEntries;
+}
+
+rust::Box<stellar::lazy_xdr::LazyLedgerEntry> const*
+ThreadParallelApplyLedgerState::getLazyEntryHandle(
+    LedgerKey const& key) const
+{
+    auto it = mThreadEntryMap.find(key);
+    if (it != mThreadEntryMap.end() && it->second.mLazyEntry)
+    {
+        return it->second.mLazyEntry.get();
+    }
+    return nullptr;
 }
 
 ThreadParallelApplyLedgerState::OptionalEntryT

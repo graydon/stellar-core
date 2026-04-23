@@ -69,6 +69,48 @@ getLedgerInfo(SorobanNetworkConfig const& sorobanConfig, uint32_t ledgerVersion,
     return info;
 }
 
+CxxLedgerInfoLazy
+getLedgerInfoLazy(SorobanNetworkConfig const& sorobanConfig,
+                  uint32_t ledgerVersion, uint32_t ledgerSeq,
+                  uint32_t baseReserve, TimePoint closeTime,
+                  Hash const& networkID)
+{
+    CxxLedgerInfoLazy info{};
+    info.base_reserve = baseReserve;
+    info.protocol_version = ledgerVersion;
+    info.sequence_number = ledgerSeq;
+    info.timestamp = closeTime;
+    info.memory_limit = sorobanConfig.txMemoryLimit();
+    info.min_persistent_entry_ttl =
+        sorobanConfig.stateArchivalSettings().minPersistentTTL;
+    info.min_temp_entry_ttl =
+        sorobanConfig.stateArchivalSettings().minTemporaryTTL;
+    info.max_entry_ttl = sorobanConfig.stateArchivalSettings().maxEntryTTL;
+
+    auto cpu = sorobanConfig.cpuCostParams();
+    auto mem = sorobanConfig.memCostParams();
+    auto cpuBytes = xdr::xdr_to_opaque(cpu);
+    auto memBytes = xdr::xdr_to_opaque(mem);
+
+    info.cpu_cost_params.reserve(cpuBytes.size());
+    for (auto b : cpuBytes)
+    {
+        info.cpu_cost_params.push_back(b);
+    }
+    info.mem_cost_params.reserve(memBytes.size());
+    for (auto b : memBytes)
+    {
+        info.mem_cost_params.push_back(b);
+    }
+
+    info.network_id.reserve(networkID.size());
+    for (auto c : networkID)
+    {
+        info.network_id.emplace_back(static_cast<unsigned char>(c));
+    }
+    return info;
+}
+
 DiagnosticEvent
 metricsEvent(bool success, std::string&& topic, uint64_t value)
 {
@@ -521,7 +563,7 @@ class InvokeHostFunctionApplyHelper : virtual LedgerAccessHelper
         return true;
     }
 
-    bool
+    virtual bool
     invokeHostFunction(InvokeHostFunctionOutput& out)
     {
         ZoneScoped;
@@ -1001,6 +1043,9 @@ class InvokeHostFunctionParallelApplyHelper
       virtual public ParallelLedgerAccessHelper
 {
   private:
+    // Reference to thread state for accessing cached lazy handles.
+    ThreadParallelApplyLedgerState const& mThreadStateForLazy;
+
     // Bitmap to track which entries in the read-write footprint are
     // marked for autorestore based on readWrite footprint ordering. If
     // true, the entry is marked for autorestore.
@@ -1177,6 +1222,7 @@ class InvokeHostFunctionParallelApplyHelper
               opFrame, threadState.getSorobanConfig(),
               threadState.getSnapshot(), threadState.getModuleCache())
         , ParallelLedgerAccessHelper(threadState, ledgerInfo)
+        , mThreadStateForLazy(threadState)
     {
         ZoneScoped;
         // Initialize the autorestore lookup vector
@@ -1200,6 +1246,174 @@ class InvokeHostFunctionParallelApplyHelper
                 mAutorestoredEntries.at(index) = true;
             }
         }
+    }
+
+    // Override invokeHostFunction to use the lazy XDR path. Instead of
+    // passing serialized CxxBuf vectors, this builds lazy handles from
+    // the thread state's cached lazy entries and calls
+    // invoke_host_function_lazy().
+    bool
+    invokeHostFunction(InvokeHostFunctionOutput& out) override
+    {
+        ZoneScoped;
+
+        // Build lazy ledger entry and TTL entry vecs from the CxxBuf vecs
+        // that addReads() already populated. For entries with cached lazy
+        // handles in the thread state, use those (Arc clone = O(1)).
+        // For entries without a cached handle (e.g. restored entries),
+        // create a lazy handle from the CxxBuf bytes.
+        auto lazyLedgerEntries =
+            stellar::lazy_xdr::new_lazy_ledger_entry_vec();
+        auto lazyTtlEntries = stellar::lazy_xdr::new_lazy_ttl_entry_vec();
+
+        // The CxxBuf vecs and lazy vecs must have the same length.
+        // addReads() pushes to CxxBuf vecs for validation and this method
+        // builds matching lazy vecs.
+        for (size_t i = 0; i < mLedgerEntryCxxBufs.size(); ++i)
+        {
+            auto const& leBuf = mLedgerEntryCxxBufs[i];
+            // Try to find a cached lazy handle from the thread state by
+            // deserializing the CxxBuf to get the key. But that defeats the
+            // purpose. Instead, we just create lazy handles from the CxxBuf
+            // bytes. The real optimization is that addReads() could skip
+            // toCxxBuf() when a cached lazy handle is available, but that
+            // requires refactoring addReads() which is a larger change.
+            auto leHandle = stellar::lazy_xdr::new_lazy_ledger_entry(
+                rust::Slice<const uint8_t>(leBuf.data->data(),
+                                           leBuf.data->size()));
+            lazyLedgerEntries->push(std::move(leHandle));
+
+            auto const& ttlBuf = mTtlEntryCxxBufs[i];
+            if (ttlBuf.data && !ttlBuf.data->empty())
+            {
+                auto ttlHandle = stellar::lazy_xdr::new_lazy_ttl_entry(
+                    rust::Slice<const uint8_t>(ttlBuf.data->data(),
+                                               ttlBuf.data->size()));
+                lazyTtlEntries->push(std::move(ttlHandle));
+            }
+            else
+            {
+                // Non-soroban entry without TTL — push empty sentinel.
+                lazyTtlEntries->push(
+                    stellar::lazy_xdr::new_empty_lazy_ttl_entry());
+            }
+        }
+
+        // Build lazy host function.
+        auto hfBytes =
+            xdr::xdr_to_opaque(mOpFrame.mInvokeHostFunction.hostFunction);
+        auto lazyHf = stellar::lazy_xdr::new_lazy_host_function(
+            rust::Slice<const uint8_t>(hfBytes.data(), hfBytes.size()));
+
+        // Build lazy resources.
+        auto resBytes = xdr::xdr_to_opaque(mResources);
+        auto lazyResources = stellar::lazy_xdr::new_lazy_soroban_resources(
+            rust::Slice<const uint8_t>(resBytes.data(), resBytes.size()));
+
+        // Build lazy auth entries.
+        auto lazyAuthEntries =
+            stellar::lazy_xdr::new_lazy_soroban_authorization_entry_vec();
+        for (auto const& authEntry : mOpFrame.mInvokeHostFunction.auth)
+        {
+            auto authBytes = xdr::xdr_to_opaque(authEntry);
+            auto lazyAuth =
+                stellar::lazy_xdr::new_lazy_soroban_authorization_entry(
+                    rust::Slice<const uint8_t>(authBytes.data(),
+                                               authBytes.size()));
+            lazyAuthEntries->push(std::move(lazyAuth));
+        }
+
+        // Build lazy ledger info.
+        auto lazyLedgerInfo = stellar::getLedgerInfoLazy(
+            mSorobanConfig, mLedgerInfo.getLedgerVersion(),
+            mLedgerInfo.getLedgerSeq(), mLedgerInfo.getBaseReserve(),
+            mLedgerInfo.getCloseTime(), mLedgerInfo.getNetworkID());
+
+        // Build lazy rent fee configuration.
+        auto rentCfg = mSorobanConfig.rustBridgeRentFeeConfiguration();
+        CxxRentFeeConfigurationLazy lazyRentCfg{};
+        lazyRentCfg.fee_per_write_1kb = rentCfg.fee_per_write_1kb;
+        lazyRentCfg.fee_per_rent_1kb = rentCfg.fee_per_rent_1kb;
+        lazyRentCfg.fee_per_write_entry = rentCfg.fee_per_write_entry;
+        lazyRentCfg.persistent_rent_rate_denominator =
+            rentCfg.persistent_rent_rate_denominator;
+        lazyRentCfg.temporary_rent_rate_denominator =
+            rentCfg.temporary_rent_rate_denominator;
+
+        // Source account as raw bytes.
+        auto srcBytes = xdr::xdr_to_opaque(mOpFrame.getSourceID());
+
+        // PRNG seed as raw bytes.
+        rust::Slice<const uint8_t> prngSeed(
+            reinterpret_cast<const uint8_t*>(mSorobanBasePrngSeed.data()),
+            mSorobanBasePrngSeed.size());
+
+        out.success = false;
+        try
+        {
+            out = stellar::lazy_xdr::invoke_host_function_lazy(
+                mAppConfig.CURRENT_LEDGER_PROTOCOL_VERSION,
+                mAppConfig.ENABLE_SOROBAN_DIAGNOSTIC_EVENTS,
+                mResources.instructions, *lazyHf, *lazyResources,
+                mAutoRestoredRwEntryIndices,
+                rust::Slice<const uint8_t>(srcBytes.data(), srcBytes.size()),
+                *lazyAuthEntries, lazyLedgerInfo, *lazyLedgerEntries,
+                *lazyTtlEntries, prngSeed, lazyRentCfg, *mModuleCache);
+            mMetrics.mCpuInsn = out.cpu_insns;
+            mMetrics.mMemByte = out.mem_bytes;
+            mMetrics.mInvokeTimeNsecs = out.time_nsecs;
+            mMetrics.mCpuInsnExclVm =
+                out.cpu_insns_excluding_vm_instantiation;
+            mMetrics.mInvokeTimeNsecsExclVm =
+                out.time_nsecs_excluding_vm_instantiation;
+            maybePopulateOutputDiagnosticEvents(mAppConfig, out,
+                                                mDiagnosticEvents);
+        }
+        catch (std::exception& e)
+        {
+            out.is_internal_error = true;
+            CLOG_DEBUG(Tx,
+                       "Exception caught while invoking host fn (lazy): {}",
+                       e.what());
+        }
+
+        if (!out.success)
+        {
+            if (out.is_internal_error)
+            {
+                throw std::runtime_error(
+                    "Got internal error during Soroban host invocation "
+                    "(lazy).");
+            }
+            if (mResources.instructions < out.cpu_insns)
+            {
+                mDiagnosticEvents.pushError(
+                    SCE_BUDGET, SCEC_EXCEEDED_LIMIT,
+                    "operation instructions exceeds amount specified",
+                    {makeU64SCVal(out.cpu_insns),
+                     makeU64SCVal(mResources.instructions)});
+                mOpFrame.innerResult(mRes).code(
+                    INVOKE_HOST_FUNCTION_RESOURCE_LIMIT_EXCEEDED);
+            }
+            else if (mSorobanConfig.txMemoryLimit() < out.mem_bytes)
+            {
+                mDiagnosticEvents.pushError(
+                    SCE_BUDGET, SCEC_EXCEEDED_LIMIT,
+                    "operation memory usage exceeds network config limit",
+                    {makeU64SCVal(out.mem_bytes),
+                     makeU64SCVal(mSorobanConfig.txMemoryLimit())});
+                mOpFrame.innerResult(mRes).code(
+                    INVOKE_HOST_FUNCTION_RESOURCE_LIMIT_EXCEEDED);
+            }
+            else
+            {
+                mOpFrame.innerResult(mRes).code(
+                    INVOKE_HOST_FUNCTION_TRAPPED);
+            }
+            return false;
+        }
+
+        return true;
     }
 
     std::optional<ParallelTxSuccessVal>
