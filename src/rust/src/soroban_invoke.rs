@@ -84,23 +84,8 @@ pub(crate) fn invoke_host_function_lazy(
     rent_fee_configuration: CxxRentFeeConfigurationLazy,
     module_cache: &SorobanModuleCache,
 ) -> Result<InvokeHostFunctionOutput, Box<dyn std::error::Error>> {
-    use std::error::Error as StdError;
-    type BoxStdErr = Box<dyn StdError>;
-    type BoxStdErrSend = Box<dyn StdError + Send>;
-    type BoxStdErrSendSync = Box<dyn StdError + Send + Sync>;
-
-    fn sendable_str_err(str: &str) -> BoxStdErrSend {
-        let tmp: BoxStdErrSendSync = Box::from(str);
-        tmp as BoxStdErrSend
-    }
-
     let hm = get_host_module_for_protocol(config_max_protocol, ledger_info.protocol_version)?;
-
-    let large_stack_size: usize = 100 * 1024 * 1024;
-    let res = std::thread::scope(|scope| {
-        std::thread::Builder::new()
-            .stack_size(large_stack_size)
-            .spawn_scoped(scope, || {
+    let res = 
                 (hm.invoke_host_function_lazy)(
                     enable_diagnostics,
                     instruction_limit,
@@ -115,15 +100,8 @@ pub(crate) fn invoke_host_function_lazy(
                     base_prng_seed,
                     &rent_fee_configuration,
                     module_cache,
-                )
-                .map_err(|e| sendable_str_err(&format!("{e}")))
-            })
-            .map_err(|_| sendable_str_err("spawn_scoped failed"))?
-            .join()
-            .map_err(|_| sendable_str_err("join failed"))?
-    });
-
-    res.map_err(|e: BoxStdErrSend| e as BoxStdErr)
+                );
+    res
 }
 
 pub(crate) fn compute_transaction_resource_fee(
