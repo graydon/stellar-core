@@ -5,6 +5,19 @@ description: running tests at various levels from smoke tests to full suite to r
 
 # Overview
 
+## Build directory
+
+Run test binaries, `make check`, rebuilds, and reconfiguration from the top
+level of the existing configured build tree. Stellar Core frequently uses
+out-of-tree builds in devcontainers. Before running commands, check the active
+terminal directory and `../build`, `../core-build`, and `./build` relative to
+the source tree for generated `Makefile`, `config.status`, and `config.log`
+files. Do not configure, build, clean, or test from the source tree when an
+out-of-tree build is in use.
+
+In the configuration examples below, `$SOURCE_DIR` is the source-tree top
+level and the command is run from the build-tree top level.
+
 This skill is for running tests systematically, starting with fast/focused tests
 and progressing to slower/broader tests. This ordering allows failures to be
 caught early, minimizing wasted time.
@@ -187,7 +200,7 @@ ALL_VERSIONS=1 NUM_PARTITIONS=$(nproc) make check
 To test with SQLite only (faster, no Postgres dependency):
 
 ```bash
-./configure --disable-postgres --enable-ccache --enable-sdfprefs
+"$SOURCE_DIR/configure" --disable-postgres --enable-ccache --enable-sdfprefs
 make clean && make -j $(nproc)
 NUM_PARTITIONS=$(nproc) make check
 ```
@@ -231,7 +244,7 @@ This requires reconfiguring and rebuilding.
 Catches memory errors: buffer overflows, use-after-free, memory leaks.
 
 ```bash
-./configure --enable-asan --enable-ccache --enable-sdfprefs
+"$SOURCE_DIR/configure" --enable-asan --enable-ccache --enable-sdfprefs
 make clean && make -j $(nproc)
 ./stellar-core test --ll fatal -r simple --disable-dots --abort
 ```
@@ -241,7 +254,7 @@ make clean && make -j $(nproc)
 Catches data races and threading issues.
 
 ```bash
-./configure --enable-threadsanitizer --enable-ccache --enable-sdfprefs
+"$SOURCE_DIR/configure" --enable-threadsanitizer --enable-ccache --enable-sdfprefs
 make clean && make -j $(nproc)
 ./stellar-core test --ll fatal -r simple --disable-dots --abort
 ```
@@ -251,7 +264,7 @@ make clean && make -j $(nproc)
 Catches undefined behavior like integer overflow, null pointer dereference.
 
 ```bash
-./configure --enable-undefinedcheck --enable-ccache --enable-sdfprefs
+"$SOURCE_DIR/configure" --enable-undefinedcheck --enable-ccache --enable-sdfprefs
 make clean && make -j $(nproc)
 ./stellar-core test --ll fatal -r simple --disable-dots --abort
 ```
@@ -264,7 +277,7 @@ sanitizers found something suspicious. Usually overkill.
 Run with C++ standard library debugging enabled. Slower but catches more issues.
 
 ```bash
-./configure --enable-extrachecks --enable-ccache --enable-sdfprefs
+"$SOURCE_DIR/configure" --enable-extrachecks --enable-ccache --enable-sdfprefs
 make clean && make -j $(nproc)
 ./stellar-core test --ll fatal -r simple --disable-dots --abort
 ```
@@ -275,7 +288,7 @@ Before running tests at Levels 4-6, also verify the build succeeds with
 `--disable-tests` (the production configuration):
 
 ```bash
-./configure --disable-tests --enable-ccache --enable-sdfprefs
+"$SOURCE_DIR/configure" --disable-tests --enable-ccache --enable-sdfprefs
 make clean && make -j $(nproc)
 ```
 

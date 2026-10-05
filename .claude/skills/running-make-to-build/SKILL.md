@@ -9,12 +9,26 @@ The build is a recursive make structure, with several projects vendored in to
 `lib` that use their own Makefiles and also one primary `src/Makefile.am` that
 defines most of the build.
 
+## Find the build directory first
+
+Stellar Core commonly uses out-of-tree builds, particularly in devcontainers.
+Before invoking `make`, identify the source-tree top level and check the active
+terminal directory plus `../build`, `../core-build`, and `./build` (relative to
+the source tree) for an already-configured build containing generated
+`Makefile`, `config.status`, and `config.log` files. Use that build tree.
+
+Running `make` in the source tree while an out-of-tree build is configured can
+create conflicting generated files and break the established build. Never
+blindly start an in-tree build. If no configured build tree exists, consult the
+`configuring-the-build` skill and create an out-of-tree build by default.
+
 - ALWAYS run `make -j $(nproc)` to get full parallelism
-- ALWAYS run from the top level directory
+- ALWAYS run from the top level of the configured build tree
 - ALWAYS run with `2>&1 | tail -N` to limit output
 - ALWAYS run `git add <somefile> && ./make-mks` after adding `<somefile>` to
   ensure it is included in the build.
-- NEVER run from a subdirectory
+- NEVER run from a build subdirectory or from the source tree when using an
+  out-of-tree build
 - NEVER run with `make -C <somedir>` for any other directory
 - NEVER run `cargo` manually, let `make` run it
 - NEVER edit `Makefile` or `Makefile.in`, only ever edit `Makefile.am`
@@ -28,10 +42,11 @@ The main targets are:
   - `clean` -- removes build artifacts
   - `format` -- auto-formats source code with standard rules
 
-If anything goes wrong or is confusing in the build, start by running `make
-clean` and trying again. You should have configured with `--enable-ccache` which
-means that rebuilding will typically be very cheap. Especially if you run with
-`make -j $(nproc)`
+If anything goes wrong or is confusing in the build, first confirm that the
+command is running in the intended configured build tree. Then run `make clean`
+there and try again. Never clean the source tree when the build is out-of-tree.
+You should have configured with `--enable-ccache`, which means that rebuilding
+will typically be very cheap, especially with `make -j $(nproc)`.
 
 ## Rust build
 
