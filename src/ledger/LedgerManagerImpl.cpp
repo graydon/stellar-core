@@ -15,6 +15,7 @@
 #include "herder/Herder.h"
 #include "herder/HerderPersistence.h"
 #include "herder/LedgerCloseData.h"
+#include "herder/ParallelTxSetBuilder.h"
 #include "herder/TxSetFrame.h"
 #include "herder/Upgrades.h"
 #include "history/HistoryManager.h"
@@ -225,6 +226,49 @@ LedgerManagerImpl::LedgerApplyMetrics::LedgerApplyMetrics(
           registry.NewCounter({"ledger", "apply-soroban", "max-clusters"}))
     , mStagesPerLedger(
           registry.NewCounter({"ledger", "apply-soroban", "stages"}))
+    , mSorobanFootprintKeyCount(
+          registry.NewHistogram({"soroban", "ledger", "footprint-key-count"}))
+    , mSorobanReadWriteFootprintKeyCount(registry.NewHistogram(
+          {"soroban", "ledger", "read-write-footprint-key-count"}))
+    , mSorobanContendedFootprintKeyCount(registry.NewHistogram(
+          {"soroban", "ledger", "contended-footprint-key-count"}))
+    , mSorobanContractInstanceCount(registry.NewHistogram(
+          {"soroban", "ledger", "footprint-contract-instance-count"}))
+    , mSorobanStageCount(
+          registry.NewHistogram({"soroban", "ledger", "stage-count"}))
+    , mSorobanClusterCount(
+          registry.NewHistogram({"soroban", "stage", "cluster-count"}))
+    , mSorobanClusterTxCount(
+          registry.NewHistogram({"soroban", "cluster", "tx-count"}))
+    , mSorobanClusterInstructionCount(registry.NewHistogram(
+          {"soroban", "cluster", "instruction-count"}))
+    , mSorobanClusterInstructionUtilization(registry.NewHistogram(
+          {"soroban", "cluster", "instruction-utilization-ratio"}))
+    , mSorobanDependencyComponentCount(registry.NewHistogram(
+          {"soroban", "stage", "dependency-component-count"}))
+    , mSorobanDependencyComponentTxCount(registry.NewHistogram(
+          {"soroban", "dependency-component", "tx-count"}))
+    , mSorobanStageTxCount(
+          registry.NewHistogram({"soroban", "stage", "tx-count"}))
+    , mSorobanStageInstructionCount(
+          registry.NewHistogram({"soroban", "stage", "instruction-count"}))
+    , mSorobanStageConflictingTxRatio(registry.NewHistogram(
+          {"soroban", "stage", "conflicting-tx-ratio"}))
+    , mSorobanStageLargestComponentTxRatio(registry.NewHistogram(
+          {"soroban", "stage", "largest-component-tx-ratio"}))
+    , mSorobanStageLargestComponentInstructionRatio(
+          registry.NewHistogram(
+              {"soroban", "stage", "largest-component-instruction-ratio"}))
+    , mSorobanStagePotentialParallelism(registry.NewHistogram(
+          {"soroban", "stage", "potential-parallelism-ratio"}))
+    , mSorobanStageScheduledParallelism(registry.NewHistogram(
+          {"soroban", "stage", "scheduled-parallelism-ratio"}))
+    , mSorobanStageRetainedPotentialParallelism(registry.NewHistogram(
+          {"soroban", "stage", "retained-potential-parallelism-ratio"}))
+    , mSorobanLedgerTxUtilization(registry.NewHistogram(
+          {"soroban", "ledger", "tx-count-utilization-ratio"}))
+    , mSorobanLedgerInstructionUtilization(registry.NewHistogram(
+          {"soroban", "ledger", "instruction-utilization-ratio"}))
     , mMetaStreamBytes(
           registry.NewMeter({"ledger", "metastream", "bytes"}, "byte"))
     , mMetaStreamWriteTime(registry.NewTimer({"ledger", "metastream", "write"}))
@@ -2948,6 +2992,105 @@ LedgerManagerImpl::applyTransactions(
             try
             {
                 releaseAssert(sorobanConfig.has_value());
+                auto phaseMetrics =
+                    analyzeParallelSorobanPhase(phase.getParallelStages());
+                auto& metrics = mApplyState.getMetrics();
+                metrics.mSorobanFootprintKeyCount.Update(
+                    phaseMetrics.mUniqueFootprintKeyCount);
+                metrics.mSorobanReadWriteFootprintKeyCount.Update(
+                    phaseMetrics.mReadWriteFootprintKeyCount);
+                metrics.mSorobanContendedFootprintKeyCount.Update(
+                    phaseMetrics.mContendedFootprintKeyCount);
+                metrics.mSorobanContractInstanceCount.Update(
+                    phaseMetrics.mContractInstanceCount);
+                metrics.mSorobanStageCount.Update(phaseMetrics.mStageCount);
+                for (auto count : phaseMetrics.mClusterCounts)
+                {
+                    metrics.mSorobanClusterCount.Update(count);
+                }
+                for (auto count : phaseMetrics.mClusterTxCounts)
+                {
+                    metrics.mSorobanClusterTxCount.Update(count);
+                }
+                releaseAssert(sorobanConfig->ledgerMaxInstructions() > 0);
+                uint64_t ledgerMaxInstructions = static_cast<uint64_t>(
+                    sorobanConfig->ledgerMaxInstructions());
+                uint64_t totalInstructions = 0;
+                uint64_t instructionsPerCluster =
+                    phaseMetrics.mStageCount == 0
+                        ? 0
+                        : ledgerMaxInstructions / phaseMetrics.mStageCount;
+                for (auto instructions :
+                     phaseMetrics.mClusterInstructionCounts)
+                {
+                    totalInstructions += instructions;
+                    metrics.mSorobanClusterInstructionCount.Update(
+                        instructions);
+                    metrics.mSorobanClusterInstructionUtilization.Update(
+                        instructionsPerCluster == 0
+                            ? 0
+                            : instructions * 1'000'000 /
+                                  instructionsPerCluster);
+                }
+                for (auto count : phaseMetrics.mDependencyComponentCounts)
+                {
+                    metrics.mSorobanDependencyComponentCount.Update(count);
+                }
+                for (auto count : phaseMetrics.mDependencyComponentTxCounts)
+                {
+                    metrics.mSorobanDependencyComponentTxCount.Update(count);
+                }
+                auto scaledRatio = [](uint64_t numerator,
+                                      uint64_t denominator) {
+                    return denominator == 0
+                               ? uint64_t{0}
+                               : numerator * 1'000'000 / denominator;
+                };
+                for (size_t stageIndex = 0;
+                     stageIndex < phaseMetrics.mStageTxCounts.size();
+                     ++stageIndex)
+                {
+                    auto stageTxCount =
+                        phaseMetrics.mStageTxCounts[stageIndex];
+                    auto stageInstructions =
+                        phaseMetrics.mStageInstructionCounts[stageIndex];
+                    auto maxClusterInstructions =
+                        phaseMetrics
+                            .mStageMaxClusterInstructionCounts[stageIndex];
+                    auto maxComponentTxCount =
+                        phaseMetrics
+                            .mStageMaxDependencyComponentTxCounts[stageIndex];
+                    auto maxComponentInstructions =
+                        phaseMetrics
+                            .mStageMaxDependencyComponentInstructionCounts
+                                [stageIndex];
+                    metrics.mSorobanStageTxCount.Update(stageTxCount);
+                    metrics.mSorobanStageInstructionCount.Update(
+                        stageInstructions);
+                    metrics.mSorobanStageConflictingTxRatio.Update(scaledRatio(
+                        phaseMetrics.mStageConflictingTxCounts[stageIndex],
+                        stageTxCount));
+                    metrics.mSorobanStageLargestComponentTxRatio.Update(
+                        scaledRatio(maxComponentTxCount, stageTxCount));
+                    metrics.mSorobanStageLargestComponentInstructionRatio
+                        .Update(scaledRatio(maxComponentInstructions,
+                                            stageInstructions));
+                    metrics.mSorobanStagePotentialParallelism.Update(
+                        scaledRatio(stageInstructions,
+                                    maxComponentInstructions));
+                    metrics.mSorobanStageScheduledParallelism.Update(
+                        scaledRatio(stageInstructions,
+                                    maxClusterInstructions));
+                    metrics.mSorobanStageRetainedPotentialParallelism.Update(
+                        scaledRatio(maxComponentInstructions,
+                                    maxClusterInstructions));
+                }
+                metrics.mSorobanLedgerTxUtilization.Update(
+                    phaseMetrics.mTxCount * 1'000'000 /
+                    std::max<uint64_t>(
+                        sorobanConfig->ledgerMaxTxCount(), 1));
+                metrics.mSorobanLedgerInstructionUtilization.Update(
+                    totalInstructions * 1'000'000 / ledgerMaxInstructions);
                 applyParallelPhase(phase, applyStages, mutableTxResults, index,
                                    ltx, enableTxMeta, *sorobanConfig,
                                    sorobanBasePrngSeed,

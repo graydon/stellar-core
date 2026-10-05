@@ -255,6 +255,27 @@ soroban.ledger.read-entry                    | histogram | number of accessed (r
 soroban.ledger.read-ledger-byte              | histogram | number of accessed (read or modified) `LedgerEntry` bytes declared by soroban transactions per ledger
 soroban.ledger.write-entry                   | histogram | number of modified entries declared by soroban transactions per ledger
 soroban.ledger.write-ledger-byte             | histogram | number of modified `LedgerEntry` bytes declared by soroban transactions per ledger
+soroban.ledger.footprint-key-count            | histogram | number of distinct footprint keys per ledger
+soroban.ledger.read-write-footprint-key-count | histogram | number of distinct read-write footprint keys per ledger
+soroban.ledger.contended-footprint-key-count  | histogram | number of footprint keys per ledger accessed by multiple transactions, with at least one read-write access
+soroban.ledger.footprint-contract-instance-count | histogram | number of distinct contract addresses found in contract-data footprint keys per ledger
+soroban.ledger.stage-count                    | histogram | number of parallel Soroban stages per ledger
+soroban.ledger.tx-count-utilization-ratio     | histogram | Soroban transaction count divided by the ledger transaction limit, scaled by 1,000,000
+soroban.ledger.instruction-utilization-ratio  | histogram | declared instructions divided by the ledger instruction limit, scaled by 1,000,000
+soroban.stage.cluster-count                   | histogram | number of packed execution clusters in a stage; one sample per stage
+soroban.stage.tx-count                        | histogram | number of transactions in a stage; one sample per stage
+soroban.stage.instruction-count               | histogram | declared instructions in a stage; one sample per stage
+soroban.stage.dependency-component-count      | histogram | number of independent footprint-conflict graph components before bin packing; one sample per stage
+soroban.stage.conflicting-tx-ratio            | histogram | fraction of stage transactions having at least one footprint conflict, scaled by 1,000,000
+soroban.stage.largest-component-tx-ratio      | histogram | fraction of stage transactions in the largest dependency component, scaled by 1,000,000
+soroban.stage.largest-component-instruction-ratio | histogram | fraction of stage instructions in the largest dependency component, scaled by 1,000,000
+soroban.stage.potential-parallelism-ratio     | histogram | stage instructions divided by instructions in its largest dependency component, scaled by 1,000,000
+soroban.stage.scheduled-parallelism-ratio     | histogram | stage instructions divided by instructions in its largest packed cluster, scaled by 1,000,000
+soroban.stage.retained-potential-parallelism-ratio | histogram | scheduled parallelism divided by potential parallelism, scaled by 1,000,000
+soroban.cluster.tx-count                      | histogram | number of transactions in a packed execution cluster; one sample per cluster
+soroban.cluster.instruction-count             | histogram | declared instructions in a packed execution cluster; one sample per cluster
+soroban.cluster.instruction-utilization-ratio | histogram | cluster instructions divided by the per-cluster instruction limit, scaled by 1,000,000
+soroban.dependency-component.tx-count         | histogram | number of transactions in an independent footprint-conflict graph component; one sample per component
 soroban.tx.size-byte                         | histogram | size (in bytes) of a soroban transaction
 soroban.config.contract-max-rw-key-byte      | counter   | soroban config setting `contract_data_key_size_bytes`
 soroban.config.contract-max-rw-data-byte     | counter   | soroban config setting `contract_data_entry_size_bytes`
@@ -285,3 +306,33 @@ soroban.in-memory-state.contract-code-size   | counter   | size in bytes of non-
 soroban.in-memory-state.contract-data-size   | counter   | size in bytes of ContractData entries in memory
 soroban.in-memory-state.contract-code-entries   | counter   | number of ContractCode entries in memory
 soroban.in-memory-state.contract-data-entries   | counter   | number of ContractData entries in memory
+
+## Interpreting Soroban parallelism metrics
+
+Metrics under `soroban.ledger`, `soroban.stage`, `soroban.cluster`, and
+`soroban.dependency-component` sample once per object named by that scope. Their
+histogram means therefore must not be compared as if they all sampled once per
+ledger. Ratio values use 1,000,000 as one: `600000` means 60%, while `2000000`
+means 2x.
+
+Use these metrics in order:
+
+1. Check `soroban.ledger.instruction-utilization-ratio` and
+	`soroban.ledger.tx-count-utilization-ratio`. Low values indicate insufficient
+	traffic to use the available parallel capacity.
+2. Check `soroban.stage.potential-parallelism-ratio`. Values near `1000000`
+	mean footprints make the stage inherently serial. Larger values indicate
+	independent instruction-weighted work is available. Confirm with
+	`largest-component-instruction-ratio`: values near `1000000` mean one serial
+	dependency component dominates the stage.
+3. Compare `soroban.stage.scheduled-parallelism-ratio` with potential
+	parallelism. `retained-potential-parallelism-ratio` near `1000000` means
+	packing retained nearly all available parallelism; a low value indicates
+	packing or the configured cluster limit combined independent work into an
+	imbalanced large cluster.
+4. Use `conflicting-tx-ratio`, component counts and sizes, and contended key
+	counts to explain the result. A small number of contended keys can still
+	serialize most transactions, so key count alone is not a parallelism score.
+
+Potential and scheduled parallelism use declared instructions as a work proxy;
+they estimate scheduling shape rather than measured wall-clock speedup.

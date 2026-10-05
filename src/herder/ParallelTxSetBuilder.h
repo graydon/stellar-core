@@ -11,6 +11,32 @@
 
 namespace stellar
 {
+struct ParallelSorobanPhaseMetrics
+{
+    size_t mTxCount{0};
+    size_t mStageCount{0};
+    size_t mUniqueFootprintKeyCount{0};
+    size_t mReadWriteFootprintKeyCount{0};
+    size_t mContendedFootprintKeyCount{0};
+    size_t mContractInstanceCount{0};
+    std::vector<size_t> mStageTxCounts;
+    std::vector<uint64_t> mStageInstructionCounts;
+    std::vector<size_t> mStageConflictingTxCounts;
+    std::vector<uint64_t> mStageMaxClusterInstructionCounts;
+    std::vector<size_t> mStageMaxDependencyComponentTxCounts;
+    std::vector<uint64_t> mStageMaxDependencyComponentInstructionCounts;
+    std::vector<size_t> mClusterCounts;
+    std::vector<size_t> mClusterTxCounts;
+    std::vector<uint64_t> mClusterInstructionCounts;
+    std::vector<size_t> mDependencyComponentCounts;
+    std::vector<size_t> mDependencyComponentTxCounts;
+};
+
+// Analyzes the shape and footprint contention of a canonical parallel Soroban
+// phase. Dependency components use the same conflict relation as the builder.
+ParallelSorobanPhaseMetrics
+analyzeParallelSorobanPhase(TxStageFrameList const& stages);
+
 // Builds a sequence of parallel processing stages from the provided
 // transactions while respecting the limits defined by the network
 // configuration.

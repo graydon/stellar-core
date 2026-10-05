@@ -9,7 +9,9 @@
 #include "util/BitSet.h"
 
 #include <algorithm>
+#include <map>
 #include <numeric>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace stellar
@@ -699,6 +701,144 @@ prepareBuilderTxs(TxFrameList const& txFrames)
 }
 
 } // namespace
+
+ParallelSorobanPhaseMetrics
+analyzeParallelSorobanPhase(TxStageFrameList const& stages)
+{
+    ParallelSorobanPhaseMetrics metrics;
+    metrics.mStageCount = stages.size();
+
+    struct FootprintKeyStats
+    {
+        std::unordered_set<size_t> mTxIds;
+        bool mHasReadWrite{false};
+    };
+    std::unordered_map<LedgerKey, FootprintKeyStats> footprintKeys;
+    std::unordered_set<SCAddress> contractInstances;
+    size_t ledgerTxId = 0;
+
+    for (auto const& stage : stages)
+    {
+        TxFrameList stageTxs;
+        uint64_t stageInstructions = 0;
+        uint64_t maxClusterInstructions = 0;
+        metrics.mClusterCounts.push_back(stage.size());
+        for (auto const& cluster : stage)
+        {
+            metrics.mClusterTxCounts.push_back(cluster.size());
+            uint64_t clusterInstructions = 0;
+            for (auto const& tx : cluster)
+            {
+                stageTxs.push_back(tx);
+                ++metrics.mTxCount;
+                clusterInstructions += tx->sorobanResources().instructions;
+
+                auto const& footprint = tx->sorobanResources().footprint;
+                auto recordKey = [&](LedgerKey const& key, bool isReadWrite) {
+                    auto& stats = footprintKeys[key];
+                    stats.mTxIds.insert(ledgerTxId);
+                    stats.mHasReadWrite = stats.mHasReadWrite || isReadWrite;
+                    if (key.type() == CONTRACT_DATA)
+                    {
+                        contractInstances.insert(key.contractData().contract);
+                    }
+                };
+                for (auto const& key : footprint.readOnly)
+                {
+                    recordKey(key, false);
+                }
+                for (auto const& key : footprint.readWrite)
+                {
+                    recordKey(key, true);
+                }
+                ++ledgerTxId;
+            }
+            metrics.mClusterInstructionCounts.push_back(clusterInstructions);
+            stageInstructions += clusterInstructions;
+            maxClusterInstructions =
+                std::max(maxClusterInstructions, clusterInstructions);
+        }
+        metrics.mStageTxCounts.push_back(stageTxs.size());
+        metrics.mStageInstructionCounts.push_back(stageInstructions);
+        metrics.mStageMaxClusterInstructionCounts.push_back(
+            maxClusterInstructions);
+
+        auto builderTxs = prepareBuilderTxs(stageTxs);
+        std::vector<size_t> parents(builderTxs.size());
+        std::iota(parents.begin(), parents.end(), 0);
+        auto findRoot = [&](size_t txId) {
+            while (parents[txId] != txId)
+            {
+                parents[txId] = parents[parents[txId]];
+                txId = parents[txId];
+            }
+            return txId;
+        };
+        auto merge = [&](size_t first, size_t second) {
+            auto firstRoot = findRoot(first);
+            auto secondRoot = findRoot(second);
+            if (firstRoot != secondRoot)
+            {
+                parents[secondRoot] = firstRoot;
+            }
+        };
+        for (size_t txId = 0; txId < builderTxs.size(); ++txId)
+        {
+            size_t conflictTxId = 0;
+            while (builderTxs[txId].mConflictTxs.nextSet(conflictTxId))
+            {
+                merge(txId, conflictTxId);
+                ++conflictTxId;
+            }
+        }
+        std::map<size_t, size_t> componentTxCounts;
+        std::map<size_t, uint64_t> componentInstructionCounts;
+        size_t conflictingTxCount = 0;
+        for (size_t txId = 0; txId < builderTxs.size(); ++txId)
+        {
+            auto root = findRoot(txId);
+            ++componentTxCounts[root];
+            componentInstructionCounts[root] +=
+                builderTxs[txId].mInstructions;
+            if (!builderTxs[txId].mConflictTxs.empty())
+            {
+                ++conflictingTxCount;
+            }
+        }
+        metrics.mStageConflictingTxCounts.push_back(conflictingTxCount);
+        metrics.mDependencyComponentCounts.push_back(
+            componentTxCounts.size());
+        size_t maxComponentTxCount = 0;
+        uint64_t maxComponentInstructions = 0;
+        for (auto const& [root, componentTxCount] : componentTxCounts)
+        {
+            metrics.mDependencyComponentTxCounts.push_back(componentTxCount);
+            maxComponentTxCount =
+                std::max(maxComponentTxCount, componentTxCount);
+            maxComponentInstructions = std::max(
+                maxComponentInstructions, componentInstructionCounts[root]);
+        }
+        metrics.mStageMaxDependencyComponentTxCounts.push_back(
+            maxComponentTxCount);
+        metrics.mStageMaxDependencyComponentInstructionCounts.push_back(
+            maxComponentInstructions);
+    }
+
+    metrics.mUniqueFootprintKeyCount = footprintKeys.size();
+    metrics.mContractInstanceCount = contractInstances.size();
+    for (auto const& [_, stats] : footprintKeys)
+    {
+        if (stats.mHasReadWrite)
+        {
+            ++metrics.mReadWriteFootprintKeyCount;
+            if (stats.mTxIds.size() > 1)
+            {
+                ++metrics.mContendedFootprintKeyCount;
+            }
+        }
+    }
+    return metrics;
+}
 
 TxStageFrameList
 buildSurgePricedParallelSorobanPhase(

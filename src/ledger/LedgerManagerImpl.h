@@ -86,6 +86,28 @@ class LedgerManagerImpl : public LedgerManager
         medida::Counter& mSorobanTransactionApplyFailed;
         medida::Counter& mMaxClustersPerLedger;
         medida::Counter& mStagesPerLedger;
+        medida::Histogram& mSorobanFootprintKeyCount;
+        medida::Histogram& mSorobanReadWriteFootprintKeyCount;
+        medida::Histogram& mSorobanContendedFootprintKeyCount;
+        medida::Histogram& mSorobanContractInstanceCount;
+        medida::Histogram& mSorobanStageCount;
+        medida::Histogram& mSorobanClusterCount;
+        medida::Histogram& mSorobanClusterTxCount;
+        medida::Histogram& mSorobanClusterInstructionCount;
+        // All ratio metrics below are scaled by 1,000,000.
+        medida::Histogram& mSorobanClusterInstructionUtilization;
+        medida::Histogram& mSorobanDependencyComponentCount;
+        medida::Histogram& mSorobanDependencyComponentTxCount;
+        medida::Histogram& mSorobanStageTxCount;
+        medida::Histogram& mSorobanStageInstructionCount;
+        medida::Histogram& mSorobanStageConflictingTxRatio;
+        medida::Histogram& mSorobanStageLargestComponentTxRatio;
+        medida::Histogram& mSorobanStageLargestComponentInstructionRatio;
+        medida::Histogram& mSorobanStagePotentialParallelism;
+        medida::Histogram& mSorobanStageScheduledParallelism;
+        medida::Histogram& mSorobanStageRetainedPotentialParallelism;
+        medida::Histogram& mSorobanLedgerTxUtilization;
+        medida::Histogram& mSorobanLedgerInstructionUtilization;
         medida::Meter& mMetaStreamBytes;
         medida::Timer& mMetaStreamWriteTime;
         LedgerApplyMetrics(MetricsRegistry& registry);

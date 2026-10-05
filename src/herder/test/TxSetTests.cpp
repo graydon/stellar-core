@@ -2579,6 +2579,73 @@ TEST_CASE("txset nomination", "[txset]")
 #endif
 }
 
+TEST_CASE("parallel Soroban phase metrics", "[txset][soroban]")
+{
+    VirtualClock clock;
+    auto cfg = getTestConfig();
+    cfg.LEDGER_PROTOCOL_VERSION = Config::CURRENT_LEDGER_PROTOCOL_VERSION;
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION =
+        Config::CURRENT_LEDGER_PROTOCOL_VERSION;
+    cfg.GENESIS_TEST_ACCOUNT_COUNT = 10;
+    auto app = createTestApplication(clock, cfg);
+
+    SCAddress contract(SC_ADDRESS_TYPE_CONTRACT);
+    auto makeKey = [&contract](uint32_t key) {
+        return contractDataKey(contract, makeU32(key),
+                               ContractDataDurability::PERSISTENT);
+    };
+    uint32_t accountId = 0;
+    auto makeTx = [&](std::vector<uint32_t> const& readOnly,
+                      std::vector<uint32_t> const& readWrite) {
+        SorobanResources resources;
+        resources.instructions = 100;
+        resources.diskReadBytes = 1000;
+        resources.writeBytes = 100;
+        for (auto key : readOnly)
+        {
+            resources.footprint.readOnly.push_back(makeKey(key));
+        }
+        for (auto key : readWrite)
+        {
+            resources.footprint.readWrite.push_back(makeKey(key));
+        }
+        auto resourceFee = sorobanResourceFee(*app, resources, 10'000, 40);
+        auto source = getGenesisAccount(*app, accountId++);
+        return createUploadWasmTx(*app, source, 1000, resourceFee, resources);
+    };
+
+    // The first pair shares an RO key and remains independent. The middle
+    // three transactions form one transitive dependency component.
+    TxStageFrameList stages{{{makeTx({0}, {}), makeTx({0}, {}),
+                               makeTx({}, {1}), makeTx({1}, {2}),
+                               makeTx({2}, {}), makeTx({3}, {})}}};
+    auto metrics = analyzeParallelSorobanPhase(stages);
+
+    REQUIRE(metrics.mTxCount == 6);
+    REQUIRE(metrics.mStageCount == 1);
+    REQUIRE(metrics.mUniqueFootprintKeyCount == 4);
+    REQUIRE(metrics.mReadWriteFootprintKeyCount == 2);
+    REQUIRE(metrics.mContendedFootprintKeyCount == 2);
+    REQUIRE(metrics.mContractInstanceCount == 1);
+        REQUIRE(metrics.mStageTxCounts == std::vector<size_t>{6});
+        REQUIRE(metrics.mStageInstructionCounts == std::vector<uint64_t>{600});
+        REQUIRE(metrics.mStageConflictingTxCounts == std::vector<size_t>{3});
+        REQUIRE(metrics.mStageMaxClusterInstructionCounts ==
+            std::vector<uint64_t>{600});
+        REQUIRE(metrics.mStageMaxDependencyComponentTxCounts ==
+            std::vector<size_t>{3});
+        REQUIRE(metrics.mStageMaxDependencyComponentInstructionCounts ==
+            std::vector<uint64_t>{300});
+    REQUIRE(metrics.mClusterCounts == std::vector<size_t>{1});
+    REQUIRE(metrics.mClusterTxCounts == std::vector<size_t>{6});
+    REQUIRE(metrics.mClusterInstructionCounts == std::vector<uint64_t>{600});
+    REQUIRE(metrics.mDependencyComponentCounts == std::vector<size_t>{4});
+    std::sort(metrics.mDependencyComponentTxCounts.begin(),
+              metrics.mDependencyComponentTxCounts.end());
+    REQUIRE(metrics.mDependencyComponentTxCounts ==
+            std::vector<size_t>{1, 1, 1, 3});
+}
+
 void
 runParallelTxSetBuildingTest(bool variableStageCount)
 {
