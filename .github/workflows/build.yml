@@ -13,6 +13,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  BATCHSIZE: 1
+  RUST_PROFILE: ci
+  SOROBAN_JOBS: 4
+
 jobs:
 
   complete:
@@ -187,7 +192,7 @@ jobs:
             export CXX='clang++'
           fi
           echo Build with $CC and $CXX
-          ./ci-build.sh --use-temp-db --protocol ${{ matrix.protocol }}
+          ./ci-build.sh --disable-postgres --protocol ${{ matrix.protocol }}
 
       - name: Record successful test commit
         if: ${{ success() && steps.check-last-tested-commit.outputs.skip != 'true' }}
