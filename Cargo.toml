@@ -2,6 +2,9 @@
 resolver = "2"
 members = ["src/rust"]
 
+[patch."https://github.com/stellar/rs-soroban-env"]
+soroban-env-host-p29 = { package = "soroban-env-host", path = "src/rust/soroban/p29/soroban-env-host" }
+
 [profile.release]
 codegen-units = 1
 lto = true

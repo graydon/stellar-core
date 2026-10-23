@@ -1,6 +1,8 @@
 #include "ledger/SorobanMetrics.h"
 #include "util/MetricsRegistry.h"
 
+#include <algorithm>
+#include <medida/counter.h>
 #include <medida/histogram.h>
 #include <medida/meter.h>
 #include <medida/metrics_registry.h>
@@ -59,6 +61,10 @@ SorobanApplyMetrics::merge(SorobanApplyMetrics&& other)
     mLedgerHostFnExecTimeNsecs += other.mLedgerHostFnExecTimeNsecs;
 
     drain(mHostFnOpInvokeTimeNsecs, std::move(other.mHostFnOpInvokeTimeNsecs));
+    drain(mHostFnOpVmPeakLinearMemoryBytes,
+          std::move(other.mHostFnOpVmPeakLinearMemoryBytes));
+    drain(mHostFnOpVmPeakLinearMemoryBytesSuccess,
+          std::move(other.mHostFnOpVmPeakLinearMemoryBytesSuccess));
     drain(mHostFnOpInvokeTimeNsecsExclVm,
           std::move(other.mHostFnOpInvokeTimeNsecsExclVm));
     drain(mHostFnOpInvokeTimeFsecsCpuInsnRatio,
@@ -127,6 +133,14 @@ SorobanMetricsRegistry::SorobanMetricsRegistry(MetricsRegistry& metrics)
           metrics.NewMeter({"soroban", "host-fn-op", "cpu-insn"}, "insn"))
     , mHostFnOpMemByte(
           metrics.NewMeter({"soroban", "host-fn-op", "mem-byte"}, "byte"))
+    , mHostFnOpVmPeakLinearMemoryBytes(metrics.NewHistogram(
+          {"soroban", "host-fn-op", "vm-peak-linear-memory-bytes"}))
+    , mHostFnOpVmPeakLinearMemoryBytesSuccess(metrics.NewHistogram(
+          {"soroban", "host-fn-op", "vm-peak-linear-memory-bytes-success"}))
+    , mHostFnOpVmMaxLinearMemoryBytes(metrics.NewCounter(
+          {"soroban", "host-fn-op", "vm-max-linear-memory-bytes"}))
+    , mHostFnOpVmMaxLinearMemoryBytesSuccess(metrics.NewCounter(
+          {"soroban", "host-fn-op", "vm-max-linear-memory-bytes-success"}))
     , mHostFnOpInvokeTimeNsecs(
           metrics.NewTimer({"soroban", "host-fn-op", "invoke-time-nsecs"}))
     , mHostFnOpCpuInsnExclVm(metrics.NewMeter(
@@ -268,6 +282,23 @@ SorobanMetricsRegistry::recordApplyMetrics(SorobanApplyMetrics const& metrics)
     markIf(mRestoreFpOpWriteLedgerByte, metrics.mRestoreFpOpWriteLedgerByte);
 
     mHostFnOpInvokeTimeNsecs.UpdateMany(metrics.mHostFnOpInvokeTimeNsecs);
+    auto recordVmMemory = [](medida::Histogram& histogram,
+                             medida::Counter& maximum,
+                             std::vector<int64_t> const& samples) {
+        histogram.UpdateMany(samples);
+        if (!samples.empty())
+        {
+            maximum.set_count(
+                std::max(maximum.count(),
+                         *std::max_element(samples.begin(), samples.end())));
+        }
+    };
+    recordVmMemory(mHostFnOpVmPeakLinearMemoryBytes,
+                   mHostFnOpVmMaxLinearMemoryBytes,
+                   metrics.mHostFnOpVmPeakLinearMemoryBytes);
+    recordVmMemory(mHostFnOpVmPeakLinearMemoryBytesSuccess,
+                   mHostFnOpVmMaxLinearMemoryBytesSuccess,
+                   metrics.mHostFnOpVmPeakLinearMemoryBytesSuccess);
     mHostFnOpInvokeTimeNsecsExclVm.UpdateMany(
         metrics.mHostFnOpInvokeTimeNsecsExclVm);
     mHostFnOpInvokeTimeFsecsCpuInsnRatio.UpdateMany(

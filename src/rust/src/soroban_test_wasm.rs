@@ -153,6 +153,32 @@ pub(crate) fn get_invoke_contract_wasm() -> Result<RustBuf, Box<dyn std::error::
     })
 }
 
+pub(crate) fn get_test_wasm_linear_memory(
+    initial_pages: u32,
+    grow_pages: u32,
+    trap: bool,
+    export_memory: bool,
+) -> Result<RustBuf, Box<dyn std::error::Error>> {
+    use soroban_synth_wasm::{Arity, ModEmitter};
+    let module = if export_memory {
+        ModEmitter::from_configs(initial_pages, 0)
+    } else {
+        let mut module = ModEmitter::new();
+        module.add_protocol_version_meta(27);
+        module.memory(initial_pages as u64, None, false, false);
+        module
+    };
+    let mut function = module.func(Arity(0), 0);
+    function.i32_const(grow_pages as i32).memory_grow().drop();
+    if trap {
+        function.trap();
+    }
+    function.i64_const(0).ret();
+    Ok(RustBuf {
+        data: function.finish_and_export("test").finish(),
+    })
+}
+
 pub(crate) fn get_random_wasm(
     size: usize,
     seed: u64,

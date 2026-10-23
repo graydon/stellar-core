@@ -10,6 +10,7 @@
 #include "util/ProtocolVersion.h"
 #include "util/UnorderedSet.h"
 #include "xdr/Stellar-transaction.h"
+#include <medida/counter.h>
 #include <medida/histogram.h>
 #include <medida/meter.h>
 #include <medida/timer.h>
@@ -1130,6 +1131,118 @@ TEST_CASE_VERSIONS("basic contract invocation", "[tx][soroban]")
                         .setRefundableResourceFee(0)) ==
                 INVOKE_HOST_FUNCTION_INSUFFICIENT_REFUNDABLE_FEE);
     }
+}
+
+TEST_CASE("Soroban VM linear memory metrics", "[soroban][metrics]")
+{
+    auto cfg = getTestConfig();
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = 29;
+    SorobanTest test(cfg);
+    auto& metrics = test.getApp().getMetrics();
+    auto& all = metrics.NewHistogram(
+        {"soroban", "host-fn-op", "vm-peak-linear-memory-bytes"});
+    auto& successful = metrics.NewHistogram(
+        {"soroban", "host-fn-op", "vm-peak-linear-memory-bytes-success"});
+    auto& maximum = metrics.NewCounter(
+        {"soroban", "host-fn-op", "vm-max-linear-memory-bytes"});
+    auto& maximumSuccessful = metrics.NewCounter(
+        {"soroban", "host-fn-op", "vm-max-linear-memory-bytes-success"});
+    auto spec = SorobanInvocationSpec().setInstructions(10'000'000);
+    int64_t const pageBytes = 65536;
+
+    all.Clear();
+    successful.Clear();
+    test.deployAssetContract(txtest::makeNativeAsset());
+    REQUIRE(all.count() == 0);
+    REQUIRE(successful.count() == 0);
+
+    auto invoke = [&](uint32_t initialPages, uint32_t growPages, bool trap,
+                      bool exportMemory, bool expectedSuccess,
+                      uint32_t expectedPages) {
+        auto wasm = rust_bridge::get_test_wasm_linear_memory(
+            initialPages, growPages, trap, exportMemory);
+        auto uploadResources =
+            defaultUploadWasmResourcesWithoutFootprint(wasm, 29);
+        uploadResources.instructions = 10'000'000;
+        auto& contract = test.deployWasmContract(wasm, uploadResources);
+        all.Clear();
+        successful.Clear();
+        auto previousMaximum = maximum.count();
+        auto previousSuccessfulMaximum = maximumSuccessful.count();
+        auto invocation = contract.prepareInvocation("test", {}, spec);
+        REQUIRE(invocation.invoke() == expectedSuccess);
+        auto expectedBytes = expectedPages * pageBytes;
+        REQUIRE(all.count() == 1);
+        REQUIRE(all.min() == expectedBytes);
+        REQUIRE(all.max() == expectedBytes);
+        REQUIRE(maximum.count() == std::max(previousMaximum, expectedBytes));
+        REQUIRE(successful.count() == (expectedSuccess ? 1 : 0));
+        REQUIRE(maximumSuccessful.count() ==
+                (expectedSuccess
+                     ? std::max(previousSuccessfulMaximum, expectedBytes)
+                     : previousSuccessfulMaximum));
+        if (expectedSuccess)
+        {
+            REQUIRE(successful.max() == expectedBytes);
+        }
+    };
+
+    invoke(1, 2, false, true, true, 3);
+    invoke(1, 5, true, true, false, 6);
+    invoke(1, 0, false, true, true, 1);
+    invoke(1, 65536, false, true, false, 1);
+    invoke(2, 2, false, false, true, 4);
+    invoke(0, 0, false, false, true, 0);
+
+    auto& caller =
+        test.deployWasmContract(rust_bridge::get_invoke_contract_wasm());
+    auto& callee =
+        test.deployWasmContract(rust_bridge::get_test_wasm_add_i32());
+    auto measure = [&](TestContract::Invocation invocation) {
+        all.Clear();
+        REQUIRE(invocation.invoke());
+        REQUIRE(all.count() == 1);
+        return all.max();
+    };
+    auto callerBytes = measure(
+        caller.prepareInvocation("add", {makeI32(1), makeI32(2)}, spec));
+    auto calleeBytes = measure(
+        callee.prepareInvocation("add", {makeI32(1), makeI32(2)}, spec));
+    auto nestedBytes = measure(caller.prepareInvocation(
+        "add_with",
+        {makeI32(1), makeI32(2), makeAddressSCVal(callee.getAddress())},
+        spec.extendReadOnlyFootprint(callee.getKeys())));
+    REQUIRE(callerBytes > 0);
+    REQUIRE(calleeBytes > 0);
+    REQUIRE(nestedBytes == std::max(callerBytes, calleeBytes));
+}
+
+TEST_CASE("Soroban VM linear memory metric merging", "[soroban][metrics]")
+{
+    MetricsRegistry metrics;
+    SorobanMetricsRegistry registry(metrics);
+    SorobanApplyMetrics first;
+    first.mHostFnOpVmPeakLinearMemoryBytes = {65536, 196608};
+    first.mHostFnOpVmPeakLinearMemoryBytesSuccess = {65536};
+    SorobanApplyMetrics second;
+    second.mHostFnOpVmPeakLinearMemoryBytes = {131072};
+    second.mHostFnOpVmPeakLinearMemoryBytesSuccess = {131072};
+    first.merge(std::move(second));
+    registry.recordApplyMetrics(first);
+    REQUIRE(registry.mHostFnOpVmPeakLinearMemoryBytes.count() == 3);
+    REQUIRE(registry.mHostFnOpVmPeakLinearMemoryBytesSuccess.count() == 2);
+    REQUIRE(registry.mHostFnOpVmMaxLinearMemoryBytes.count() == 196608);
+    REQUIRE(registry.mHostFnOpVmMaxLinearMemoryBytesSuccess.count() == 131072);
+
+    SorobanApplyMetrics smaller;
+    smaller.mHostFnOpVmPeakLinearMemoryBytes = {0, 65536};
+    smaller.mHostFnOpVmPeakLinearMemoryBytesSuccess = {0, 65536};
+    registry.recordApplyMetrics(smaller);
+    registry.recordApplyMetrics(SorobanApplyMetrics{});
+    REQUIRE(registry.mHostFnOpVmPeakLinearMemoryBytes.count() == 5);
+    REQUIRE(registry.mHostFnOpVmPeakLinearMemoryBytesSuccess.count() == 4);
+    REQUIRE(registry.mHostFnOpVmMaxLinearMemoryBytes.count() == 196608);
+    REQUIRE(registry.mHostFnOpVmMaxLinearMemoryBytesSuccess.count() == 131072);
 }
 
 TEST_CASE("version test", "[tx][soroban]")

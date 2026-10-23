@@ -75,6 +75,8 @@ struct SorobanApplyMetrics
     // Pending sample streams for percentile-bearing histograms/timers
     // (timer samples are in nanoseconds).
     std::vector<int64_t> mHostFnOpInvokeTimeNsecs;
+    std::vector<int64_t> mHostFnOpVmPeakLinearMemoryBytes;
+    std::vector<int64_t> mHostFnOpVmPeakLinearMemoryBytesSuccess;
     std::vector<int64_t> mHostFnOpInvokeTimeNsecsExclVm;
     std::vector<int64_t> mHostFnOpInvokeTimeFsecsCpuInsnRatio;
     std::vector<int64_t> mHostFnOpInvokeTimeFsecsCpuInsnRatioExclVm;
@@ -136,6 +138,10 @@ class SorobanMetricsRegistry
     medida::Meter& mHostFnOpEmitEventByte;
     medida::Meter& mHostFnOpCpuInsn;
     medida::Meter& mHostFnOpMemByte;
+    medida::Histogram& mHostFnOpVmPeakLinearMemoryBytes;
+    medida::Histogram& mHostFnOpVmPeakLinearMemoryBytesSuccess;
+    medida::Counter& mHostFnOpVmMaxLinearMemoryBytes;
+    medida::Counter& mHostFnOpVmMaxLinearMemoryBytesSuccess;
     medida::Timer& mHostFnOpInvokeTimeNsecs;
     medida::Meter& mHostFnOpCpuInsnExclVm;
     medida::Timer& mHostFnOpInvokeTimeNsecsExclVm;

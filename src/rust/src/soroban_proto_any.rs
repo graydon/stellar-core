@@ -482,6 +482,7 @@ where
 
     let cpu_insns = budget.get_cpu_insns_consumed()?;
     let mem_bytes = budget.get_mem_bytes_consumed()?;
+    let vm_peak_linear_memory_bytes = super::vm_peak_linear_memory_bytes(&budget);
     let cpu_insns_excluding_vm_instantiation = cpu_insns.saturating_sub(
         budget
             .get_tracker(xdr::ContractCostType::VmInstantiation)?
@@ -516,6 +517,8 @@ where
                     diagnostic_events: encode_diagnostic_events(&diagnostic_events),
                     cpu_insns,
                     mem_bytes,
+                    has_vm_linear_memory: vm_peak_linear_memory_bytes.is_some(),
+                    vm_peak_linear_memory_bytes: vm_peak_linear_memory_bytes.unwrap_or(0),
                     time_nsecs,
                     cpu_insns_excluding_vm_instantiation,
                     time_nsecs_excluding_vm_instantiation,
@@ -570,6 +573,8 @@ where
         diagnostic_events: encode_diagnostic_events(&diagnostic_events),
         cpu_insns,
         mem_bytes,
+        has_vm_linear_memory: vm_peak_linear_memory_bytes.is_some(),
+        vm_peak_linear_memory_bytes: vm_peak_linear_memory_bytes.unwrap_or(0),
         time_nsecs,
         cpu_insns_excluding_vm_instantiation,
         time_nsecs_excluding_vm_instantiation,

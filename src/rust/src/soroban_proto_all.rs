@@ -34,6 +34,14 @@ use crate::RustBuf;
 
 pub(crate) use p30 as soroban_curr;
 
+macro_rules! vm_memory_metrics_unavailable {
+    () => {
+        pub(crate) fn vm_peak_linear_memory_bytes(_budget: &Budget) -> Option<u64> {
+            None
+        }
+    };
+}
+
 // We also pin some protocol _agnostic_ definitions that are technically
 // implemented by a specific version of soroban, but which is protocol-stable
 // and can be used across protocols (either by never changing or by being
@@ -200,6 +208,7 @@ pub(crate) mod p30 {
     };
 
     pub(crate) use soroban_env_host_p30 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     pub(crate) mod soroban_proto_any;
 
@@ -375,6 +384,10 @@ pub(crate) mod p29 {
 
     pub(crate) use soroban_env_host_p29 as soroban_env_host;
 
+    pub(crate) fn vm_peak_linear_memory_bytes(budget: &Budget) -> Option<u64> {
+        budget.get_vm_peak_linear_memory_bytes()
+    }
+
     pub(crate) mod soroban_proto_any;
 
     pub(crate) use soroban_env_host::e2e_invoke::TtlLedgerEntryMeta;
@@ -549,6 +562,7 @@ pub(crate) mod p28 {
     };
 
     pub(crate) use soroban_env_host_p28 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     pub(crate) mod soroban_proto_any;
 
@@ -723,6 +737,7 @@ pub(crate) mod p27 {
         HostError, LedgerInfo, TraceHook,
     };
     pub(crate) use soroban_env_host_p27 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     pub(crate) mod soroban_proto_any;
 
@@ -899,6 +914,7 @@ pub(crate) mod p26 {
         HostError, LedgerInfo, TraceHook,
     };
     pub(crate) use soroban_env_host_p26 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     pub(crate) mod soroban_proto_any;
 
@@ -1080,6 +1096,7 @@ pub(crate) mod p25 {
         HostError, LedgerInfo, TraceHook,
     };
     pub(crate) use soroban_env_host_p25 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     pub(crate) mod soroban_proto_any;
 
@@ -1262,6 +1279,7 @@ pub(crate) mod p24 {
         HostError, LedgerInfo, TraceHook,
     };
     pub(crate) use soroban_env_host_p24 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     pub(crate) mod soroban_proto_any;
 
@@ -1444,6 +1462,7 @@ pub(crate) mod p23 {
         HostError, LedgerInfo, TraceHook,
     };
     pub(crate) use soroban_env_host_p23 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     pub(crate) mod soroban_proto_any;
 
@@ -1607,6 +1626,7 @@ pub(crate) mod p23 {
 pub(crate) mod p22 {
     pub(crate) extern crate soroban_env_host_p22;
     pub(crate) use soroban_env_host_p22 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     // p22's host only supports the legacy invoke interface.
     invoke_v2_unsupported_stub!();
@@ -1824,6 +1844,7 @@ pub(crate) mod p22 {
 pub(crate) mod p21 {
     pub(crate) extern crate soroban_env_host_p21;
     pub(crate) use soroban_env_host_p21 as soroban_env_host;
+    vm_memory_metrics_unavailable!();
 
     // p21's host only supports the legacy invoke interface.
     invoke_v2_unsupported_stub!();

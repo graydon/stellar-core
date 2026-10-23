@@ -228,6 +228,10 @@ soroban.host-fn-op.emit-event                | meter     | number of events emit
 soroban.host-fn-op.emit-event-byte           | meter     | number of event bytes emitted during the `InvokeHostFunctionOp`
 soroban.host-fn-op.cpu-insn                  | meter     | number of metered cpu instructions during the `InvokeHostFunctionOp`
 soroban.host-fn-op.mem-byte                  | meter     | number of metered memory bytes during the `InvokeHostFunctionOp`
+soroban.host-fn-op.vm-peak-linear-memory-bytes | histogram | largest actual single-VM linear memory size in bytes per host invocation, including failed invocations (protocol 29 only)
+soroban.host-fn-op.vm-peak-linear-memory-bytes-success | histogram | same per-invocation peak, restricted to successful transactions (protocol 29 only)
+soroban.host-fn-op.vm-max-linear-memory-bytes | counter | maximum observed single-VM linear memory size in bytes since process start or metric reset, including failed invocations (protocol 29 only)
+soroban.host-fn-op.vm-max-linear-memory-bytes-success | counter | same lifetime maximum, restricted to successful transactions (protocol 29 only)
 soroban.host-fn-op.invoke-time-nsecs         | timer     | time spent on the soroban host invocation. Note: this is **not** the total time of the operation, which is tracked under "soroban.host-fn-op.exec".
 soroban.host-fn-op.cpu-insn-excl-vm          | meter     | number of metered cpu instructions excluding VM instantiation during the `InvokeHostFunctionOp`
 soroban.host-fn-op.invoke-time-nsecs-excl-vm | timer     | time spent in soroban host invocation excluding VM instantiation

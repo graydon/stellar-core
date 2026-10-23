@@ -131,6 +131,7 @@ struct HostFunctionMetrics
     // host runtime metrics
     uint64_t mCpuInsn{0};
     uint64_t mMemByte{0};
+    std::optional<uint64_t> mVmPeakLinearMemoryBytes;
     uint64_t mInvokeTimeNsecs{0};
     uint64_t mCpuInsnExclVm{0};
     uint64_t mInvokeTimeNsecsExclVm{0};
@@ -183,6 +184,16 @@ struct HostFunctionMetrics
 
         mMetrics.mHostFnOpCpuInsn += mCpuInsn;
         mMetrics.mHostFnOpMemByte += mMemByte;
+        if (mVmPeakLinearMemoryBytes)
+        {
+            mMetrics.mHostFnOpVmPeakLinearMemoryBytes.push_back(
+                static_cast<int64_t>(*mVmPeakLinearMemoryBytes));
+            if (mSuccess)
+            {
+                mMetrics.mHostFnOpVmPeakLinearMemoryBytesSuccess.push_back(
+                    static_cast<int64_t>(*mVmPeakLinearMemoryBytes));
+            }
+        }
         mMetrics.mHostFnOpInvokeTimeNsecs.push_back(
             static_cast<int64_t>(mInvokeTimeNsecs));
         mMetrics.mHostFnOpCpuInsnExclVm += mCpuInsnExclVm;
@@ -709,6 +720,11 @@ class InvokeHostFunctionApplyHelper : virtual LedgerAccessHelper
             }
             mMetrics.mCpuInsn = out.cpu_insns;
             mMetrics.mMemByte = out.mem_bytes;
+            if (out.has_vm_linear_memory)
+            {
+                mMetrics.mVmPeakLinearMemoryBytes =
+                    out.vm_peak_linear_memory_bytes;
+            }
             mMetrics.mInvokeTimeNsecs = out.time_nsecs;
             mMetrics.mCpuInsnExclVm = out.cpu_insns_excluding_vm_instantiation;
             mMetrics.mInvokeTimeNsecsExclVm =

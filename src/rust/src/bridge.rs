@@ -53,6 +53,8 @@ pub(crate) mod rust_bridge {
         diagnostic_events: Vec<RustBuf>,
         cpu_insns: u64,
         mem_bytes: u64,
+        has_vm_linear_memory: bool,
+        vm_peak_linear_memory_bytes: u64,
         time_nsecs: u64,
         cpu_insns_excluding_vm_instantiation: u64,
         time_nsecs_excluding_vm_instantiation: u64,
@@ -308,6 +310,12 @@ pub(crate) mod rust_bridge {
 
         // Utility functions for generating wasms using soroban-synth-wasm.
         fn get_random_wasm(size: usize, seed: u64) -> Result<RustBuf>;
+        fn get_test_wasm_linear_memory(
+            initial_pages: u32,
+            grow_pages: u32,
+            trap: bool,
+            export_memory: bool,
+        ) -> Result<RustBuf>;
 
         // Return the rustc version used to build this binary.
         fn get_rustc_version() -> String;
